@@ -1,0 +1,1336 @@
+<!-- LIVE_MARKER_221907 -->
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>S.A.M.U.E.L // OMNI-DASHBOARD</title>
+    <style>
+      :root {
+        --bg-color: #050505;
+        --term-green: #00ff41;
+        --term-dim: #004411;
+        --alert-red: #ff3333;
+        --warning-yellow: #ffcc00;
+        --panel-bg: rgba(0, 20, 0, 0.6);
+        --border-style: 1px solid var(--term-green);
+      }
+
+      body {
+        background-color: var(--bg-color);
+        color: var(--term-green);
+        font-family: "Courier New", Courier, monospace;
+        margin: 0;
+        padding: 20px;
+        height: 100vh;
+        overflow: hidden;
+        display: grid;
+        grid-template-columns: 250px 1fr;
+        grid-template-rows: 60px 1fr 30px;
+        gap: 15px;
+      }
+
+      /* HEADER */
+      header {
+        grid-column: 1 / -1;
+        border-bottom: 2px solid var(--term-green);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 20px;
+        text-shadow: 0 0 10px var(--term-green);
+      }
+
+      .system-status {
+        font-size: 0.8rem;
+        color: var(--term-dim);
+      }
+
+      .status-active {
+        color: var(--term-green);
+      }
+
+      /* GLOBAL SEARCH */
+      #global-search-container {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        background: var(--panel-bg);
+        border: 1px solid var(--term-dim);
+        padding: 5px 10px;
+      }
+      #global-search {
+        background: transparent;
+        border: none;
+        color: var(--term-green);
+        font-family: inherit;
+        outline: none;
+        width: 200px;
+      }
+
+      /* SIDEBAR NAV */
+      aside {
+        grid-row: 2 / 3;
+        border: var(--border-style);
+        padding: 10px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        background: var(--panel-bg);
+      }
+
+      .nav-btn {
+        background: transparent;
+        border: 1px solid var(--term-dim);
+        color: var(--term-green);
+        padding: 15px;
+        text-align: left;
+        cursor: pointer;
+        transition: 0.2s;
+        font-family: inherit;
+        font-weight: bold;
+        text-transform: uppercase;
+      }
+
+      .nav-btn:hover,
+      .nav-btn.active {
+        background: var(--term-green);
+        color: black;
+        box-shadow: 0 0 15px var(--term-green);
+      }
+      .nav-btn.nav-yellow {
+        color: var(--warning-yellow);
+        border-color: #8a6b00;
+      }
+      .nav-btn.nav-yellow:hover,
+      .nav-btn.nav-yellow.active {
+        background: var(--warning-yellow);
+        color: black;
+        box-shadow: 0 0 15px var(--warning-yellow);
+      }
+
+      /* MAIN CONTENT AREA */
+      main {
+        grid-row: 2 / 3;
+        border: var(--border-style);
+        padding: 20px;
+        overflow-y: auto;
+        position: relative;
+        background: radial-gradient(circle at center, #0a1a0a 0%, #000 100%);
+      }
+
+      .view-panel {
+        display: none;
+      }
+      .view-panel.active {
+        display: block;
+        animation: fadeIn 0.3s ease-in;
+      }
+
+      @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+      }
+
+      h2 {
+        border-bottom: 1px dashed var(--term-green);
+        padding-bottom: 10px;
+        margin-top: 0;
+      }
+
+      /* DATA TABLES */
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 15px;
+        font-size: 0.9rem;
+      }
+      th, td {
+        border: 1px solid var(--term-dim);
+        padding: 8px;
+        text-align: left;
+      }
+      th {
+        background-color: var(--term-dim);
+        color: var(--term-green);
+      }
+      tr:hover {
+        background-color: rgba(0, 255, 65, 0.1);
+      }
+
+      /* OPERATION MODULES GRID */
+      .ops-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: 15px;
+      }
+      .op-card {
+        border: 1px solid var(--term-green);
+        padding: 15px;
+        text-align: center;
+        cursor: pointer;
+        position: relative;
+      }
+      .op-card:hover {
+        background: var(--term-dim);
+      }
+      .op-icon {
+        font-size: 2rem;
+        display: block;
+        margin-bottom: 10px;
+      }
+      .op-delete-btn {
+        position: absolute;
+        top: 5px;
+        right: 5px;
+        background: transparent;
+        border: none;
+        color: var(--alert-red);
+        cursor: pointer;
+        font-size: 1rem;
+        opacity: 0.3;
+        transition: 0.2s;
+      }
+      .op-card:hover .op-delete-btn {
+        opacity: 1;
+      }
+
+      /* BACK BUTTON */
+      .back-btn {
+        background: var(--term-dim);
+        border: 1px solid var(--term-green);
+        color: var(--term-green);
+        padding: 5px 15px;
+        cursor: pointer;
+        font-family: inherit;
+        font-weight: bold;
+        text-transform: uppercase;
+        margin-bottom: 15px;
+        display: inline-block;
+      }
+      .back-btn:hover {
+        background: var(--term-green);
+        color: black;
+      }
+
+      .hidden-by-default {
+  display: none;
+}
+
+      .mission-status-select {
+        background: rgba(0, 0, 0, 0.35);
+        border: 1px solid var(--term-dim);
+        font-family: inherit;
+        font-weight: bold;
+        padding: 4px 8px;
+        text-transform: uppercase;
+      }
+      .mission-status-select.status-pending {
+        color: var(--warning-yellow);
+      }
+      .mission-status-select.status-in-progress,
+      .mission-status-select.status-complete {
+        color: var(--term-green);
+      }
+      .mission-status-select.status-blocked {
+        color: var(--alert-red);
+      }
+      .quarter-slot {
+        margin-top: 10px;
+        padding: 8px;
+        border: 1px solid var(--term-dim);
+        background: linear-gradient(180deg, rgba(0, 30, 0, 0.35), rgba(0, 10, 0, 0.55));
+      }
+      .quarter-slot-time {
+        color: var(--term-dim);
+        font-size: 0.8rem;
+        margin-bottom: 6px;
+      }
+      .slot-label {
+        color: var(--warning-yellow);
+        font-size: 0.72rem;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        margin-top: 6px;
+      }
+      .matrix-select {
+        width: 100%;
+        appearance: none;
+        -webkit-appearance: none;
+        -moz-appearance: none;
+        background:
+          linear-gradient(45deg, transparent 50%, var(--warning-yellow) 50%) calc(100% - 16px) calc(50% - 3px) / 7px 7px no-repeat,
+          linear-gradient(135deg, var(--warning-yellow) 50%, transparent 50%) calc(100% - 11px) calc(50% - 3px) / 7px 7px no-repeat,
+          linear-gradient(180deg, rgba(0, 28, 0, 0.88), rgba(0, 14, 0, 0.95));
+        color: var(--term-green);
+        border: 1px solid #1ca34b;
+        border-radius: 4px;
+        font-family: inherit;
+        font-weight: bold;
+        padding: 8px 30px 8px 10px;
+        margin-top: 6px;
+        box-shadow: inset 0 0 10px rgba(0, 255, 65, 0.12), 0 0 0 1px rgba(0, 255, 65, 0.1);
+        transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.05s ease;
+      }
+      .matrix-select:hover {
+        border-color: var(--warning-yellow);
+        box-shadow: inset 0 0 12px rgba(0, 255, 65, 0.14), 0 0 10px rgba(255, 204, 0, 0.18);
+      }
+      .matrix-select:focus {
+        outline: none;
+        border-color: var(--warning-yellow);
+        box-shadow: 0 0 14px rgba(255, 204, 0, 0.4), inset 0 0 10px rgba(0, 255, 65, 0.12);
+        transform: translateY(-1px);
+      }
+      .matrix-select option {
+        background: #061206;
+        color: var(--term-green);
+      }
+      .focus-header {
+        border: 1px solid var(--warning-yellow);
+        background: linear-gradient(180deg, rgba(28, 22, 0, 0.35), rgba(10, 8, 0, 0.6));
+        padding: 12px;
+        text-align: center;
+        margin-bottom: 10px;
+      }
+      .focus-day {
+        color: var(--term-dim);
+        font-size: 0.78rem;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+      .focus-quarter {
+        color: var(--warning-yellow);
+        font-size: 1.35rem;
+        font-weight: bold;
+        margin: 4px 0;
+        text-transform: uppercase;
+      }
+      .focus-phase {
+        display: inline-block;
+        border: 1px solid var(--warning-yellow);
+        background: rgba(255, 204, 0, 0.08);
+        color: var(--warning-yellow);
+        font-weight: bold;
+        padding: 5px 10px;
+        margin-top: 6px;
+        text-transform: uppercase;
+      }
+      .focus-cadence {
+        color: var(--term-green);
+        margin-top: 8px;
+        font-size: 0.9rem;
+      }
+
+      /* THEMED CONFIRM MODAL */
+      .confirm-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.7);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+      }
+      .confirm-overlay.active {
+        display: flex;
+      }
+      .confirm-modal {
+        width: min(480px, 92vw);
+        border: 1px solid var(--term-green);
+        background: radial-gradient(circle at center, #061306 0%, #020202 100%);
+        box-shadow: 0 0 30px rgba(0, 255, 65, 0.25);
+        padding: 18px;
+      }
+      .confirm-title {
+        margin: 0 0 12px 0;
+        color: var(--warning-yellow);
+        font-size: 1rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+      .confirm-message {
+        margin: 0 0 16px 0;
+        color: var(--term-green);
+      }
+      .confirm-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+      }
+      .confirm-btn {
+        background: transparent;
+        border: 1px solid var(--term-green);
+        color: var(--term-green);
+        padding: 8px 12px;
+        cursor: pointer;
+        font-family: inherit;
+        font-weight: bold;
+        text-transform: uppercase;
+      }
+      .confirm-btn:hover {
+        background: var(--term-green);
+        color: #000;
+      }
+      .confirm-btn.danger {
+        border-color: var(--alert-red);
+        color: var(--alert-red);
+      }
+      .confirm-btn.danger:hover {
+        background: var(--alert-red);
+        color: #000;
+      }
+
+      /* HVI CARDS */
+      .hvi-card {
+        border-left: 4px solid var(--warning-yellow);
+        background: rgba(255, 204, 0, 0.05);
+        margin-bottom: 10px;
+        padding: 10px;
+        cursor: pointer;
+      }
+
+      /* PROBE MANUAL STYLES */
+      .manual-view {
+        line-height: 1.6;
+        max-width: 800px;
+      }
+      .manual-view h1, .manual-view h2, .manual-view h3 {
+        color: var(--warning-yellow);
+        border-bottom: 1px solid var(--term-dim);
+        margin-top: 25px;
+      }
+      .manual-view ul {
+        padding-left: 20px;
+      }
+      .manual-view code {
+        background: var(--term-dim);
+        padding: 2px 5px;
+      }
+      /* FOOTER */
+      footer {
+        grid-column: 1 / -1;
+        border-top: var(--border-style);
+        display: flex;
+        align-items: center;
+        padding: 0 20px;
+        font-size: 0.8rem;
+        justify-content: space-between;
+      }
+
+      /* SUBMISSION FORMS */
+      .submission-area {
+        border: 1px dashed var(--term-green);
+        background: rgba(0, 255, 65, 0.05);
+        padding: 20px;
+        margin-bottom: 20px;
+      }
+      .form-group {
+        margin-bottom: 15px;
+      }
+      .form-group label {
+        display: block;
+        margin-bottom: 5px;
+        color: var(--term-green);
+        opacity: 0.8;
+      }
+      .form-group input, .form-group select {
+        width: 100%;
+        padding: 8px;
+        background-color: var(--bg-color);
+        border: 1px solid var(--term-dim);
+        color: var(--term-green);
+        font-family: inherit;
+        box-sizing: border-box;
+      }
+      .submit-btn {
+        background-color: var(--term-dim);
+        color: var(--term-green);
+        border: 1px solid var(--term-green);
+        padding: 10px 20px;
+        cursor: pointer;
+        font-weight: bold;
+        text-transform: uppercase;
+      }
+      .submit-btn:hover {
+        background-color: var(--term-green);
+        color: var(--bg-color);
+      }
+      /* HIDDEN DELETE BUTTONS */
+      .hidden-by-default {
+        display: none;
+      }.hidden-by-default {
+  display: none;
+}
+    </style>
+  </head>
+  <body>
+    <!-- HEADER -->
+    <header>
+      <h1>// MANAGEMENT_APP_V1.3</h1>
+      <div class="system-status">
+        CORE: <span class="status-active">ONLINE</span> | CONNECTION:
+        <span class="status-active">SECURE</span> | USER: SLIDER
+      </div>
+    </header>
+
+    <!-- NAVIGATION SIDEBAR -->
+    <aside>
+      <button class="nav-btn active" onclick="switchView('dashboard')">[00] DASHBOARD</button>
+      <button class="nav-btn" id="nav-ops" onclick="switchView('operations')">[02] OPERATIONS</button>
+      <button class="nav-btn" onclick="switchView('blackbook')">[03] BLACK BOOK</button>
+      <button class="nav-btn" onclick="switchView('hvi-intel')">[04] HVI TARGETS</button>
+      <button class="nav-btn nav-yellow" onclick="switchView('mission-brief')">[05] MISSION BRIEF</button>
+      <button class="nav-btn nav-yellow" onclick="switchView('mission-debrief')">[06] MISSION DEBRIEF</button>
+      <button class="nav-btn nav-yellow" onclick="switchView('probe-skill')">[07] PROBE SKILL</button>
+      <button class="nav-btn nav-yellow" onclick="switchView('probe-manual')">[08] PROBE MANUEL</button>
+    </aside>
+
+    <!-- MAIN DISPLAY -->
+    <main id="main-screen">
+      <!-- DASHBOARD VIEW -->
+      <div id="view-dashboard" class="view-panel active">
+        <h2>// SYSTEM OVERVIEW</h2>
+        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px">
+          <div class="op-card" onclick="switchView('operations')">
+            <span class="op-icon">📁</span>
+            <h3>OPERATIONS</h3>
+            <h1 style="margin: 0" id="op-count-dash">0</h1>
+          </div>
+          <div class="op-card" onclick="switchView('operations')">
+            <span class="op-icon">⚡</span>
+            <h3>MISSIONS</h3>
+            <h1 style="margin: 0" id="mission-count-dash">0</h1>
+          </div>
+          <div class="op-card" onclick="switchView('hvi-intel')">
+            <span class="op-icon">🎯</span>
+            <h3>HVI Intel</h3>
+            <h1 style="margin: 0" id="hvi-count">0</h1>
+          </div>
+        </div>
+        <br />
+        <h3>// TOP MISSIONS OF THE DAY</h3>
+        <div id="operation-focus-list">
+          <div class="hvi-card" style="border-color: var(--term-green)">
+            No mission activity yet.
+          </div>
+        </div>
+      </div>
+
+      <!-- MISSION LOG VIEW -->
+      <div id="view-mission-log" class="view-panel">
+        <button class="back-btn" onclick="switchView('operations')">< BACK TO OPERATIONS</button>
+        <h2 id="mission-header">// MASTER MISSION INDEX</h2>
+        <p>Source: <code id="mission-source-code">OperationDir/Operations/[OP]/Missions/[BRIEF]</code></p>
+
+        <div id="mission-submission-area" class="submission-area">
+          <h3>+ LOG NEW MISSION</h3>
+          <div class="form-group">
+            <label for="new-mission-name">Mission Name:</label>
+            <input type="text" id="new-mission-name" placeholder="e.g., Acquire Target X Data" />
+          </div>
+          <div class="form-group">
+            <label for="new-mission-op">Operation:</label>
+            <input type="text" id="new-mission-op" value="ProjectTitle" />
+          </div>
+          <div class="form-group">
+            <label for="new-mission-status">Status:</label>
+            <select id="new-mission-status">
+              <option value="PENDING">PENDING</option>
+              <option value="IN_PROGRESS">IN_PROGRESS</option>
+              <option value="COMPLETE">COMPLETE</option>
+              <option value="BLOCKED">BLOCKED</option>
+            </select>
+          </div>
+          <button class="submit-btn" onclick="submitNewMission()">LOG MISSION</button>
+          <p id="submission-message" style="margin-top: 10px"></p>
+        </div>
+
+        <table id="mission-table">
+          <thead>
+            <tr>
+              <th>DATE</th>
+              <th>OPERATION</th>
+              <th>MISSION</th>
+              <th>STATUS</th>
+              <th style="width: 50px;">ACTIONS</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td colspan="5">Loading missions...</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- OPERATIONS VIEW -->
+      <div id="view-operations" class="view-panel">
+        <h2>// ACTIVE THEATERS</h2>
+        
+        <div id="operation-submission-area" class="submission-area">
+          <h3>+ CREATE NEW OPERATION</h3>
+          <div class="form-group">
+            <label for="new-op-name">Operation Name:</label>
+            <input type="text" id="new-op-name" placeholder="e.g., TargetRecon" />
+          </div>
+          <button class="submit-btn" onclick="submitNewOperation()">INITIALIZE OPERATION</button>
+          <p id="op-submission-message" style="margin-top: 10px"></p>
+        </div>
+
+        <p>Source: <code>OperationDir/Operations/</code></p>
+        <div class="ops-grid">
+          <div class="op-card" style="position: relative;">
+            <button class="op-delete-btn" onclick="deleteOperation('${op}', event)" title="Delete Operation">X</button>
+            <span class="op-icon">📁</span>
+            ${op.toUpperCase()}
+          </div>
+        </div>
+      </div>
+
+      <!-- BLACK BOOK VIEW -->
+      <div id="view-blackbook" class="view-panel">
+        <h2>// BLACK BOOK LAB RESULTS</h2>
+        <p>Source: <code>OperationDir/BLACK_BOOK.md</code></p>
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>HYPOTHESIS</th>
+              <th>PLATFORM</th>
+              <th>RESULT</th>
+              <th style="width: 70px;">ACTIONS</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td colspan="5">Loading probes...</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- HVI VIEW -->
+      <div id="view-hvi-intel" class="view-panel">
+        <h2>// HIGH VALUE INDIVIDUALS (Summary)</h2>
+        <p>Source: <code>OperationDir/HVI_INDEX.md</code></p>
+        <div id="hvi-container">
+          <div class="hvi-card"><p>Loading HVI profiles...</p></div>
+        </div>
+      </div>
+
+      <!-- MISSION BRIEF VIEW -->
+      <div id="view-mission-brief" class="view-panel">
+        <h2>// MISSION BRIEF</h2>
+        <p>Source: <code>MissionBrief.md</code></p>
+        <div class="manual-view">
+          <div id="mission-brief-content">Loading Mission Brief...</div>
+        </div>
+      </div>
+
+      <!-- MISSION DEBRIEF VIEW -->
+      <div id="view-mission-debrief" class="view-panel">
+        <h2>// MISSION DEBRIEF FORMAT</h2>
+        <p>Source: <code>MissionDebrief.md</code></p>
+        <div class="manual-view">
+          <div id="mission-debrief-content">Loading Mission Debrief...</div>
+        </div>
+      </div>
+
+      <!-- PROBE SKILL VIEW -->
+      <div id="view-probe-skill" class="view-panel">
+        <h2>// PROBE SKILL</h2>
+        <p>Source: <code>ProbeSkill.md</code></p>
+        <div class="manual-view">
+          <div id="probe-skill-content">Loading Probe Skill...</div>
+        </div>
+      </div>
+
+      <!-- PROBE MANUEL VIEW -->
+      <div id="view-probe-manual" class="view-panel">
+        <h2>// OFFICIAL PROBE MANUEL</h2>
+        <p>Source: <code>OfficialProbeManuel.md</code></p>
+        <div class="manual-view">
+          <div id="probe-manual-content">Loading Probe Manuel...</div>
+        </div>
+      </div>
+
+      </div>
+    </main>
+
+    <!-- FOOTER -->
+    <footer>
+      <div id="footer-status-left" class="system-status">
+        <span class="status-active">ONLINE</span> | <span class="status-active">SECURE</span>
+      </div>
+      <div>TERMINAL_ID: 0x992</div>
+      <div id="footer-status-right">
+        <span id="sync-status">LIVE SYNC</span>
+      </div>
+    </footer>
+
+    <div id="confirm-overlay" class="confirm-overlay" aria-hidden="true">
+      <div class="confirm-modal" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+        <h3 id="confirm-title" class="confirm-title">// CONFIRM ACTION</h3>
+        <p id="confirm-message" class="confirm-message">Are you sure you want to delete this?</p>
+        <div class="confirm-actions">
+          <button id="confirm-cancel" class="confirm-btn" type="button">Cancel</button>
+          <button id="confirm-ok" class="confirm-btn danger" type="button">Delete</button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      let isFetching = false;
+      let currentView = "dashboard";
+      let selectedOperation = null;
+      let allMissions = [];
+      let allOps = [];
+      let searchQuery = "";
+
+      function themedConfirm(message = "Are you sure you want to delete this?") {
+        return new Promise((resolve) => {
+          const overlay = document.getElementById("confirm-overlay");
+          const messageEl = document.getElementById("confirm-message");
+          const cancelBtn = document.getElementById("confirm-cancel");
+          const okBtn = document.getElementById("confirm-ok");
+
+          if (!overlay || !messageEl || !cancelBtn || !okBtn) {
+            resolve(confirm(message));
+            return;
+          }
+
+          messageEl.textContent = message;
+          overlay.classList.add("active");
+          overlay.setAttribute("aria-hidden", "false");
+
+          const close = (result) => {
+            overlay.classList.remove("active");
+            overlay.setAttribute("aria-hidden", "true");
+            cancelBtn.removeEventListener("click", onCancel);
+            okBtn.removeEventListener("click", onOk);
+            overlay.removeEventListener("click", onOverlay);
+            document.removeEventListener("keydown", onEsc);
+            resolve(result);
+          };
+
+          const onCancel = () => close(false);
+          const onOk = () => close(true);
+          const onOverlay = (e) => {
+            if (e.target === overlay) close(false);
+          };
+          const onEsc = (e) => {
+            if (e.key === "Escape") close(false);
+          };
+
+          cancelBtn.addEventListener("click", onCancel);
+          okBtn.addEventListener("click", onOk);
+          overlay.addEventListener("click", onOverlay);
+          document.addEventListener("keydown", onEsc);
+        });
+      }
+
+      function switchView(viewId) {
+        document.querySelectorAll(".view-panel").forEach((el) => el.style.display = "none");
+        const targetView = document.getElementById("view-" + viewId);
+        if (targetView) targetView.style.display = "block";
+        
+        document.querySelectorAll(".nav-btn").forEach((btn) => btn.classList.remove("active"));
+        const targetBtn = document.querySelector(`.nav-btn[onclick*="${viewId}"]`);
+        if (targetBtn) targetBtn.classList.add("active");
+
+        currentView = viewId;
+
+        if (viewId !== "mission-log") {
+          selectedOperation = null;
+          updateMissionHeader();
+        }
+      }
+
+      function updateMissionHeader() {
+        const header = document.getElementById("mission-header");
+        const sourceCode = document.getElementById("mission-source-code");
+        const opInput = document.getElementById("new-mission-op");
+
+        if (selectedOperation) {
+          header.innerText = `// ${selectedOperation.toUpperCase()} MISSIONS`;
+          sourceCode.innerText = `OperationDir/Operations/${selectedOperation}/Missions/[BRIEF]`;
+          if (opInput) opInput.value = selectedOperation;
+        } else {
+          header.innerText = "// MASTER MISSION INDEX";
+          sourceCode.innerText = `OperationDir/Operations/[OP]/Missions/[BRIEF]`;
+          if (opInput) opInput.value = "ProjectTitle";
+        }
+      }
+
+      async function handleOpCardClick(operationName) {
+        selectedOperation = operationName;
+        updateMissionHeader();
+        switchView("mission-log");
+        renderMissions();
+      }
+
+      function handleOpCardFromCard(cardEl) {
+        const op = cardEl ? (cardEl.getAttribute("data-op") || "") : "";
+        if (!op) return;
+        handleOpCardClick(op);
+      }
+
+      function handleSearch() {
+        const searchEl = document.getElementById("global-search");
+        searchQuery = searchEl ? searchEl.value.toLowerCase() : "";
+        if (currentView === "mission-log") renderMissions();
+        if (currentView === "operations") renderOperations();
+      }
+
+      async function loadMarkdownInto(filePath, targetId, errorMessage) {
+        const target = document.getElementById(targetId);
+        if (!target) return;
+        try {
+          const res = await fetch(filePath, { cache: "no-store" });
+          if (!res.ok) throw new Error("File not found");
+          const markdown = await res.text();
+          target.innerHTML = renderManualMarkdown(markdown);
+        } catch (e) {
+          target.textContent = errorMessage;
+        }
+      }
+
+      function renderManualMarkdown(md) {
+        const esc = (s) => s
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;");
+        const inline = (s) => esc(s)
+          .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+          .replace(/`([^`]+)`/g, "<code>$1</code>");
+
+        const lines = md.replace(/\r\n/g, "\n").split("\n");
+        let out = "";
+        let inUl = false;
+        let inOl = false;
+
+        const closeLists = () => {
+          if (inUl) { out += "</ul>"; inUl = false; }
+          if (inOl) { out += "</ol>"; inOl = false; }
+        };
+
+        for (const raw of lines) {
+          const line = raw.trimEnd();
+          const t = line.trim();
+
+          if (!t) {
+            closeLists();
+            continue;
+          }
+          if (/^---+$/.test(t)) {
+            closeLists();
+            out += "<hr />";
+            continue;
+          }
+          if (t.startsWith("### ")) {
+            closeLists();
+            out += `<h3>${inline(t.slice(4))}</h3>`;
+            continue;
+          }
+          if (t.startsWith("## ")) {
+            closeLists();
+            out += `<h2>${inline(t.slice(3))}</h2>`;
+            continue;
+          }
+          if (t.startsWith("# ")) {
+            closeLists();
+            out += `<h1>${inline(t.slice(2))}</h1>`;
+            continue;
+          }
+          if (t.startsWith("* ") || t.startsWith("- ")) {
+            if (inOl) { out += "</ol>"; inOl = false; }
+            if (!inUl) { out += "<ul>"; inUl = true; }
+            out += `<li>${inline(t.slice(2))}</li>`;
+            continue;
+          }
+          if (/^\d+\.\s+/.test(t)) {
+            if (inUl) { out += "</ul>"; inUl = false; }
+            if (!inOl) { out += "<ol>"; inOl = true; }
+            out += `<li>${inline(t.replace(/^\d+\.\s+/, ""))}</li>`;
+            continue;
+          }
+          closeLists();
+          out += `<p>${inline(t)}</p>`;
+        }
+        closeLists();
+        return out;
+      }
+
+      async function fetchAndUpdate(endpoint, callback) {
+        try {
+          const res = await fetch(endpoint, { cache: "no-store" });
+          const data = await res.json();
+          callback(data);
+        } catch (e) {
+          console.error(`Fetch to ${endpoint} Failed`, e);
+        }
+      }
+
+      async function submitNewMission() {
+        const nameInput = document.getElementById("new-mission-name");
+        const opInput = document.getElementById("new-mission-op");
+        const statusSelect = document.getElementById("new-mission-status");
+        const msgEl = document.getElementById("submission-message");
+
+        if (!nameInput.value.trim()) {
+          msgEl.innerHTML = '<span style="color:red;">NAME REQUIRED.</span>';
+          return;
+        }
+
+        try {
+          const res = await fetch("/api/mission", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              name: nameInput.value.trim(),
+              operation: opInput.value.trim(),
+              status: statusSelect.value
+            })
+          });
+          if (res.ok) {
+            msgEl.innerHTML = '<span style="color:var(--term-green);">SUCCESS.</span>';
+            nameInput.value = "";
+            fetchData();
+          }
+        } catch (e) { msgEl.innerText = "Error: " + e.message; }
+      }
+
+      async function submitNewOperation() {
+        const nameInput = document.getElementById("new-op-name");
+        const msgEl = document.getElementById("op-submission-message");
+
+        if (!nameInput.value.trim()) {
+          msgEl.innerHTML = '<span style="color:red;">NAME REQUIRED.</span>';
+          return;
+        }
+
+        try {
+          const res = await fetch("/api/operation", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name: nameInput.value.trim() })
+          });
+          if (res.ok) {
+            msgEl.innerHTML = '<span style="color:var(--term-green);">INITIALIZED.</span>';
+            nameInput.value = "";
+            fetchData();
+          } else {
+            const err = await res.json();
+            msgEl.innerHTML = `<span style="color:red;">ERROR: ${err.message}</span>`;
+          }
+        } catch (e) { msgEl.innerText = "Error: " + e.message; }
+      }
+
+      async function deleteMission(path) {
+        if (!(await themedConfirm("Are you sure you want to delete this?"))) return;
+        
+        try {
+          const res = await fetch("/api/mission", {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ path: path })
+          });
+          if (res.ok) fetchData();
+        } catch (e) { alert("Delete failed: " + e.message); }
+      }
+
+      async function deleteOperation(op, event) {
+        if (event) event.stopPropagation();
+        if (!(await themedConfirm("Are you sure you want to delete this?"))) return;
+
+        try {
+          const res = await fetch("/api/operation", {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name: op })
+          });
+          if (res.ok) {
+            fetchData();
+          } else {
+            const err = await res.json().catch(() => ({ error: "Delete failed." }));
+            alert(err.error || "Delete failed.");
+          }
+        } catch (e) { alert("Delete failed: " + e.message); }
+      }
+
+      function deleteOperationFromButton(btn, event) {
+        const op = btn ? (btn.getAttribute("data-op") || "") : "";
+        if (!op) {
+          alert("Delete failed: missing operation name.");
+          return;
+        }
+        deleteOperation(op, event);
+      }
+
+      async function deleteBlackbookLog(probeId) {
+        if (!(await themedConfirm("Are you sure you want to delete this?"))) return;
+        try {
+          const res = await fetch("/api/blackbook", {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ probe_id: probeId })
+          });
+          if (res.ok) fetchData();
+        } catch (e) { alert("Delete failed: " + e.message); }
+      }
+
+      async function deleteHvi(handle) {
+        if (!(await themedConfirm("Are you sure you want to delete this?"))) return;
+        try {
+          const res = await fetch("/api/hvi", {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ handle: handle })
+          });
+          if (res.ok) fetchData();
+        } catch (e) { alert("Delete failed: " + e.message); }
+      }
+
+      async function clearProgressLogs() {
+        if (!(await themedConfirm("Are you sure you want to delete this?"))) return;
+        try {
+          await fetch("/api/logs", { method: "DELETE" });
+          const logOutput = document.getElementById("log-output");
+          if (logOutput) logOutput.innerHTML = "> Logs cleared.";
+        } catch (e) { alert("Failed to clear logs: " + e.message); }
+      }
+
+      async function updateMissionStatus(path, status) {
+        try {
+          const res = await fetch("/api/mission/status", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ path, status })
+          });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({ error: "Failed to update mission status." }));
+            alert(err.error || "Failed to update mission status.");
+          } else {
+            fetchData();
+          }
+        } catch (e) {
+          alert("Failed to update mission status: " + e.message);
+        }
+      }
+
+      function missionStatusClass(status) {
+        const key = (status || "").toLowerCase().replace(/_/g, "-");
+        return `mission-status-select status-${key}`;
+      }
+
+      function onMissionStatusChange(selectEl, path) {
+        selectEl.className = missionStatusClass(selectEl.value);
+        updateMissionStatus(path, selectEl.value);
+      }
+
+      function renderMissions() {
+        const tbody = document.querySelector("#view-mission-log tbody");
+        if (!tbody) return;
+
+        let filtered = allMissions;
+        if (selectedOperation) {
+          filtered = filtered.filter(m => m.operation === selectedOperation);
+        }
+        if (searchQuery) {
+          filtered = filtered.filter(m => 
+            m.name.toLowerCase().includes(searchQuery) || 
+            m.operation.toLowerCase().includes(searchQuery)
+          );
+        }
+
+        tbody.innerHTML = filtered.map(m => `
+          <tr>
+            <td>${m.date}</td>
+            <td>${m.operation}</td>
+            <td>${m.name}</td>
+            <td>
+              <select class="${missionStatusClass(m.status)}" onchange="onMissionStatusChange(this, '${m.path}')">
+                <option value="PENDING" ${m.status === "PENDING" ? "selected" : ""}>PENDING</option>
+                <option value="IN_PROGRESS" ${m.status === "IN_PROGRESS" ? "selected" : ""}>IN_PROGRESS</option>
+                <option value="COMPLETE" ${m.status === "COMPLETE" ? "selected" : ""}>COMPLETE</option>
+                <option value="BLOCKED" ${m.status === "BLOCKED" ? "selected" : ""}>BLOCKED</option>
+              </select>
+            </td>
+            <td style="text-align: center;">
+              <button class="trash-btn" onclick="deleteMission('${m.path}')" title="Delete Mission">X</button>
+            </td>
+          </tr>
+        `).join("") || "<tr><td colspan='5'>No missions found.</td></tr>";
+      }
+
+      function renderOperations() {
+        const grid = document.querySelector(".ops-grid");
+        if (!grid) return;
+
+        let filtered = allOps;
+        if (searchQuery) {
+          filtered = filtered.filter(op => op.toLowerCase().includes(searchQuery));
+        }
+
+        grid.innerHTML = filtered.map(op => `
+          <div class="op-card" data-op="${escapeHtmlAttr(op)}" onclick="handleOpCardFromCard(this)">
+            <button class="op-delete-btn" data-op="${escapeHtmlAttr(op)}" onclick="deleteOperationFromButton(this, event)" title="Delete Operation">X</button>
+            <span class="op-icon">📁</span>
+            ${op.toUpperCase()}
+          </div>
+        `).join("") || "<p>No matching operations.</p>";
+      }
+
+      function operationalDayKey(now = new Date()) {
+        const d = new Date(now);
+        if (d.getHours() < 4) d.setDate(d.getDate() - 1);
+        return d.toISOString().slice(0, 10);
+      }
+
+      function getQuarterState(now = new Date()) {
+        const dayStart = new Date(now);
+        dayStart.setHours(4, 0, 0, 0);
+        if (now < dayStart) dayStart.setDate(dayStart.getDate() - 1);
+        const elapsedMs = now - dayStart;
+        const quarterMs = 3 * 60 * 60 * 1000;
+        const quarterIndex = Math.min(7, Math.floor(elapsedMs / quarterMs));
+        const quarterStart = new Date(dayStart.getTime() + quarterIndex * quarterMs);
+        const quarterEnd = new Date(quarterStart.getTime() + quarterMs);
+        const minuteInQuarter = Math.floor((now - quarterStart) / 60000);
+
+        let phase = "RECOVERY";
+        let cadence = "Eat / Read / Exercise / Checklist";
+        if (minuteInQuarter < 120) {
+          phase = "MISSION BLOCK";
+          const minuteInHour = minuteInQuarter % 60;
+          if (minuteInHour < 25) cadence = "WORK SPRINT 1 (25m)";
+          else if (minuteInHour < 30) cadence = "BREAK (5m)";
+          else if (minuteInHour < 55) cadence = "WORK SPRINT 2 (25m)";
+          else cadence = "RESET (5m)";
+        }
+
+        return {
+          quarterIndex: quarterIndex + 1,
+          quarterStart,
+          quarterEnd,
+          phase,
+          cadence,
+          dayStart,
+        };
+      }
+
+      function formatHm(d) {
+        return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+      }
+
+      function missionPlanKey(opDay) {
+        return `missionPlan:${opDay}`;
+      }
+
+      function loadMissionPlan(opDay) {
+        try {
+          const raw = localStorage.getItem(missionPlanKey(opDay));
+          const parsed = raw ? JSON.parse(raw) : {};
+          return parsed && typeof parsed === "object" ? parsed : {};
+        } catch (e) {
+          return {};
+        }
+      }
+
+      function saveMissionPlan(opDay, plan) {
+        localStorage.setItem(missionPlanKey(opDay), JSON.stringify(plan));
+      }
+
+      function ensureMissionPlanSlot(plan, quarterNum, slotNum) {
+        if (!plan[quarterNum]) plan[quarterNum] = {};
+        const cur = plan[quarterNum][slotNum];
+        if (!cur || typeof cur !== "object") {
+          const missionPath = typeof cur === "string" ? cur : "";
+          plan[quarterNum][slotNum] = { operation: "", missionPath };
+        }
+        return plan[quarterNum][slotNum];
+      }
+
+      function setMissionPlanOperation(opDay, quarterNum, slotNum, operation) {
+        const plan = loadMissionPlan(opDay);
+        const slot = ensureMissionPlanSlot(plan, quarterNum, slotNum);
+        slot.operation = operation || "";
+        if (!slot.missionPath) {
+          saveMissionPlan(opDay, plan);
+          renderOperationFocus();
+          return;
+        }
+        const mission = allMissions.find((m) => m.path === slot.missionPath);
+        if (!mission || mission.operation !== slot.operation) {
+          slot.missionPath = "";
+        }
+        saveMissionPlan(opDay, plan);
+        renderOperationFocus();
+      }
+
+      function setMissionPlanMission(opDay, quarterNum, slotNum, missionPath) {
+        const plan = loadMissionPlan(opDay);
+        const slot = ensureMissionPlanSlot(plan, quarterNum, slotNum);
+        slot.missionPath = missionPath || "";
+        if (slot.missionPath) {
+          const mission = allMissions.find((m) => m.path === slot.missionPath);
+          if (mission) slot.operation = mission.operation || slot.operation;
+        }
+        saveMissionPlan(opDay, plan);
+        renderOperationFocus();
+      }
+
+      function escapeHtmlAttr(s) {
+        return String(s || "")
+          .replace(/&/g, "&amp;")
+          .replace(/"/g, "&quot;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;");
+      }
+
+      function renderOperationFocus() {
+        const container = document.getElementById("operation-focus-list");
+        if (!container) return;
+
+        const now = new Date();
+        const opDay = operationalDayKey(now);
+        const quarter = getQuarterState(now);
+        const operationOptions = [...new Set([
+          ...allOps,
+          ...allMissions.map((m) => m.operation).filter(Boolean),
+        ])].sort((a, b) => a.localeCompare(b));
+        const plan = loadMissionPlan(opDay);
+
+        const quarterCards = Array.from({ length: 8 }).map((_, i) => {
+          const start = new Date(quarter.dayStart.getTime() + i * 3 * 60 * 60 * 1000);
+          const end = new Date(start.getTime() + 3 * 60 * 60 * 1000);
+          const active = i + 1 === quarter.quarterIndex;
+          const slots = [0, 30, 60, 90].map((offsetMin, slotIdx) => {
+            const slotStart = new Date(start.getTime() + offsetMin * 60000);
+            const slotEnd = new Date(slotStart.getTime() + 25 * 60000);
+            const qNum = i + 1;
+            const sNum = slotIdx + 1;
+            const rawSlot = (plan[qNum] && plan[qNum][sNum]) ? plan[qNum][sNum] : { operation: "", missionPath: "" };
+            const selectedMissionPath = typeof rawSlot === "string" ? rawSlot : (rawSlot.missionPath || "");
+            let selectedOperation = typeof rawSlot === "string" ? "" : (rawSlot.operation || "");
+            if (!selectedOperation && selectedMissionPath) {
+              const selectedMission = allMissions.find((m) => m.path === selectedMissionPath);
+              if (selectedMission) selectedOperation = selectedMission.operation || "";
+            }
+
+            const operationOptionsHtml = [`<option value="">-- Select Operation --</option>`]
+              .concat(operationOptions.map((op) =>
+                `<option value="${escapeHtmlAttr(op)}" ${op === selectedOperation ? "selected" : ""}>${escapeHtmlAttr(op)}</option>`
+              ))
+              .join("");
+
+            const filteredMissions = allMissions
+              .filter((m) => !selectedOperation || m.operation === selectedOperation)
+              .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+            const missionOptionsHtml = [`<option value="">-- Select Mission --</option>`]
+              .concat(filteredMissions.map((m) =>
+                `<option value="${escapeHtmlAttr(m.path)}" ${m.path === selectedMissionPath ? "selected" : ""}>${escapeHtmlAttr(m.name || "Untitled")}</option>`
+              ))
+              .join("");
+            return `
+              <div class="quarter-slot">
+                <div class="quarter-slot-time">${formatHm(slotStart)}-${formatHm(slotEnd)}</div>
+                <div class="slot-label">Operation</div>
+                <select class="matrix-select"
+                        onchange="setMissionPlanOperation('${opDay}', ${qNum}, ${sNum}, this.value)">
+                  ${operationOptionsHtml}
+                </select>
+                <div class="slot-label">Mission</div>
+                <select class="matrix-select"
+                        onchange="setMissionPlanMission('${opDay}', ${qNum}, ${sNum}, this.value)">
+                  ${missionOptionsHtml}
+                </select>
+              </div>
+            `;
+          }).join("");
+
+          return `
+            <div class="hvi-card" style="border-color:${active ? "var(--warning-yellow)" : "var(--term-dim)"}; margin-bottom:6px;">
+              <strong>Q${i + 1}</strong> ${formatHm(start)}-${formatHm(end)}
+              <br />
+              <span style="color: var(--term-dim);">Mission Window: first 2h (4 x 25m slots)</span>
+              ${slots}
+            </div>
+          `;
+        }).join("");
+
+        container.innerHTML = `
+          <div class="focus-header">
+            <div class="focus-day">Operation Day: ${opDay} (04:00 - next 04:00)</div>
+            <div class="focus-quarter">Quarter Q${quarter.quarterIndex} :: ${formatHm(quarter.quarterStart)}-${formatHm(quarter.quarterEnd)}</div>
+            <div class="focus-phase">${quarter.phase}</div>
+            <div class="focus-cadence">Current Task Rhythm: ${quarter.cadence}</div>
+          </div>
+          <div class="hvi-card" style="border-color: var(--term-dim)">
+            <strong>Quarter Schedule (8 x 3h)</strong><br />
+            <span style="color: var(--term-dim);">First 2h = Missions | Last 1h = Recovery/Admin</span>
+          </div>
+          ${quarterCards}
+        `;
+      }
+
+      async function fetchData() {
+        if (isFetching) return;
+        isFetching = true;
+
+        await fetchAndUpdate("/api/operations", (data) => {
+          allOps = data;
+          document.getElementById("op-count-dash").innerText = data.length;
+          renderOperations();
+        });
+
+        await fetchAndUpdate("/api/missions", (data) => {
+          allMissions = data;
+          document.getElementById("mission-count-dash").innerText = data.length;
+          renderMissions();
+          renderOperationFocus();
+        });
+
+        await fetchAndUpdate("/api/blackbook", (data) => {
+          const tbody = document.querySelector("#view-blackbook tbody");
+          if (tbody) {
+            tbody.innerHTML = data.map(p => `
+              <tr>
+                <td>${p.Probe_ID || "?"}</td>
+                <td>${p.Hypothesis || ""}</td>
+                <td>${p.Platform || ""}</td>
+                <td>${p.Result_Quantitative || "PENDING"}</td>
+                <td style="text-align:center;">
+                  <button class="trash-btn" onclick="deleteBlackbookLog('${p.Probe_ID || "?"}')" title="Delete Blackbook Log">X</button>
+                </td>
+              </tr>
+            `).join("") || "<tr><td colspan='5'>No blackbook logs.</td></tr>";
+          }
+        });
+
+        await fetchAndUpdate("/api/hvi", (data) => {
+          document.getElementById("hvi-count").innerText = data.length;
+          const container = document.getElementById("hvi-container");
+          if (container) {
+            container.innerHTML = data.map(h => `
+              <div class="hvi-card" style="position: relative;">
+                <button class="trash-btn" style="position:absolute; top:8px; right:8px;" onclick="deleteHvi('${h.handle || "Unknown"}')" title="Delete HVI">X</button>
+                <h3>${h.handle || "Unknown"}</h3>
+                <p><strong>Status:</strong> ${h["stage"] || "N/A"}</p>
+              </div>
+            `).join("") || "<div class='hvi-card'><p>No HVI profiles found.</p></div>";
+          }
+        });
+
+        document.getElementById("log-output").innerHTML = `> System Sync OK @ ${new Date().toLocaleTimeString()}`;
+        isFetching = false;
+      }
+
+      document.addEventListener("DOMContentLoaded", () => {
+        loadMarkdownInto("/MissionBrief.md", "mission-brief-content", "Failed to load MissionBrief.md");
+        loadMarkdownInto("/MissionDebrief.md", "mission-debrief-content", "Failed to load MissionDebrief.md");
+        loadMarkdownInto("/ProbeSkill.md", "probe-skill-content", "Failed to load ProbeSkill.md");
+        loadMarkdownInto("/OfficialProbeManuel.md", "probe-manual-content", "Failed to load OfficialProbeManuel.md");
+        fetchData();
+        setInterval(fetchData, 10000);
+        switchView('dashboard');
+      });
+    </script>
+  </body>
+</html>

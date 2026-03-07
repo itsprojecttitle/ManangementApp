@@ -1,0 +1,2423 @@
+<!-- LIVE_MARKER_221907 -->
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#050505" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="icon" href="/icon-192.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/icon-192.svg" />
+    <title>S.A.M.U.E.L // OMNI-DASHBOARD</title>
+    <style>
+      :root {
+        --bg-color: #050505;
+        --term-green: #00ff41;
+        --term-dim: #004411;
+        --alert-red: #ff3333;
+        --warning-yellow: #ffcc00;
+        --panel-bg: rgba(0, 20, 0, 0.6);
+        --border-style: 1px solid var(--term-green);
+      }
+
+      body {
+        background-color: var(--bg-color);
+        color: var(--term-green);
+        font-family: "Courier New", Courier, monospace;
+        margin: 0;
+        padding: 20px;
+        height: 100vh;
+        overflow: hidden;
+        display: grid;
+        grid-template-columns: 250px 1fr;
+        grid-template-rows: 60px 1fr 30px;
+        gap: 15px;
+      }
+
+      /* HEADER */
+      header {
+        grid-column: 1 / -1;
+        border-bottom: 2px solid var(--term-green);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 20px;
+        text-shadow: 0 0 10px var(--term-green);
+      }
+
+      .system-status {
+        font-size: 0.8rem;
+        color: var(--term-dim);
+      }
+
+      .status-active {
+        color: var(--term-green);
+      }
+
+      /* GLOBAL SEARCH */
+      #global-search-container {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        background: var(--panel-bg);
+        border: 1px solid var(--term-dim);
+        padding: 5px 10px;
+      }
+      #global-search {
+        background: transparent;
+        border: none;
+        color: var(--term-green);
+        font-family: inherit;
+        outline: none;
+        width: 200px;
+      }
+
+      /* SIDEBAR NAV */
+      aside {
+        grid-row: 2 / 3;
+        border: var(--border-style);
+        padding: 10px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        background: var(--panel-bg);
+      }
+
+      .nav-btn {
+        background: transparent;
+        border: 1px solid var(--term-dim);
+        color: var(--term-green);
+        padding: 15px;
+        text-align: left;
+        cursor: pointer;
+        transition: 0.2s;
+        font-family: inherit;
+        font-weight: bold;
+        text-transform: uppercase;
+      }
+
+      .nav-btn:hover,
+      .nav-btn.active {
+        background: var(--term-green);
+        color: black;
+        box-shadow: 0 0 15px var(--term-green);
+      }
+      .nav-btn.nav-yellow {
+        color: var(--warning-yellow);
+        border-color: #8a6b00;
+      }
+      .nav-btn.nav-yellow:hover,
+      .nav-btn.nav-yellow.active {
+        background: var(--warning-yellow);
+        color: black;
+        box-shadow: 0 0 15px var(--warning-yellow);
+      }
+
+      /* MAIN CONTENT AREA */
+      main {
+        grid-row: 2 / 3;
+        border: var(--border-style);
+        padding: 20px;
+        overflow-y: auto;
+        position: relative;
+        background: radial-gradient(circle at center, #0a1a0a 0%, #000 100%);
+      }
+
+      .view-panel {
+        display: none;
+      }
+      .view-panel.active {
+        display: block;
+        animation: fadeIn 0.3s ease-in;
+      }
+
+      @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+      }
+
+      h2 {
+        border-bottom: 1px dashed var(--term-green);
+        padding-bottom: 10px;
+        margin-top: 0;
+      }
+
+      /* DATA TABLES */
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 15px;
+        font-size: 0.9rem;
+      }
+      th, td {
+        border: 1px solid var(--term-dim);
+        padding: 8px;
+        text-align: left;
+      }
+      th {
+        background-color: var(--term-dim);
+        color: var(--term-green);
+      }
+      tr:hover {
+        background-color: rgba(0, 255, 65, 0.1);
+      }
+      #view-blackbook input,
+      #view-blackbook select {
+        width: 100%;
+        background: rgba(0, 0, 0, 0.45);
+        color: var(--term-green);
+        border: 1px solid var(--term-dim);
+        font-family: inherit;
+        padding: 4px 6px;
+        box-sizing: border-box;
+      }
+
+      /* OPERATION MODULES GRID */
+      .ops-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: 15px;
+      }
+      .op-card {
+        border: 1px solid var(--term-green);
+        padding: 15px;
+        text-align: center;
+        cursor: pointer;
+        position: relative;
+        user-select: none;
+      }
+      .op-card[draggable="true"] {
+        cursor: grab;
+      }
+      .op-card.drag-over {
+        border-style: dashed;
+        background: rgba(0, 255, 65, 0.12);
+      }
+      .op-card:hover {
+        background: var(--term-dim);
+      }
+      .op-icon {
+        font-size: 2rem;
+        display: block;
+        margin-bottom: 10px;
+      }
+      .op-delete-btn {
+        position: absolute;
+        top: 5px;
+        right: 5px;
+        background: transparent;
+        border: none;
+        color: var(--alert-red);
+        cursor: pointer;
+        font-size: 1rem;
+        opacity: 0.3;
+        transition: 0.2s;
+      }
+      .op-color-wrap {
+        position: absolute;
+        top: 6px;
+        right: 28px;
+        width: 16px;
+        height: 16px;
+      }
+      .op-color-input {
+        width: 100%;
+        height: 100%;
+        padding: 0;
+        border: 1px solid var(--term-dim);
+        border-radius: 50%;
+        background: transparent;
+        cursor: pointer;
+        opacity: 0.85;
+      }
+      .op-color-input::-webkit-color-swatch-wrapper {
+        padding: 0;
+        border-radius: 50%;
+      }
+      .op-color-input::-webkit-color-swatch {
+        border: none;
+        border-radius: 50%;
+      }
+      .op-color-reset-mini {
+        position: absolute;
+        inset: 0;
+        margin: auto;
+        width: 12px;
+        height: 12px;
+        border: none;
+        border-radius: 50%;
+        background: rgba(0, 0, 0, 0.72);
+        color: var(--term-green);
+        cursor: pointer;
+        font-size: 0.58rem;
+        line-height: 1;
+        padding: 0;
+        opacity: 0.92;
+      }
+      .op-card:hover .op-delete-btn {
+        opacity: 1;
+      }
+
+      /* BACK BUTTON */
+      .back-btn {
+        background: var(--term-dim);
+        border: 1px solid var(--term-green);
+        color: var(--term-green);
+        padding: 5px 15px;
+        cursor: pointer;
+        font-family: inherit;
+        font-weight: bold;
+        text-transform: uppercase;
+        margin-bottom: 15px;
+        display: inline-block;
+      }
+      .back-btn:hover {
+        background: var(--term-green);
+        color: black;
+      }
+
+      .hidden-by-default {
+  display: none;
+}
+
+      .mission-status-select {
+        background: rgba(0, 0, 0, 0.35);
+        border: 1px solid var(--term-dim);
+        font-family: inherit;
+        font-weight: bold;
+        padding: 4px 8px;
+        text-transform: uppercase;
+      }
+      .mission-status-select.status-pending {
+        color: var(--warning-yellow);
+      }
+      .mission-status-select.status-in-progress,
+      .mission-status-select.status-complete {
+        color: var(--term-green);
+      }
+      .mission-status-select.status-blocked {
+        color: var(--alert-red);
+      }
+      .quarter-slot {
+        margin-top: 10px;
+        padding: 8px;
+        border: 1px solid var(--term-dim);
+        background: linear-gradient(180deg, rgba(0, 30, 0, 0.35), rgba(0, 10, 0, 0.55));
+      }
+      .quarter-slot.block-tint-1 { background: linear-gradient(180deg, rgba(0, 30, 0, 0.28), rgba(0, 14, 0, 0.5)); }
+      .quarter-slot.block-tint-2 { background: linear-gradient(180deg, rgba(0, 36, 0, 0.28), rgba(0, 16, 0, 0.52)); }
+      .quarter-slot.block-tint-3 { background: linear-gradient(180deg, rgba(0, 28, 8, 0.3), rgba(0, 12, 6, 0.52)); }
+      .quarter-slot.block-tint-4 { background: linear-gradient(180deg, rgba(0, 26, 12, 0.3), rgba(0, 10, 8, 0.52)); }
+      .quarter-slot.recovery-slot {
+        border-color: #8a6b00;
+        background: linear-gradient(180deg, rgba(35, 26, 0, 0.35), rgba(18, 12, 0, 0.6));
+      }
+      .quarter-slot-time {
+        color: #9cffbf;
+        font-size: 0.86rem;
+        font-weight: 700;
+        line-height: 1.35;
+        margin-bottom: 6px;
+        text-shadow: 0 0 8px rgba(0, 255, 65, 0.25);
+      }
+      .slot-label {
+        color: var(--warning-yellow);
+        font-size: 0.72rem;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        margin-top: 6px;
+      }
+      .matrix-select {
+        width: 100%;
+        appearance: none;
+        -webkit-appearance: none;
+        -moz-appearance: none;
+        background:
+          linear-gradient(45deg, transparent 50%, var(--warning-yellow) 50%) calc(100% - 16px) calc(50% - 3px) / 7px 7px no-repeat,
+          linear-gradient(135deg, var(--warning-yellow) 50%, transparent 50%) calc(100% - 11px) calc(50% - 3px) / 7px 7px no-repeat,
+          linear-gradient(180deg, rgba(0, 28, 0, 0.88), rgba(0, 14, 0, 0.95));
+        color: var(--term-green);
+        border: 1px solid #1ca34b;
+        border-radius: 4px;
+        font-family: inherit;
+        font-weight: bold;
+        padding: 8px 30px 8px 10px;
+        margin-top: 6px;
+        box-shadow: inset 0 0 10px rgba(0, 255, 65, 0.12), 0 0 0 1px rgba(0, 255, 65, 0.1);
+        transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.05s ease;
+      }
+      .matrix-select:hover {
+        border-color: var(--warning-yellow);
+        box-shadow: inset 0 0 12px rgba(0, 255, 65, 0.14), 0 0 10px rgba(255, 204, 0, 0.18);
+      }
+      .matrix-select:focus {
+        outline: none;
+        border-color: var(--warning-yellow);
+        box-shadow: 0 0 14px rgba(255, 204, 0, 0.4), inset 0 0 10px rgba(0, 255, 65, 0.12);
+        transform: translateY(-1px);
+      }
+      .matrix-select option {
+        background: #061206;
+        color: var(--term-green);
+      }
+      .matrix-select.recovery-select {
+        border-color: #d4a900;
+        color: var(--warning-yellow);
+        background:
+          linear-gradient(45deg, transparent 50%, var(--warning-yellow) 50%) calc(100% - 16px) calc(50% - 3px) / 7px 7px no-repeat,
+          linear-gradient(135deg, var(--warning-yellow) 50%, transparent 50%) calc(100% - 11px) calc(50% - 3px) / 7px 7px no-repeat,
+          linear-gradient(180deg, rgba(35, 26, 0, 0.82), rgba(18, 12, 0, 0.92));
+      }
+      .matrix-select.recovery-select option {
+        background: #1a1300;
+        color: var(--warning-yellow);
+      }
+      .focus-header {
+        border: 1px solid var(--warning-yellow);
+        background: linear-gradient(180deg, rgba(28, 22, 0, 0.35), rgba(10, 8, 0, 0.6));
+        padding: 12px;
+        text-align: center;
+        margin-bottom: 10px;
+      }
+      .focus-day {
+        color: var(--term-dim);
+        font-size: 0.78rem;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+      .focus-quarter {
+        color: var(--warning-yellow);
+        font-size: 1.35rem;
+        font-weight: bold;
+        margin: 4px 0;
+        text-transform: uppercase;
+      }
+      .focus-phase {
+        display: inline-block;
+        border: 1px solid var(--warning-yellow);
+        background: rgba(255, 204, 0, 0.08);
+        color: var(--warning-yellow);
+        font-weight: bold;
+        padding: 5px 10px;
+        margin-top: 6px;
+        text-transform: uppercase;
+      }
+      .focus-cadence {
+        color: var(--term-green);
+        margin-top: 8px;
+        font-size: 0.9rem;
+      }
+
+      /* THEMED CONFIRM MODAL */
+      .confirm-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.7);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+      }
+      .confirm-overlay.active {
+        display: flex;
+      }
+      .confirm-modal {
+        width: min(480px, 92vw);
+        border: 1px solid var(--term-green);
+        background: radial-gradient(circle at center, #061306 0%, #020202 100%);
+        box-shadow: 0 0 30px rgba(0, 255, 65, 0.25);
+        padding: 18px;
+      }
+      .confirm-title {
+        margin: 0 0 12px 0;
+        color: var(--warning-yellow);
+        font-size: 1rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+      .confirm-message {
+        margin: 0 0 16px 0;
+        color: var(--term-green);
+      }
+      .confirm-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+      }
+      .confirm-btn {
+        background: transparent;
+        border: 1px solid var(--term-green);
+        color: var(--term-green);
+        padding: 8px 12px;
+        cursor: pointer;
+        font-family: inherit;
+        font-weight: bold;
+        text-transform: uppercase;
+      }
+      .confirm-btn:hover {
+        background: var(--term-green);
+        color: #000;
+      }
+      .confirm-btn.danger {
+        border-color: var(--alert-red);
+        color: var(--alert-red);
+      }
+      .confirm-btn.danger:hover {
+        background: var(--alert-red);
+        color: #000;
+      }
+
+      /* HVI CARDS */
+      .hvi-card {
+        border-left: 4px solid var(--warning-yellow);
+        background: rgba(255, 204, 0, 0.05);
+        margin-bottom: 10px;
+        padding: 10px;
+        cursor: pointer;
+      }
+
+      /* PROBE MANUAL STYLES */
+      .manual-view {
+        line-height: 1.6;
+        max-width: 800px;
+      }
+      .manual-view h1, .manual-view h2, .manual-view h3 {
+        color: var(--warning-yellow);
+        border-bottom: 1px solid var(--term-dim);
+        margin-top: 25px;
+      }
+      .manual-view ul {
+        padding-left: 20px;
+      }
+      .manual-view code {
+        background: var(--term-dim);
+        padding: 2px 5px;
+      }
+      /* FOOTER */
+      footer {
+        grid-column: 1 / -1;
+        border-top: var(--border-style);
+        display: flex;
+        align-items: center;
+        padding: 0 20px;
+        font-size: 0.8rem;
+        justify-content: space-between;
+      }
+
+      /* SUBMISSION FORMS */
+      .submission-area {
+        border: 1px dashed var(--term-green);
+        background: rgba(0, 255, 65, 0.05);
+        padding: 20px;
+        margin-bottom: 20px;
+      }
+      .form-group {
+        margin-bottom: 15px;
+      }
+      .form-group label {
+        display: block;
+        margin-bottom: 5px;
+        color: var(--term-green);
+        opacity: 0.8;
+      }
+      .form-group input, .form-group select {
+        width: 100%;
+        padding: 8px;
+        background-color: var(--bg-color);
+        border: 1px solid var(--term-dim);
+        color: var(--term-green);
+        font-family: inherit;
+        box-sizing: border-box;
+      }
+      .submit-btn {
+        background-color: var(--term-dim);
+        color: var(--term-green);
+        border: 1px solid var(--term-green);
+        padding: 10px 20px;
+        cursor: pointer;
+        font-weight: bold;
+        text-transform: uppercase;
+      }
+      .submit-btn:hover {
+        background-color: var(--term-green);
+        color: var(--bg-color);
+      }
+      .checklist-toolbar {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 10px;
+        margin-bottom: 12px;
+      }
+      .checklist-list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        border: 1px solid var(--term-dim);
+      }
+      .checklist-item {
+        display: grid;
+        grid-template-columns: auto auto 1fr auto;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 12px;
+        border-bottom: 1px solid var(--term-dim);
+        background: rgba(0, 255, 65, 0.04);
+        cursor: grab;
+      }
+      .checklist-item:last-child {
+        border-bottom: none;
+      }
+      .checklist-item.drag-over {
+        background: rgba(255, 204, 0, 0.12);
+      }
+      .checklist-item.done .checklist-text {
+        opacity: 0.55;
+        text-decoration: line-through;
+      }
+      .checklist-handle {
+        color: var(--term-dim);
+        font-weight: bold;
+      }
+      .checklist-check {
+        width: 16px;
+        height: 16px;
+        accent-color: #66ff66;
+      }
+      .checklist-text {
+        word-break: break-word;
+      }
+      .checklist-empty {
+        border: 1px dashed var(--term-dim);
+        padding: 14px;
+        color: var(--term-dim);
+      }
+      .brief-grid {
+        display: grid;
+        grid-template-columns: 2fr 1fr;
+        gap: 14px;
+      }
+      .brief-toolbar {
+        display: grid;
+        grid-template-columns: 1fr 1fr auto auto auto;
+        gap: 8px;
+        margin-bottom: 10px;
+      }
+      .brief-editor {
+        width: 100%;
+        min-height: 360px;
+        background: rgba(0, 0, 0, 0.55);
+        color: var(--term-green);
+        border: 1px solid var(--term-dim);
+        font-family: inherit;
+        padding: 10px;
+        box-sizing: border-box;
+        resize: vertical;
+      }
+      .brief-side h4 {
+        margin: 0 0 8px 0;
+      }
+      .brief-var-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 6px;
+        margin-bottom: 6px;
+      }
+      .brief-history-list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        border: 1px solid var(--term-dim);
+        max-height: 280px;
+        overflow: auto;
+      }
+      .brief-history-list li {
+        border-bottom: 1px solid var(--term-dim);
+      }
+      .brief-history-list li:last-child {
+        border-bottom: none;
+      }
+      .brief-history-list button {
+        width: 100%;
+        text-align: left;
+        background: transparent;
+        border: none;
+        color: var(--term-green);
+        padding: 8px;
+        font-family: inherit;
+        cursor: pointer;
+      }
+      .brief-history-list button:hover {
+        background: rgba(0, 255, 65, 0.08);
+      }
+      /* HIDDEN DELETE BUTTONS */
+      .hidden-by-default {
+        display: none;
+      }.hidden-by-default {
+  display: none;
+}
+    </style>
+  </head>
+  <body>
+    <!-- HEADER -->
+    <header>
+      <h1>// MANAGEMENT_APP_V1.3</h1>
+      <div class="system-status">
+        CORE: <span class="status-active">ONLINE</span> | CONNECTION:
+        <span class="status-active">SECURE</span> | USER: SLIDER
+      </div>
+    </header>
+
+    <!-- NAVIGATION SIDEBAR -->
+    <aside>
+      <button class="nav-btn active" onclick="switchView('dashboard')">[00] DASHBOARD</button>
+      <button class="nav-btn" id="nav-ops" onclick="switchView('operations')">[02] OPERATIONS</button>
+      <button class="nav-btn" onclick="switchView('blackbook')">[03] BLACK BOOK</button>
+      <button class="nav-btn" onclick="switchView('hvi-intel')">[04] HVI TARGETS</button>
+      <button class="nav-btn nav-yellow" onclick="switchView('brief-studio')">[05] BRIEF STUDIO</button>
+      <button class="nav-btn nav-yellow" onclick="switchView('probe-skill')">[06] PROBE SKILL</button>
+      <button class="nav-btn nav-yellow" onclick="switchView('probe-manual')">[07] PROBE MANUEL</button>
+      <button class="nav-btn nav-yellow" onclick="switchView('checklist')">[08] CHECKLIST</button>
+    </aside>
+
+    <!-- MAIN DISPLAY -->
+    <main id="main-screen">
+      <!-- DASHBOARD VIEW -->
+      <div id="view-dashboard" class="view-panel active">
+        <h2>// SYSTEM OVERVIEW</h2>
+        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px">
+          <div class="op-card" onclick="switchView('operations')">
+            <span class="op-icon">📁</span>
+            <h3>OPERATIONS</h3>
+            <h1 style="margin: 0" id="op-count-dash">0</h1>
+          </div>
+          <div class="op-card" onclick="switchView('operations')">
+            <span class="op-icon">⚡</span>
+            <h3>MISSIONS</h3>
+            <h1 style="margin: 0" id="mission-count-dash">0</h1>
+          </div>
+          <div class="op-card" onclick="switchView('hvi-intel')">
+            <span class="op-icon">🎯</span>
+            <h3>HVI Intel</h3>
+            <h1 style="margin: 0" id="hvi-count">0</h1>
+          </div>
+        </div>
+        <br />
+        <h3>// TOP MISSIONS OF THE DAY</h3>
+        <div id="operation-focus-list">
+          <div class="hvi-card" style="border-color: var(--term-green)">
+            No mission activity yet.
+          </div>
+        </div>
+      </div>
+
+      <!-- MISSION LOG VIEW -->
+      <div id="view-mission-log" class="view-panel">
+        <button class="back-btn" onclick="switchView('operations')">< BACK TO OPERATIONS</button>
+        <h2 id="mission-header">// MASTER MISSION INDEX</h2>
+        <p>Source: <code id="mission-source-code">OperationDir/Operations/[OP]/Missions/[BRIEF]</code></p>
+
+        <div id="mission-submission-area" class="submission-area">
+          <h3>+ LOG NEW MISSION</h3>
+          <div class="form-group">
+            <label for="new-mission-name">Mission Name:</label>
+            <input type="text" id="new-mission-name" placeholder="e.g., Acquire Target X Data" />
+          </div>
+          <div class="form-group">
+            <label for="new-mission-op">Operation:</label>
+            <input type="text" id="new-mission-op" value="ProjectTitle" />
+          </div>
+          <div class="form-group">
+            <label for="new-mission-status">Status:</label>
+            <select id="new-mission-status">
+              <option value="PENDING">PENDING</option>
+              <option value="IN_PROGRESS">IN_PROGRESS</option>
+              <option value="COMPLETE">COMPLETE</option>
+              <option value="BLOCKED">BLOCKED</option>
+            </select>
+          </div>
+          <button class="submit-btn" onclick="submitNewMission()">LOG MISSION</button>
+          <p id="submission-message" style="margin-top: 10px"></p>
+        </div>
+
+        <table id="mission-table">
+          <thead>
+            <tr>
+              <th>DATE</th>
+              <th>OPERATION</th>
+              <th>MISSION</th>
+              <th>STATUS</th>
+              <th style="width: 50px;">ACTIONS</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td colspan="5">Loading missions...</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- OPERATIONS VIEW -->
+      <div id="view-operations" class="view-panel">
+        <h2>// ACTIVE THEATERS</h2>
+        
+        <div id="operation-submission-area" class="submission-area">
+          <h3>+ CREATE NEW OPERATION</h3>
+          <div class="form-group">
+            <label for="new-op-name">Operation Name:</label>
+            <input type="text" id="new-op-name" placeholder="e.g., TargetRecon" />
+          </div>
+          <button class="submit-btn" onclick="submitNewOperation()">INITIALIZE OPERATION</button>
+          <p id="op-submission-message" style="margin-top: 10px"></p>
+        </div>
+
+        <p>Source: <code>OperationDir/Operations/</code></p>
+        <div class="ops-grid">
+          <div class="op-card" style="position: relative;">
+            <button class="op-delete-btn" onclick="deleteOperation('${op}', event)" title="Delete Operation">X</button>
+            <span class="op-icon">📁</span>
+            ${op.toUpperCase()}
+          </div>
+        </div>
+      </div>
+
+      <!-- BLACK BOOK VIEW -->
+      <div id="view-blackbook" class="view-panel">
+        <h2>// BLACK BOOK LAB RESULTS</h2>
+        <p>Source: <code>OperationDir/BLACK_BOOK.md</code></p>
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>DATE</th>
+              <th>TIME</th>
+              <th>OPERATION</th>
+              <th>MISSION</th>
+              <th>STATUS</th>
+              <th>HYPOTHESIS</th>
+              <th>PLATFORM</th>
+              <th>RESULT</th>
+              <th>NOTES</th>
+              <th style="width: 70px;">ACTIONS</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td colspan="11">Loading probes...</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- HVI VIEW -->
+      <div id="view-hvi-intel" class="view-panel">
+        <h2>// HIGH VALUE INDIVIDUALS (Summary)</h2>
+        <p>Source: <code>OperationDir/HVI_INDEX.md</code></p>
+        <div id="hvi-container">
+          <div class="hvi-card"><p>Loading HVI profiles...</p></div>
+        </div>
+      </div>
+
+      <div id="view-brief-studio" class="view-panel">
+        <h2>// BRIEF STUDIO</h2>
+        <p>Paste full mission brief text, auto-extract variables, save phase versions, and load previous versions.</p>
+        <div class="brief-toolbar">
+          <select id="brief-operation-filter" onchange="onBriefOperationFilterChange()"></select>
+          <select id="brief-mission-select" onchange="onBriefMissionChange()"></select>
+          <input id="brief-phase" type="number" min="1" value="1" title="Phase" />
+          <button class="submit-btn" type="button" onclick="loadBriefForSelectedMission()">LOAD</button>
+          <button class="submit-btn" type="button" onclick="saveBriefPhase()">SAVE PHASE</button>
+        </div>
+        <div class="brief-grid">
+          <div>
+            <textarea id="brief-content" class="brief-editor" placeholder="Paste mission brief here..."></textarea>
+            <div style="margin-top: 8px;">
+              <button class="submit-btn" type="button" onclick="parseBriefVariablesFromEditor()">AUTO PARSE VARIABLES</button>
+              <button class="submit-btn" type="button" onclick="createNextBriefPhase()" style="margin-left:8px;">NEXT PHASE (CLONE + COPY)</button>
+            </div>
+          </div>
+          <div class="brief-side">
+            <h4>// EXTRACTED VARIABLES</h4>
+            <div id="brief-vars"></div>
+            <h4 style="margin-top:14px;">// PHASE HISTORY</h4>
+            <ul id="brief-history" class="brief-history-list"></ul>
+          </div>
+        </div>
+      </div>
+
+      <!-- PROBE SKILL VIEW -->
+      <div id="view-probe-skill" class="view-panel">
+        <h2>// PROBE SKILL</h2>
+        <p>Source: <code>ProbeSkill.md</code></p>
+        <div class="manual-view">
+          <div id="probe-skill-content">Loading Probe Skill...</div>
+        </div>
+      </div>
+
+      <!-- PROBE MANUEL VIEW -->
+      <div id="view-probe-manual" class="view-panel">
+        <h2>// OFFICIAL PROBE MANUEL</h2>
+        <p>Source: <code>OfficialProbeManuel.md</code></p>
+        <div class="manual-view">
+          <div id="probe-manual-content">Loading Probe Manuel...</div>
+        </div>
+      </div>
+
+      <div id="view-checklist" class="view-panel">
+        <h2>// CHECKLIST</h2>
+        <p>Persistent local checklist. Drag rows to reorder.</p>
+        <div class="checklist-toolbar">
+          <input type="text" id="checklist-new-item" placeholder="Add checklist item..." onkeydown="onChecklistInputKey(event)" />
+          <button class="submit-btn" type="button" onclick="addChecklistItem()">ADD</button>
+        </div>
+        <div id="checklist-empty" class="checklist-empty">No checklist items yet.</div>
+        <ul id="checklist-list" class="checklist-list" style="display:none;"></ul>
+      </div>
+
+      </div>
+    </main>
+
+    <!-- FOOTER -->
+    <footer>
+      <div id="footer-status-left" class="system-status">
+        <span class="status-active">ONLINE</span> | <span class="status-active">SECURE</span>
+      </div>
+      <div>TERMINAL_ID: 0x992</div>
+      <div id="footer-status-right">
+        <span style="color: var(--warning-yellow); margin-right: 10px;">BUILD: 2026-03-07 15:03</span>
+        <span id="sync-status">LIVE SYNC</span>
+      </div>
+    </footer>
+
+    <div id="confirm-overlay" class="confirm-overlay" aria-hidden="true">
+      <div class="confirm-modal" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+        <h3 id="confirm-title" class="confirm-title">// CONFIRM ACTION</h3>
+        <p id="confirm-message" class="confirm-message">Are you sure you want to delete this?</p>
+        <div class="confirm-actions">
+          <button id="confirm-cancel" class="confirm-btn" type="button">Cancel</button>
+          <button id="confirm-ok" class="confirm-btn danger" type="button">Delete</button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      let isFetching = false;
+      let currentView = "dashboard";
+      let selectedOperation = null;
+      let allMissions = [];
+      let allOps = [];
+      let searchQuery = "";
+      let operationColors = {};
+      let operationOrder = [];
+      let draggingOperation = "";
+      let lastDragOverOperation = "";
+      let missionPlanUndoStack = [];
+      let missionPlanRedoStack = [];
+      let checklistItems = [];
+      let checklistDragIndex = -1;
+      let briefVariables = [];
+      let briefHistory = [];
+
+      function themedConfirm(message = "Are you sure you want to delete this?") {
+        return new Promise((resolve) => {
+          const overlay = document.getElementById("confirm-overlay");
+          const messageEl = document.getElementById("confirm-message");
+          const cancelBtn = document.getElementById("confirm-cancel");
+          const okBtn = document.getElementById("confirm-ok");
+
+          if (!overlay || !messageEl || !cancelBtn || !okBtn) {
+            resolve(confirm(message));
+            return;
+          }
+
+          messageEl.textContent = message;
+          overlay.classList.add("active");
+          overlay.setAttribute("aria-hidden", "false");
+
+          const close = (result) => {
+            overlay.classList.remove("active");
+            overlay.setAttribute("aria-hidden", "true");
+            cancelBtn.removeEventListener("click", onCancel);
+            okBtn.removeEventListener("click", onOk);
+            overlay.removeEventListener("click", onOverlay);
+            document.removeEventListener("keydown", onEsc);
+            resolve(result);
+          };
+
+          const onCancel = () => close(false);
+          const onOk = () => close(true);
+          const onOverlay = (e) => {
+            if (e.target === overlay) close(false);
+          };
+          const onEsc = (e) => {
+            if (e.key === "Escape") close(false);
+          };
+
+          cancelBtn.addEventListener("click", onCancel);
+          okBtn.addEventListener("click", onOk);
+          overlay.addEventListener("click", onOverlay);
+          document.addEventListener("keydown", onEsc);
+        });
+      }
+
+      function switchView(viewId) {
+        document.querySelectorAll(".view-panel").forEach((el) => el.style.display = "none");
+        const targetView = document.getElementById("view-" + viewId);
+        if (targetView) targetView.style.display = "block";
+        
+        document.querySelectorAll(".nav-btn").forEach((btn) => btn.classList.remove("active"));
+        const targetBtn = document.querySelector(`.nav-btn[onclick*="${viewId}"]`);
+        if (targetBtn) targetBtn.classList.add("active");
+
+        currentView = viewId;
+        if (viewId === "brief-studio") {
+          renderBriefMissionOptions();
+        }
+
+        if (viewId !== "mission-log") {
+          selectedOperation = null;
+          updateMissionHeader();
+        }
+      }
+
+      function updateMissionHeader() {
+        const header = document.getElementById("mission-header");
+        const sourceCode = document.getElementById("mission-source-code");
+        const opInput = document.getElementById("new-mission-op");
+
+        if (selectedOperation) {
+          header.innerText = `// ${selectedOperation.toUpperCase()} MISSIONS`;
+          sourceCode.innerText = `OperationDir/Operations/${selectedOperation}/Missions/[BRIEF]`;
+          if (opInput) opInput.value = selectedOperation;
+        } else {
+          header.innerText = "// MASTER MISSION INDEX";
+          sourceCode.innerText = `OperationDir/Operations/[OP]/Missions/[BRIEF]`;
+          if (opInput) opInput.value = "ProjectTitle";
+        }
+      }
+
+      async function handleOpCardClick(operationName) {
+        selectedOperation = operationName;
+        updateMissionHeader();
+        switchView("mission-log");
+        renderMissions();
+      }
+
+      function handleOpCardFromCard(cardEl) {
+        const op = cardEl ? (cardEl.getAttribute("data-op") || "") : "";
+        if (!op) return;
+        handleOpCardClick(op);
+      }
+
+      function handleSearch() {
+        const searchEl = document.getElementById("global-search");
+        searchQuery = searchEl ? searchEl.value.toLowerCase() : "";
+        if (currentView === "mission-log") renderMissions();
+        if (currentView === "operations") renderOperations();
+      }
+
+      async function loadMarkdownInto(filePath, targetId, errorMessage) {
+        const target = document.getElementById(targetId);
+        if (!target) return;
+        try {
+          const res = await fetch(filePath, { cache: "no-store" });
+          if (!res.ok) throw new Error("File not found");
+          const markdown = await res.text();
+          target.innerHTML = renderManualMarkdown(markdown);
+        } catch (e) {
+          target.textContent = errorMessage;
+        }
+      }
+
+      function renderManualMarkdown(md) {
+        const esc = (s) => s
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;");
+        const inline = (s) => esc(s)
+          .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+          .replace(/`([^`]+)`/g, "<code>$1</code>");
+
+        const lines = md.replace(/\r\n/g, "\n").split("\n");
+        let out = "";
+        let inUl = false;
+        let inOl = false;
+
+        const closeLists = () => {
+          if (inUl) { out += "</ul>"; inUl = false; }
+          if (inOl) { out += "</ol>"; inOl = false; }
+        };
+
+        for (const raw of lines) {
+          const line = raw.trimEnd();
+          const t = line.trim();
+
+          if (!t) {
+            closeLists();
+            continue;
+          }
+          if (/^---+$/.test(t)) {
+            closeLists();
+            out += "<hr />";
+            continue;
+          }
+          if (t.startsWith("### ")) {
+            closeLists();
+            out += `<h3>${inline(t.slice(4))}</h3>`;
+            continue;
+          }
+          if (t.startsWith("## ")) {
+            closeLists();
+            out += `<h2>${inline(t.slice(3))}</h2>`;
+            continue;
+          }
+          if (t.startsWith("# ")) {
+            closeLists();
+            out += `<h1>${inline(t.slice(2))}</h1>`;
+            continue;
+          }
+          if (t.startsWith("* ") || t.startsWith("- ")) {
+            if (inOl) { out += "</ol>"; inOl = false; }
+            if (!inUl) { out += "<ul>"; inUl = true; }
+            out += `<li>${inline(t.slice(2))}</li>`;
+            continue;
+          }
+          if (/^\d+\.\s+/.test(t)) {
+            if (inUl) { out += "</ul>"; inUl = false; }
+            if (!inOl) { out += "<ol>"; inOl = true; }
+            out += `<li>${inline(t.replace(/^\d+\.\s+/, ""))}</li>`;
+            continue;
+          }
+          closeLists();
+          out += `<p>${inline(t)}</p>`;
+        }
+        closeLists();
+        return out;
+      }
+
+      function checklistStorageKey() {
+        return "checklistItems:v1";
+      }
+
+      function loadChecklistItems() {
+        try {
+          const raw = localStorage.getItem(checklistStorageKey());
+          const parsed = raw ? JSON.parse(raw) : [];
+          checklistItems = Array.isArray(parsed) ? parsed : [];
+        } catch (e) {
+          checklistItems = [];
+        }
+        renderChecklist();
+      }
+
+      function saveChecklistItems() {
+        localStorage.setItem(checklistStorageKey(), JSON.stringify(checklistItems));
+      }
+
+      function addChecklistItem() {
+        const input = document.getElementById("checklist-new-item");
+        if (!input) return;
+        const text = (input.value || "").trim();
+        if (!text) return;
+        checklistItems.push({
+          id: `t_${Date.now()}_${Math.floor(Math.random() * 100000)}`,
+          text,
+          done: false,
+        });
+        input.value = "";
+        saveChecklistItems();
+        renderChecklist();
+      }
+
+      function onChecklistInputKey(e) {
+        if (e && e.key === "Enter") addChecklistItem();
+      }
+
+      function toggleChecklistItem(id) {
+        const idx = checklistItems.findIndex((x) => x.id === id);
+        if (idx < 0) return;
+        checklistItems[idx].done = !checklistItems[idx].done;
+        saveChecklistItems();
+        renderChecklist();
+      }
+
+      function deleteChecklistItem(id) {
+        checklistItems = checklistItems.filter((x) => x.id !== id);
+        saveChecklistItems();
+        renderChecklist();
+      }
+
+      function onChecklistDragStart(index, event) {
+        checklistDragIndex = index;
+        if (event && event.dataTransfer) {
+          event.dataTransfer.effectAllowed = "move";
+          event.dataTransfer.setData("text/plain", String(index));
+        }
+      }
+
+      function onChecklistDragOver(index, event) {
+        if (!event) return;
+        event.preventDefault();
+        const li = event.currentTarget;
+        if (li && li.classList) li.classList.add("drag-over");
+      }
+
+      function onChecklistDragLeave(event) {
+        const li = event && event.currentTarget;
+        if (li && li.classList) li.classList.remove("drag-over");
+      }
+
+      function onChecklistDrop(index, event) {
+        if (event) event.preventDefault();
+        const li = event && event.currentTarget;
+        if (li && li.classList) li.classList.remove("drag-over");
+        const from = checklistDragIndex;
+        const to = index;
+        checklistDragIndex = -1;
+        if (from < 0 || to < 0 || from === to || from >= checklistItems.length || to >= checklistItems.length) return;
+        const [moved] = checklistItems.splice(from, 1);
+        checklistItems.splice(to, 0, moved);
+        saveChecklistItems();
+        renderChecklist();
+      }
+
+      function renderChecklist() {
+        const list = document.getElementById("checklist-list");
+        const empty = document.getElementById("checklist-empty");
+        if (!list || !empty) return;
+        if (!checklistItems.length) {
+          list.style.display = "none";
+          empty.style.display = "block";
+          list.innerHTML = "";
+          return;
+        }
+        empty.style.display = "none";
+        list.style.display = "block";
+        list.innerHTML = checklistItems.map((item, index) => `
+          <li class="checklist-item ${item.done ? "done" : ""}"
+              draggable="true"
+              ondragstart="onChecklistDragStart(${index}, event)"
+              ondragover="onChecklistDragOver(${index}, event)"
+              ondragleave="onChecklistDragLeave(event)"
+              ondrop="onChecklistDrop(${index}, event)">
+            <span class="checklist-handle">::</span>
+            <input class="checklist-check" type="checkbox" ${item.done ? "checked" : ""} onchange="toggleChecklistItem('${escapeHtmlAttr(item.id)}')" />
+            <span class="checklist-text">${escapeHtmlAttr(item.text)}</span>
+            <button class="trash-btn" type="button" onclick="deleteChecklistItem('${escapeHtmlAttr(item.id)}')" title="Delete">X</button>
+          </li>
+        `).join("");
+      }
+
+      function extractBriefVariables(text) {
+        const out = [];
+        const seen = new Set();
+        const lines = String(text || "").replace(/\r\n/g, "\n").split("\n");
+        for (const raw of lines.slice(0, 400)) {
+          const line = raw.trim();
+          if (!line) continue;
+          const m = line.match(/^([A-Za-z][A-Za-z0-9 _().\/-]{1,80}):\s*(.+)$/);
+          if (!m) continue;
+          const key = m[1].trim();
+          const value = m[2].trim();
+          const sig = `${key.toLowerCase()}::${value.toLowerCase()}`;
+          if (seen.has(sig)) continue;
+          seen.add(sig);
+          out.push({ key, value });
+        }
+        return out;
+      }
+
+      function renderBriefVariables() {
+        const host = document.getElementById("brief-vars");
+        if (!host) return;
+        if (!briefVariables.length) {
+          host.innerHTML = `<div class="checklist-empty">No variables parsed yet.</div>`;
+          return;
+        }
+        host.innerHTML = briefVariables.map((v, i) => `
+          <div class="brief-var-row">
+            <input type="text" value="${escapeHtmlAttr(v.key || "")}" onchange="onBriefVariableChange(${i}, 'key', this.value)" />
+            <input type="text" value="${escapeHtmlAttr(v.value || "")}" onchange="onBriefVariableChange(${i}, 'value', this.value)" />
+          </div>
+        `).join("");
+      }
+
+      function onBriefVariableChange(index, field, value) {
+        if (index < 0 || index >= briefVariables.length) return;
+        if (field !== "key" && field !== "value") return;
+        briefVariables[index][field] = value || "";
+      }
+
+      function renderBriefHistory() {
+        const host = document.getElementById("brief-history");
+        if (!host) return;
+        if (!briefHistory.length) {
+          host.innerHTML = `<li><button type="button" disabled>No saved phases yet.</button></li>`;
+          return;
+        }
+        host.innerHTML = briefHistory.map((v, i) => `
+          <li>
+            <button type="button" onclick="loadBriefVersion(${i})">
+              Phase ${v.phase || "?"} :: ${escapeHtmlAttr(v.created_at || "")}
+            </button>
+          </li>
+        `).join("");
+      }
+
+      function parseBriefVariablesFromEditor() {
+        const el = document.getElementById("brief-content");
+        if (!el) return;
+        briefVariables = extractBriefVariables(el.value || "");
+        renderBriefVariables();
+      }
+
+      function getBriefSelectedMissionPath() {
+        const sel = document.getElementById("brief-mission-select");
+        return sel ? (sel.value || "") : "";
+      }
+
+      function onBriefOperationFilterChange() {
+        renderBriefMissionOptions();
+      }
+
+      function onBriefMissionChange() {
+        const phaseInput = document.getElementById("brief-phase");
+        if (phaseInput) phaseInput.value = "1";
+      }
+
+      function renderBriefMissionOptions() {
+        const opSel = document.getElementById("brief-operation-filter");
+        const mSel = document.getElementById("brief-mission-select");
+        if (!opSel || !mSel) return;
+        const operations = [...new Set(allMissions.map((m) => m.operation).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+        const currentOp = opSel.value || "";
+        const opOptions = [`<option value="">All Operations</option>`]
+          .concat(operations.map((op) => `<option value="${escapeHtmlAttr(op)}" ${op === currentOp ? "selected" : ""}>${escapeHtmlAttr(op)}</option>`))
+          .join("");
+        opSel.innerHTML = opOptions;
+
+        const filtered = allMissions
+          .filter((m) => !opSel.value || m.operation === opSel.value)
+          .sort((a, b) => (a.operation + "::" + a.name).localeCompare(b.operation + "::" + b.name));
+        const currentMission = mSel.value || "";
+        mSel.innerHTML = [`<option value="">-- Select Mission --</option>`]
+          .concat(filtered.map((m) => `<option value="${escapeHtmlAttr(m.path)}" ${m.path === currentMission ? "selected" : ""}>${escapeHtmlAttr(m.operation)} :: ${escapeHtmlAttr(m.name)}</option>`))
+          .join("");
+      }
+
+      async function loadBriefForSelectedMission() {
+        const missionPath = getBriefSelectedMissionPath();
+        if (!missionPath) {
+          alert("Select a mission first.");
+          return;
+        }
+        try {
+          const res = await fetch(`/api/mission/brief?mission_path=${encodeURIComponent(missionPath)}`, { cache: "no-store" });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({ error: "Failed to load brief history." }));
+            throw new Error(err.error || "Failed to load brief history.");
+          }
+          const data = await res.json();
+          briefHistory = Array.isArray(data.versions) ? data.versions : [];
+          const editor = document.getElementById("brief-content");
+          const phaseInput = document.getElementById("brief-phase");
+          if (editor) editor.value = data.content || "";
+          if (phaseInput) phaseInput.value = String((data.latest && data.latest.phase ? data.latest.phase : 0) + 1);
+          briefVariables = (data.latest && Array.isArray(data.latest.variables)) ? data.latest.variables : extractBriefVariables(data.content || "");
+          renderBriefVariables();
+          renderBriefHistory();
+        } catch (e) {
+          alert("Load brief failed: " + e.message);
+        }
+      }
+
+      async function saveBriefPhase() {
+        const missionPath = getBriefSelectedMissionPath();
+        const editor = document.getElementById("brief-content");
+        const phaseInput = document.getElementById("brief-phase");
+        if (!missionPath || !editor || !phaseInput) {
+          alert("Select a mission and provide brief content.");
+          return;
+        }
+        if (!editor.value.trim()) {
+          alert("Brief content is empty.");
+          return;
+        }
+        const phase = Math.max(1, parseInt(phaseInput.value || "1", 10) || 1);
+        try {
+          const res = await fetch("/api/mission/brief/save", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              mission_path: missionPath,
+              phase,
+              content: editor.value,
+              variables: briefVariables,
+            })
+          });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({ error: "Failed to save brief phase." }));
+            throw new Error(err.error || "Failed to save brief phase.");
+          }
+          await loadBriefForSelectedMission();
+          alert(`Saved phase ${phase}.`);
+        } catch (e) {
+          alert("Save brief failed: " + e.message);
+        }
+      }
+
+      function createNextBriefPhase() {
+        const editor = document.getElementById("brief-content");
+        const phaseInput = document.getElementById("brief-phase");
+        if (!editor || !phaseInput) return;
+        const currentPhase = Math.max(1, parseInt(phaseInput.value || "1", 10) || 1);
+        const nextPhase = currentPhase + 1;
+        let nextText = editor.value || "";
+        nextText = nextText.replace(/Phase\\s*\\d+/gi, `Phase ${nextPhase}`);
+        editor.value = nextText;
+        phaseInput.value = String(nextPhase);
+        briefVariables = extractBriefVariables(nextText);
+        renderBriefVariables();
+        if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+          navigator.clipboard.writeText(nextText).catch(() => {});
+        }
+      }
+
+      function loadBriefVersion(index) {
+        const v = briefHistory[index];
+        if (!v) return;
+        const missionPath = getBriefSelectedMissionPath();
+        if (!missionPath) return;
+        fetch(`/api/mission/brief/version?mission_path=${encodeURIComponent(missionPath)}&file=${encodeURIComponent(v.file || "")}`, { cache: "no-store" })
+          .then(async (res) => {
+            if (!res.ok) {
+              const err = await res.json().catch(() => ({ error: "Failed to load selected version." }));
+              throw new Error(err.error || "Failed to load selected version.");
+            }
+            return res.json();
+          })
+          .then((data) => {
+            const editor = document.getElementById("brief-content");
+            const phaseInput = document.getElementById("brief-phase");
+            if (editor) editor.value = data.content || "";
+            if (phaseInput) phaseInput.value = String((v.phase || 1) + 1);
+            briefVariables = Array.isArray(v.variables) ? v.variables : extractBriefVariables(data.content || "");
+            renderBriefVariables();
+          })
+          .catch((e) => alert("Load version failed: " + e.message));
+      }
+
+      async function fetchAndUpdate(endpoint, callback) {
+        try {
+          const res = await fetch(endpoint, { cache: "no-store" });
+          const data = await res.json();
+          callback(data);
+        } catch (e) {
+          console.error(`Fetch to ${endpoint} Failed`, e);
+        }
+      }
+
+      async function submitNewMission() {
+        const nameInput = document.getElementById("new-mission-name");
+        const opInput = document.getElementById("new-mission-op");
+        const statusSelect = document.getElementById("new-mission-status");
+        const msgEl = document.getElementById("submission-message");
+
+        if (!nameInput.value.trim()) {
+          msgEl.innerHTML = '<span style="color:red;">NAME REQUIRED.</span>';
+          return;
+        }
+
+        try {
+          const res = await fetch("/api/mission", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              name: nameInput.value.trim(),
+              operation: opInput.value.trim(),
+              status: statusSelect.value
+            })
+          });
+          if (res.ok) {
+            await res.json().catch(() => ({}));
+            msgEl.innerHTML = '<span style="color:var(--term-green);">SUCCESS.</span>';
+            selectedOperation = opInput.value.trim();
+            nameInput.value = "";
+            switchView("mission-log");
+            fetchData();
+          } else {
+            const err = await res.json().catch(() => ({ error: "Failed to create mission." }));
+            msgEl.innerHTML = `<span style="color:red;">ERROR: ${err.error || err.message || "CREATE FAILED."}</span>`;
+          }
+        } catch (e) { msgEl.innerText = "Error: " + e.message; }
+      }
+
+      async function submitNewOperation() {
+        const nameInput = document.getElementById("new-op-name");
+        const msgEl = document.getElementById("op-submission-message");
+
+        if (!nameInput.value.trim()) {
+          msgEl.innerHTML = '<span style="color:red;">NAME REQUIRED.</span>';
+          return;
+        }
+
+        try {
+          const res = await fetch("/api/operation", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name: nameInput.value.trim() })
+          });
+          if (res.ok) {
+            msgEl.innerHTML = '<span style="color:var(--term-green);">INITIALIZED.</span>';
+            nameInput.value = "";
+            fetchData();
+          } else {
+            const err = await res.json();
+            msgEl.innerHTML = `<span style="color:red;">ERROR: ${err.message}</span>`;
+          }
+        } catch (e) { msgEl.innerText = "Error: " + e.message; }
+      }
+
+      async function deleteMission(path) {
+        if (!(await themedConfirm("Are you sure you want to delete this?"))) return;
+        
+        try {
+          const res = await fetch("/api/mission", {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ path: path })
+          });
+          if (res.ok) fetchData();
+        } catch (e) { alert("Delete failed: " + e.message); }
+      }
+
+      async function deleteOperation(op, event) {
+        if (event) event.stopPropagation();
+        if (!(await themedConfirm("Are you sure you want to delete this?"))) return;
+
+        try {
+          const res = await fetch("/api/operation", {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name: op })
+          });
+          if (res.ok) {
+            if (operationColors[op]) {
+              delete operationColors[op];
+              saveOperationColors();
+            }
+            operationOrder = operationOrder.filter((x) => x !== op);
+            saveOperationOrder();
+            fetchData();
+          } else {
+            const err = await res.json().catch(() => ({ error: "Delete failed." }));
+            alert(err.error || "Delete failed.");
+          }
+        } catch (e) { alert("Delete failed: " + e.message); }
+      }
+
+      function deleteOperationFromButton(btn, event) {
+        const op = btn ? (btn.getAttribute("data-op") || "") : "";
+        if (!op) {
+          alert("Delete failed: missing operation name.");
+          return;
+        }
+        deleteOperation(op, event);
+      }
+
+      function operationColorsKey() {
+        return "operationColors:v1";
+      }
+
+      function normalizeHexColor(color) {
+        const v = String(color || "").trim();
+        return /^#[0-9a-fA-F]{6}$/.test(v) ? v : "";
+      }
+
+      function loadOperationColors() {
+        try {
+          const raw = localStorage.getItem(operationColorsKey());
+          const parsed = raw ? JSON.parse(raw) : {};
+          operationColors = (parsed && typeof parsed === "object") ? parsed : {};
+        } catch (e) {
+          operationColors = {};
+        }
+      }
+
+      function saveOperationColors() {
+        localStorage.setItem(operationColorsKey(), JSON.stringify(operationColors));
+      }
+
+      function getOperationColor(op) {
+        return normalizeHexColor(operationColors[op] || "");
+      }
+
+      function setOperationColor(op, color) {
+        if (!op) return;
+        const normalized = normalizeHexColor(color);
+        if (!normalized) return;
+        operationColors[op] = normalized;
+        saveOperationColors();
+        renderOperations();
+      }
+
+      function setOperationColorFromInput(inputEl, event) {
+        if (event) event.stopPropagation();
+        const op = inputEl ? (inputEl.getAttribute("data-op") || "") : "";
+        const color = inputEl ? inputEl.value : "";
+        setOperationColor(op, color);
+      }
+
+      function resetOperationColor(op) {
+        if (!op) return;
+        if (operationColors[op]) {
+          delete operationColors[op];
+          saveOperationColors();
+        }
+        renderOperations();
+      }
+
+      function resetOperationColorFromButton(btn, event) {
+        if (event) event.stopPropagation();
+        const op = btn ? (btn.getAttribute("data-op") || "") : "";
+        resetOperationColor(op);
+      }
+
+      function operationOrderKey() {
+        return "operationOrder:v1";
+      }
+
+      function loadOperationOrder() {
+        try {
+          const raw = localStorage.getItem(operationOrderKey());
+          const parsed = raw ? JSON.parse(raw) : [];
+          operationOrder = Array.isArray(parsed) ? parsed : [];
+        } catch (e) {
+          operationOrder = [];
+        }
+      }
+
+      function saveOperationOrder() {
+        localStorage.setItem(operationOrderKey(), JSON.stringify(operationOrder));
+      }
+
+      function syncOperationOrder() {
+        const existing = new Set(allOps);
+        operationOrder = operationOrder.filter((op) => existing.has(op));
+        allOps.forEach((op) => {
+          if (!operationOrder.includes(op)) operationOrder.push(op);
+        });
+        saveOperationOrder();
+      }
+
+      function orderedOperations() {
+        const rank = new Map(operationOrder.map((op, idx) => [op, idx]));
+        return [...allOps].sort((a, b) => {
+          const ra = rank.has(a) ? rank.get(a) : Number.MAX_SAFE_INTEGER;
+          const rb = rank.has(b) ? rank.get(b) : Number.MAX_SAFE_INTEGER;
+          if (ra !== rb) return ra - rb;
+          return a.localeCompare(b);
+        });
+      }
+
+      function onOperationDragStart(cardEl, event) {
+        const op = cardEl ? (cardEl.getAttribute("data-op") || "") : "";
+        if (!op || !event) return;
+        draggingOperation = op;
+        lastDragOverOperation = "";
+        if (event.dataTransfer) {
+          event.dataTransfer.setData("text/plain", op);
+          event.dataTransfer.effectAllowed = "move";
+        }
+      }
+
+      function onOperationDragOver(cardEl, event) {
+        if (!event || !draggingOperation) return;
+        event.preventDefault();
+        if (cardEl) {
+          cardEl.classList.add("drag-over");
+          lastDragOverOperation = cardEl.getAttribute("data-op") || "";
+        }
+      }
+
+      function onOperationDragLeave(cardEl) {
+        if (cardEl) cardEl.classList.remove("drag-over");
+      }
+
+      function onOperationDrop(cardEl, event) {
+        if (event) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+        const target = cardEl ? (cardEl.getAttribute("data-op") || "") : "";
+        if (!draggingOperation || !target || draggingOperation === target) {
+          onOperationDragEnd();
+          return;
+        }
+        const suggested = `${draggingOperation}_${target}`;
+        const mergedName = prompt("New merged operation name", suggested);
+        if (!mergedName || !mergedName.trim()) {
+          onOperationDragEnd();
+          return;
+        }
+        mergeOperations(draggingOperation, target, mergedName.trim());
+        onOperationDragEnd();
+      }
+
+      function onOperationGridDragOver(event) {
+        if (!draggingOperation || !event) return;
+        event.preventDefault();
+      }
+
+      function onOperationGridDrop(event) {
+        if (!event) return;
+        event.preventDefault();
+        if (!draggingOperation) return;
+        const cardTarget = event.target && event.target.closest ? event.target.closest(".op-card") : null;
+        if (cardTarget) return;
+        const fallbackTarget = lastDragOverOperation;
+        if (!fallbackTarget || fallbackTarget === draggingOperation) {
+          onOperationDragEnd();
+          return;
+        }
+        const suggested = `${draggingOperation}_${fallbackTarget}`;
+        const mergedName = prompt("New merged operation name", suggested);
+        if (!mergedName || !mergedName.trim()) {
+          onOperationDragEnd();
+          return;
+        }
+        mergeOperations(draggingOperation, fallbackTarget, mergedName.trim());
+        onOperationDragEnd();
+      }
+
+      function onOperationDragEnd() {
+        draggingOperation = "";
+        lastDragOverOperation = "";
+        document.querySelectorAll(".op-card.drag-over").forEach((el) => el.classList.remove("drag-over"));
+      }
+
+      async function mergeOperations(dragOp, targetOp, mergedName) {
+        try {
+          const res = await fetch("/api/operation/merge", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ source: dragOp, target: targetOp, name: mergedName })
+          });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({ error: "Merge failed." }));
+            alert(err.error || "Merge failed.");
+            return false;
+          }
+          const oldOps = new Set([dragOp, targetOp]);
+          Object.keys(operationColors).forEach((k) => {
+            if (oldOps.has(k)) delete operationColors[k];
+          });
+          saveOperationColors();
+          fetchData();
+          return true;
+        } catch (e) {
+          alert("Merge failed: " + e.message);
+          return false;
+        }
+      }
+
+      async function deleteBlackbookLog(probeId) {
+        if (!(await themedConfirm("Are you sure you want to delete this?"))) return;
+        try {
+          const res = await fetch("/api/blackbook", {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ probe_id: probeId })
+          });
+          if (res.ok) fetchData();
+        } catch (e) { alert("Delete failed: " + e.message); }
+      }
+
+      function deleteBlackbookFromButton(btn) {
+        const row = btn ? btn.closest("tr") : null;
+        const probeId = row ? (row.getAttribute("data-probe-id") || "") : "";
+        if (!probeId) {
+          alert("Delete failed: missing Probe ID.");
+          return;
+        }
+        deleteBlackbookLog(probeId);
+      }
+
+      function saveBlackbookFromButton(btn) {
+        const row = btn ? btn.closest("tr") : null;
+        if (!row) return;
+        const payload = {
+          Probe_ID: row.getAttribute("data-probe-id") || "",
+          Date: row.querySelector(".bb-date")?.value || "",
+          Time: row.querySelector(".bb-time")?.value || "",
+          Operation: row.querySelector(".bb-operation")?.value || "",
+          Mission: row.querySelector(".bb-mission")?.value || "",
+          Status: row.querySelector(".bb-status")?.value || "PENDING",
+          Hypothesis: row.querySelector(".bb-hypothesis")?.value || "",
+          Platform: row.querySelector(".bb-platform")?.value || "",
+          Result_Quantitative: row.querySelector(".bb-result")?.value || "",
+          Notes: row.querySelector(".bb-notes")?.value || "",
+        };
+
+        fetch("/api/blackbook/upsert", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        })
+          .then(async (res) => {
+            if (!res.ok) {
+              const err = await res.json().catch(() => ({ error: "Save failed." }));
+              throw new Error(err.error || "Save failed.");
+            }
+            fetchData();
+          })
+          .catch((e) => alert("Blackbook save failed: " + e.message));
+      }
+
+      async function deleteHvi(handle) {
+        if (!(await themedConfirm("Are you sure you want to delete this?"))) return;
+        try {
+          const res = await fetch("/api/hvi", {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ handle: handle })
+          });
+          if (res.ok) fetchData();
+        } catch (e) { alert("Delete failed: " + e.message); }
+      }
+
+      async function clearProgressLogs() {
+        if (!(await themedConfirm("Are you sure you want to delete this?"))) return;
+        try {
+          await fetch("/api/logs", { method: "DELETE" });
+          const logOutput = document.getElementById("log-output");
+          if (logOutput) logOutput.innerHTML = "> Logs cleared.";
+        } catch (e) { alert("Failed to clear logs: " + e.message); }
+      }
+
+      async function updateMissionStatus(path, status) {
+        try {
+          const res = await fetch("/api/mission/status", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ path, status })
+          });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({ error: "Failed to update mission status." }));
+            alert(err.error || "Failed to update mission status.");
+          } else {
+            fetchData();
+          }
+        } catch (e) {
+          alert("Failed to update mission status: " + e.message);
+        }
+      }
+
+      function missionStatusClass(status) {
+        const key = (status || "").toLowerCase().replace(/_/g, "-");
+        return `mission-status-select status-${key}`;
+      }
+
+      function onMissionStatusChange(selectEl, path) {
+        selectEl.className = missionStatusClass(selectEl.value);
+        updateMissionStatus(path, selectEl.value);
+      }
+
+      function renderMissions() {
+        const tbody = document.querySelector("#view-mission-log tbody");
+        if (!tbody) return;
+
+        let filtered = allMissions;
+        if (selectedOperation) {
+          filtered = filtered.filter(m => m.operation === selectedOperation || m.operation.startsWith(`${selectedOperation}/`));
+        }
+        if (searchQuery) {
+          filtered = filtered.filter(m => 
+            m.name.toLowerCase().includes(searchQuery) || 
+            m.operation.toLowerCase().includes(searchQuery)
+          );
+        }
+
+        tbody.innerHTML = filtered.map(m => `
+          <tr>
+            <td>${m.date}</td>
+            <td>${m.operation}</td>
+            <td>${m.name}</td>
+            <td>
+              <select class="${missionStatusClass(m.status)}" onchange="onMissionStatusChange(this, '${m.path}')">
+                <option value="PENDING" ${m.status === "PENDING" ? "selected" : ""}>PENDING</option>
+                <option value="IN_PROGRESS" ${m.status === "IN_PROGRESS" ? "selected" : ""}>IN_PROGRESS</option>
+                <option value="COMPLETE" ${m.status === "COMPLETE" ? "selected" : ""}>COMPLETE</option>
+                <option value="BLOCKED" ${m.status === "BLOCKED" ? "selected" : ""}>BLOCKED</option>
+              </select>
+            </td>
+            <td style="text-align: center;">
+              <button class="trash-btn" onclick="deleteMission('${m.path}')" title="Delete Mission">X</button>
+            </td>
+          </tr>
+        `).join("") || "<tr><td colspan='5'>No missions found.</td></tr>";
+      }
+
+      function renderOperations() {
+        const grid = document.querySelector(".ops-grid");
+        if (!grid) return;
+        grid.ondragover = onOperationGridDragOver;
+        grid.ondrop = onOperationGridDrop;
+
+        let filtered = orderedOperations();
+        if (searchQuery) {
+          filtered = filtered.filter(op => op.toLowerCase().includes(searchQuery));
+        }
+
+        grid.innerHTML = filtered.map(op => {
+          const opColor = getOperationColor(op) || "#00ff41";
+          const safeColor = escapeHtmlAttr(opColor);
+          return `
+          <div
+            class="op-card"
+            data-op="${escapeHtmlAttr(op)}"
+            draggable="true"
+            onclick="handleOpCardFromCard(this)"
+            ondragstart="onOperationDragStart(this, event)"
+            ondragover="onOperationDragOver(this, event)"
+            ondragleave="onOperationDragLeave(this)"
+            ondrop="onOperationDrop(this, event)"
+            ondragend="onOperationDragEnd()"
+            style="border-color:${safeColor}; box-shadow: inset 0 0 0 1px ${safeColor}33;"
+          >
+            <div class="op-color-wrap" onclick="event.stopPropagation()">
+              <input
+                class="op-color-input"
+                type="color"
+                data-op="${escapeHtmlAttr(op)}"
+                value="${safeColor}"
+                title="Operation color"
+                onclick="event.stopPropagation()"
+                onchange="setOperationColorFromInput(this, event)"
+              />
+              <button class="op-color-reset-mini" data-op="${escapeHtmlAttr(op)}" onclick="resetOperationColorFromButton(this, event)" title="Reset to green">↺</button>
+            </div>
+            <button class="op-delete-btn" data-op="${escapeHtmlAttr(op)}" onclick="deleteOperationFromButton(this, event)" title="Delete Operation">X</button>
+            <span class="op-icon">📁</span>
+            ${op.toUpperCase()}
+          </div>
+        `}).join("") || "<p>No matching operations.</p>";
+      }
+
+      function operationalDayKey(now = new Date()) {
+        const d = new Date(now);
+        if (d.getHours() < 4) d.setDate(d.getDate() - 1);
+        return d.toISOString().slice(0, 10);
+      }
+
+      function getQuarterState(now = new Date()) {
+        const dayStart = new Date(now);
+        dayStart.setHours(4, 0, 0, 0);
+        if (now < dayStart) dayStart.setDate(dayStart.getDate() - 1);
+        const elapsedMs = now - dayStart;
+        const quarterMs = 3 * 60 * 60 * 1000;
+        const quarterIndex = Math.min(7, Math.floor(elapsedMs / quarterMs));
+        const quarterStart = new Date(dayStart.getTime() + quarterIndex * quarterMs);
+        const quarterEnd = new Date(quarterStart.getTime() + quarterMs);
+        const minuteInQuarter = Math.floor((now - quarterStart) / 60000);
+
+        let phase = "RECOVERY";
+        let cadence = "Eat / Read / Exercise / Checklist";
+        let currentBlock = 0;
+        let inWork = false;
+        let blockStart = null;
+        let blockEnd = null;
+        if (minuteInQuarter < 120) {
+          phase = "MISSION BLOCK";
+          if (minuteInQuarter < 25) {
+            currentBlock = 1;
+            inWork = true;
+            cadence = "BLOCK 1 (WORK)";
+            blockStart = new Date(quarterStart.getTime() + 0 * 60000);
+            blockEnd = new Date(quarterStart.getTime() + 25 * 60000);
+          } else if (minuteInQuarter < 30) {
+            currentBlock = 1;
+            cadence = "BREAK";
+            blockStart = new Date(quarterStart.getTime() + 25 * 60000);
+            blockEnd = new Date(quarterStart.getTime() + 30 * 60000);
+          } else if (minuteInQuarter < 55) {
+            currentBlock = 2;
+            inWork = true;
+            cadence = "BLOCK 2 (WORK)";
+            blockStart = new Date(quarterStart.getTime() + 30 * 60000);
+            blockEnd = new Date(quarterStart.getTime() + 55 * 60000);
+          } else if (minuteInQuarter < 60) {
+            currentBlock = 2;
+            cadence = "BREAK";
+            blockStart = new Date(quarterStart.getTime() + 55 * 60000);
+            blockEnd = new Date(quarterStart.getTime() + 60 * 60000);
+          } else if (minuteInQuarter < 85) {
+            currentBlock = 3;
+            inWork = true;
+            cadence = "BLOCK 3 (WORK)";
+            blockStart = new Date(quarterStart.getTime() + 60 * 60000);
+            blockEnd = new Date(quarterStart.getTime() + 85 * 60000);
+          } else if (minuteInQuarter < 90) {
+            currentBlock = 3;
+            cadence = "BREAK";
+            blockStart = new Date(quarterStart.getTime() + 85 * 60000);
+            blockEnd = new Date(quarterStart.getTime() + 90 * 60000);
+          } else if (minuteInQuarter < 115) {
+            currentBlock = 4;
+            inWork = true;
+            cadence = "BLOCK 4 (WORK)";
+            blockStart = new Date(quarterStart.getTime() + 90 * 60000);
+            blockEnd = new Date(quarterStart.getTime() + 115 * 60000);
+          } else {
+            currentBlock = 4;
+            cadence = "BREAK";
+            blockStart = new Date(quarterStart.getTime() + 115 * 60000);
+            blockEnd = new Date(quarterStart.getTime() + 120 * 60000);
+          }
+        } else if (minuteInQuarter < 175) {
+          phase = "RECOVERY BLOCK";
+          if (minuteInQuarter < 145) {
+            currentBlock = 5;
+            cadence = "RECOVERY BLOCK 5";
+            blockStart = new Date(quarterStart.getTime() + 120 * 60000);
+            blockEnd = new Date(quarterStart.getTime() + 145 * 60000);
+          } else if (minuteInQuarter < 150) {
+            currentBlock = 5;
+            cadence = "BREAK";
+            blockStart = new Date(quarterStart.getTime() + 145 * 60000);
+            blockEnd = new Date(quarterStart.getTime() + 150 * 60000);
+          } else {
+            currentBlock = 6;
+            cadence = "RECOVERY BLOCK 6";
+            blockStart = new Date(quarterStart.getTime() + 150 * 60000);
+            blockEnd = new Date(quarterStart.getTime() + 175 * 60000);
+          }
+        } else {
+          phase = "RESET WINDOW";
+          currentBlock = 6;
+          cadence = "BREAK";
+          blockStart = new Date(quarterStart.getTime() + 175 * 60000);
+          blockEnd = new Date(quarterStart.getTime() + 180 * 60000);
+        }
+
+        return {
+          quarterIndex: quarterIndex + 1,
+          quarterStart,
+          quarterEnd,
+          phase,
+          cadence,
+          currentBlock,
+          inWork,
+          blockStart,
+          blockEnd,
+          dayStart,
+        };
+      }
+
+      function formatHm(d) {
+        return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+      }
+
+      function formatUkHm(d) {
+        return d.toLocaleTimeString("en-GB", {
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false,
+          timeZone: "Europe/London",
+        });
+      }
+
+      function missionPlanKey(opDay) {
+        return `missionPlan:${opDay}`;
+      }
+
+      function enforceDailyPlanReset(opDay) {
+        const dayMarkerKey = "missionPlan:lastOpDay";
+        const prev = localStorage.getItem(dayMarkerKey);
+        if (prev === opDay) return;
+
+        // New operational day detected: start with a clean planner
+        localStorage.setItem(dayMarkerKey, opDay);
+        localStorage.setItem(missionPlanKey(opDay), JSON.stringify({}));
+
+        // Keep storage clean by removing old day plans
+        const toDelete = [];
+        for (let i = 0; i < localStorage.length; i += 1) {
+          const k = localStorage.key(i);
+          if (k && k.startsWith("missionPlan:") && k !== missionPlanKey(opDay) && k !== dayMarkerKey) {
+            toDelete.push(k);
+          }
+        }
+        toDelete.forEach((k) => localStorage.removeItem(k));
+      }
+
+      function loadMissionPlan(opDay) {
+        enforceDailyPlanReset(opDay);
+        try {
+          const raw = localStorage.getItem(missionPlanKey(opDay));
+          const parsed = raw ? JSON.parse(raw) : {};
+          return parsed && typeof parsed === "object" ? parsed : {};
+        } catch (e) {
+          return {};
+        }
+      }
+
+      function saveMissionPlan(opDay, plan) {
+        localStorage.setItem(missionPlanKey(opDay), JSON.stringify(plan));
+      }
+
+      function deepCloneJson(obj) {
+        return JSON.parse(JSON.stringify(obj || {}));
+      }
+
+      function plansEqual(a, b) {
+        return JSON.stringify(a || {}) === JSON.stringify(b || {});
+      }
+
+      function pushMissionPlanUndo(opDay, planSnapshot) {
+        missionPlanUndoStack.push({ opDay, plan: deepCloneJson(planSnapshot) });
+        if (missionPlanUndoStack.length > 200) missionPlanUndoStack.shift();
+        missionPlanRedoStack = [];
+      }
+
+      function undoMissionPlan() {
+        if (!missionPlanUndoStack.length) return;
+        const snapshot = missionPlanUndoStack.pop();
+        const current = loadMissionPlan(snapshot.opDay);
+        missionPlanRedoStack.push({ opDay: snapshot.opDay, plan: deepCloneJson(current) });
+        saveMissionPlan(snapshot.opDay, deepCloneJson(snapshot.plan));
+        renderOperationFocus();
+      }
+
+      function redoMissionPlan() {
+        if (!missionPlanRedoStack.length) return;
+        const snapshot = missionPlanRedoStack.pop();
+        const current = loadMissionPlan(snapshot.opDay);
+        missionPlanUndoStack.push({ opDay: snapshot.opDay, plan: deepCloneJson(current) });
+        saveMissionPlan(snapshot.opDay, deepCloneJson(snapshot.plan));
+        renderOperationFocus();
+      }
+
+      function onAppUndoRedoShortcut(e) {
+        const key = (e.key || "").toLowerCase();
+        const withMod = e.metaKey || e.ctrlKey;
+        if (!withMod) return;
+        const isUndo = key === "z" && !e.shiftKey;
+        const isRedo = (key === "z" && e.shiftKey) || (key === "y" && e.ctrlKey);
+        if (!isUndo && !isRedo) return;
+        const t = e.target;
+        const isTyping = t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable);
+        if (isTyping) return;
+        e.preventDefault();
+        if (isUndo) undoMissionPlan();
+        if (isRedo) redoMissionPlan();
+      }
+
+      function ensureMissionPlanSlot(plan, quarterNum, slotNum) {
+        if (!plan[quarterNum]) plan[quarterNum] = {};
+        const cur = plan[quarterNum][slotNum];
+        if (!cur || typeof cur !== "object") {
+          const missionPath = typeof cur === "string" ? cur : "";
+          plan[quarterNum][slotNum] = { operation: "", missionPath, recoveryTask: "" };
+        }
+        return plan[quarterNum][slotNum];
+      }
+
+      function setMissionPlanOperation(opDay, quarterNum, slotNum, operation) {
+        const before = loadMissionPlan(opDay);
+        const plan = deepCloneJson(before);
+        const slot = ensureMissionPlanSlot(plan, quarterNum, slotNum);
+        slot.operation = operation || "";
+        slot.recoveryTask = "";
+        if (!slot.missionPath) {
+          if (!plansEqual(before, plan)) pushMissionPlanUndo(opDay, before);
+          saveMissionPlan(opDay, plan);
+          renderOperationFocus();
+          return;
+        }
+        const mission = allMissions.find((m) => m.path === slot.missionPath);
+        if (!mission || mission.operation !== slot.operation) {
+          slot.missionPath = "";
+        }
+        if (!plansEqual(before, plan)) pushMissionPlanUndo(opDay, before);
+        saveMissionPlan(opDay, plan);
+        renderOperationFocus();
+      }
+
+      function setMissionPlanMission(opDay, quarterNum, slotNum, missionPath) {
+        const before = loadMissionPlan(opDay);
+        const plan = deepCloneJson(before);
+        const slot = ensureMissionPlanSlot(plan, quarterNum, slotNum);
+        slot.missionPath = missionPath || "";
+        slot.recoveryTask = "";
+        if (slot.missionPath) {
+          const mission = allMissions.find((m) => m.path === slot.missionPath);
+          if (mission) slot.operation = mission.operation || slot.operation;
+        }
+        if (!plansEqual(before, plan)) pushMissionPlanUndo(opDay, before);
+        saveMissionPlan(opDay, plan);
+        renderOperationFocus();
+      }
+
+      function setRecoveryTask(opDay, quarterNum, slotNum, task) {
+        const before = loadMissionPlan(opDay);
+        const plan = deepCloneJson(before);
+        const slot = ensureMissionPlanSlot(plan, quarterNum, slotNum);
+        slot.recoveryTask = task || "";
+        slot.operation = "";
+        slot.missionPath = "";
+        if (!plansEqual(before, plan)) pushMissionPlanUndo(opDay, before);
+        saveMissionPlan(opDay, plan);
+        renderOperationFocus();
+      }
+
+      function escapeHtmlAttr(s) {
+        return String(s || "")
+          .replace(/&/g, "&amp;")
+          .replace(/"/g, "&quot;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;");
+      }
+
+      function getPlannedMission(plan, quarterNum, slotNum) {
+        const rawSlot = (plan[quarterNum] && plan[quarterNum][slotNum]) ? plan[quarterNum][slotNum] : { operation: "", missionPath: "" };
+        const missionPath = typeof rawSlot === "string" ? rawSlot : (rawSlot.missionPath || "");
+        let operation = typeof rawSlot === "string" ? "" : (rawSlot.operation || "");
+        const recoveryTask = typeof rawSlot === "string" ? "" : (rawSlot.recoveryTask || "");
+        let missionName = "";
+        if (slotNum >= 5) {
+          return { operation: "RECOVERY", missionName: recoveryTask || "UNASSIGNED", missionPath: "", isRecovery: true };
+        }
+        if (missionPath) {
+          const m = allMissions.find((x) => x.path === missionPath);
+          if (m) {
+            operation = operation || m.operation || "";
+            missionName = m.name || "";
+          }
+        }
+        return { operation, missionName, missionPath, isRecovery: false };
+      }
+
+      function missionHrefFromPath(path) {
+        if (!path) return "";
+        const marker = "/OperationDir/";
+        const idx = path.indexOf(marker);
+        if (idx >= 0) return path.slice(idx);
+        return "";
+      }
+
+      function renderOperationFocus() {
+        const container = document.getElementById("operation-focus-list");
+        if (!container) return;
+
+        const now = new Date();
+        const opDay = operationalDayKey(now);
+        const quarter = getQuarterState(now);
+        const operationOptions = [...new Set([
+          ...allOps,
+          ...allMissions.map((m) => m.operation).filter(Boolean),
+        ])].sort((a, b) => a.localeCompare(b));
+        const plan = loadMissionPlan(opDay);
+        const focusSlot = quarter.currentBlock > 0 ? getPlannedMission(plan, quarter.quarterIndex, quarter.currentBlock) : null;
+        const focusMissionText = focusSlot && (focusSlot.operation || focusSlot.missionName)
+          ? `${focusSlot.operation || "Operation"} - ${focusSlot.missionName || "Mission Task"}`
+          : "Operation - Mission Task";
+        const focusMissionHref = focusSlot ? missionHrefFromPath(focusSlot.missionPath) : "";
+        const taskNumber = Math.min(4, Math.max(1, quarter.currentBlock || 1));
+        const dayLine = `OPERATION DAY: ${opDay}`;
+        const quarterLine = `Q${quarter.quarterIndex}/8: [${formatUkHm(now)}]`;
+        const taskLine = (quarter.inWork && quarter.currentBlock >= 1 && quarter.currentBlock <= 4)
+          ? `TASK ${taskNumber}/4`
+          : "BREAK";
+
+        const quarterCards = Array.from({ length: 8 }).map((_, i) => {
+          const start = new Date(quarter.dayStart.getTime() + i * 3 * 60 * 60 * 1000);
+          const end = new Date(start.getTime() + 3 * 60 * 60 * 1000);
+          const active = i + 1 === quarter.quarterIndex;
+          const blockDefs = [
+            { sNum: 1, startMin: 0, endMin: 25, kind: "mission", tint: "block-tint-1" },
+            { sNum: 2, startMin: 30, endMin: 55, kind: "mission", tint: "block-tint-2" },
+            { sNum: 3, startMin: 60, endMin: 85, kind: "mission", tint: "block-tint-3" },
+            { sNum: 4, startMin: 90, endMin: 115, kind: "mission", tint: "block-tint-4" },
+            { sNum: 5, startMin: 120, endMin: 145, kind: "recovery", tint: "recovery-slot" },
+            { sNum: 6, startMin: 150, endMin: 175, kind: "recovery", tint: "recovery-slot" },
+          ];
+          const slots = blockDefs.map((def) => {
+            const slotStart = new Date(start.getTime() + def.startMin * 60000);
+            const slotEnd = new Date(start.getTime() + (def.endMin) * 60000);
+            const qNum = i + 1;
+            const sNum = def.sNum;
+            const rawSlot = (plan[qNum] && plan[qNum][sNum]) ? plan[qNum][sNum] : { operation: "", missionPath: "" };
+            const selectedMissionPath = typeof rawSlot === "string" ? rawSlot : (rawSlot.missionPath || "");
+            let selectedOperation = typeof rawSlot === "string" ? "" : (rawSlot.operation || "");
+            const selectedRecoveryTask = typeof rawSlot === "string" ? "" : (rawSlot.recoveryTask || "");
+            if (!selectedOperation && selectedMissionPath) {
+              const selectedMission = allMissions.find((m) => m.path === selectedMissionPath);
+              if (selectedMission) selectedOperation = selectedMission.operation || "";
+            }
+
+            const operationOptionsHtml = [`<option value="">-- Select Operation --</option>`]
+              .concat(operationOptions.map((op) =>
+                `<option value="${escapeHtmlAttr(op)}" ${op === selectedOperation ? "selected" : ""}>${escapeHtmlAttr(op)}</option>`
+              ))
+              .join("");
+
+            const filteredMissions = allMissions
+              .filter((m) => !selectedOperation || m.operation === selectedOperation)
+              .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+            const missionOptionsHtml = [`<option value="">-- Select Mission --</option>`]
+              .concat(filteredMissions.map((m) =>
+                `<option value="${escapeHtmlAttr(m.path)}" ${m.path === selectedMissionPath ? "selected" : ""}>${escapeHtmlAttr(m.name || "Untitled")}</option>`
+              ))
+              .join("");
+            const recoveryOptionsHtml = [
+              `<option value="">-- Select Recovery Task --</option>`,
+              `<option value="EAT" ${selectedRecoveryTask === "EAT" ? "selected" : ""}>EAT</option>`,
+              `<option value="READ" ${selectedRecoveryTask === "READ" ? "selected" : ""}>READ</option>`,
+              `<option value="EXERCISE" ${selectedRecoveryTask === "EXERCISE" ? "selected" : ""}>EXERCISE</option>`,
+              `<option value="CHECKLIST" ${selectedRecoveryTask === "CHECKLIST" ? "selected" : ""}>CHECKLIST</option>`,
+            ].join("");
+            const inner = def.kind === "mission" ? `
+                <div class="slot-label">Operation</div>
+                <select class="matrix-select"
+                        onchange="setMissionPlanOperation('${opDay}', ${qNum}, ${sNum}, this.value)">
+                  ${operationOptionsHtml}
+                </select>
+                <div class="slot-label">Mission</div>
+                <select class="matrix-select"
+                        onchange="setMissionPlanMission('${opDay}', ${qNum}, ${sNum}, this.value)">
+                  ${missionOptionsHtml}
+                </select>
+              ` : `
+                <div class="slot-label" style="color: var(--warning-yellow);">Recovery Task</div>
+                <select class="matrix-select recovery-select"
+                        onchange="setRecoveryTask('${opDay}', ${qNum}, ${sNum}, this.value)">
+                  ${recoveryOptionsHtml}
+                </select>
+              `;
+            return `
+              <div class="quarter-slot ${def.tint}">
+                <div class="quarter-slot-time">
+                  <strong>Block ${sNum}</strong> (${def.kind === "mission" ? "WORK" : "RECOVERY"}): ${formatHm(slotStart)}-${formatHm(slotEnd)}
+                </div>
+                ${inner}
+              </div>
+            `;
+          }).join("");
+
+          return `
+            <div class="hvi-card" style="border-color:${active ? "var(--warning-yellow)" : "var(--term-dim)"}; margin-bottom:6px;">
+              <strong>Q${i + 1}</strong> ${formatHm(start)}-${formatHm(end)}
+              <br />
+              <span style="color: var(--term-dim);">Blocks 1-4: Missions | Blocks 5-6: Recovery Tasks</span>
+              ${slots}
+            </div>
+          `;
+        }).join("");
+
+        container.innerHTML = `
+          <div class="focus-header">
+            <div class="focus-day">${dayLine}</div>
+            <div class="focus-quarter">${quarterLine}</div>
+            <div class="focus-phase">
+              ${taskLine}:
+              ${focusMissionHref
+                ? `<a href="${escapeHtmlAttr(focusMissionHref)}" target="_blank" rel="noopener noreferrer" style="color: var(--warning-yellow); font-weight: bold; text-decoration: underline;">[${escapeHtmlAttr(focusMissionText)}]</a>`
+                : `[${escapeHtmlAttr(focusMissionText)}]`}
+            </div>
+          </div>
+          ${quarterCards}
+        `;
+      }
+
+      async function fetchData() {
+        if (isFetching) return;
+        isFetching = true;
+
+        await fetchAndUpdate("/api/operations", (data) => {
+          allOps = data;
+          syncOperationOrder();
+          document.getElementById("op-count-dash").innerText = data.length;
+          renderOperations();
+        });
+
+        await fetchAndUpdate("/api/missions", (data) => {
+          allMissions = data;
+          document.getElementById("mission-count-dash").innerText = data.length;
+          renderMissions();
+          renderOperationFocus();
+          renderBriefMissionOptions();
+        });
+
+        await fetchAndUpdate("/api/blackbook", (data) => {
+          const tbody = document.querySelector("#view-blackbook tbody");
+          if (tbody) {
+            tbody.innerHTML = data.map(p => `
+              <tr data-probe-id="${escapeHtmlAttr(p.Probe_ID || "")}">
+                <td>${p.Probe_ID || "?"}</td>
+                <td><input class="bb-date" type="date" value="${escapeHtmlAttr(p.Date || "")}" /></td>
+                <td><input class="bb-time" type="time" value="${escapeHtmlAttr(p.Time || "")}" /></td>
+                <td><input class="bb-operation" type="text" value="${escapeHtmlAttr(p.Operation || "")}" /></td>
+                <td><input class="bb-mission" type="text" value="${escapeHtmlAttr(p.Mission || "")}" /></td>
+                <td>
+                  <select class="bb-status mission-status-select ${missionStatusClass(p.Status || "PENDING")}">
+                    <option value="PENDING" ${(p.Status || "PENDING") === "PENDING" ? "selected" : ""}>PENDING</option>
+                    <option value="IN_PROGRESS" ${(p.Status || "") === "IN_PROGRESS" ? "selected" : ""}>IN_PROGRESS</option>
+                    <option value="COMPLETE" ${(p.Status || "") === "COMPLETE" ? "selected" : ""}>COMPLETE</option>
+                    <option value="BLOCKED" ${(p.Status || "") === "BLOCKED" ? "selected" : ""}>BLOCKED</option>
+                  </select>
+                </td>
+                <td><input class="bb-hypothesis" type="text" value="${escapeHtmlAttr(p.Hypothesis || "")}" /></td>
+                <td><input class="bb-platform" type="text" value="${escapeHtmlAttr(p.Platform || "")}" /></td>
+                <td><input class="bb-result" type="text" value="${escapeHtmlAttr(p.Result_Quantitative || "PENDING")}" /></td>
+                <td><input class="bb-notes" type="text" value="${escapeHtmlAttr(p.Notes || "")}" /></td>
+                <td style="text-align:center;">
+                  <button class="submit-btn" style="padding:4px 8px; margin-right:6px;" onclick="saveBlackbookFromButton(this)" title="Save Row">SAVE</button>
+                  <button class="trash-btn" onclick="deleteBlackbookFromButton(this)" title="Delete Blackbook Log">X</button>
+                </td>
+              </tr>
+            `).join("") || "<tr><td colspan='11'>No blackbook logs.</td></tr>";
+          }
+        });
+
+        await fetchAndUpdate("/api/hvi", (data) => {
+          document.getElementById("hvi-count").innerText = data.length;
+          const container = document.getElementById("hvi-container");
+          if (container) {
+            container.innerHTML = data.map(h => `
+              <div class="hvi-card" style="position: relative;">
+                <button class="trash-btn" style="position:absolute; top:8px; right:8px;" onclick="deleteHvi('${h.handle || "Unknown"}')" title="Delete HVI">X</button>
+                <h3>${h.handle || "Unknown"}</h3>
+                <p><strong>Status:</strong> ${h["stage"] || "N/A"}</p>
+              </div>
+            `).join("") || "<div class='hvi-card'><p>No HVI profiles found.</p></div>";
+          }
+        });
+
+        const logOutputEl = document.getElementById("log-output");
+        if (logOutputEl) {
+          logOutputEl.innerHTML = `> System Sync OK @ ${new Date().toLocaleTimeString()}`;
+        }
+        isFetching = false;
+      }
+
+      document.addEventListener("DOMContentLoaded", () => {
+        if ("serviceWorker" in navigator) {
+          navigator.serviceWorker.getRegistrations().then((regs) => {
+            regs.forEach((r) => r.unregister());
+          }).catch(() => {});
+        }
+        if ("caches" in window) {
+          caches.keys().then((keys) => Promise.all(keys.map((k) => caches.delete(k)))).catch(() => {});
+        }
+        loadOperationColors();
+        loadOperationOrder();
+        loadMarkdownInto("/ProbeSkill.md", "probe-skill-content", "Failed to load ProbeSkill.md");
+        loadMarkdownInto("/OfficialProbeManuel.md", "probe-manual-content", "Failed to load OfficialProbeManuel.md");
+        loadChecklistItems();
+        document.addEventListener("keydown", onAppUndoRedoShortcut);
+        fetchData();
+        setInterval(fetchData, 10000);
+        switchView('dashboard');
+      });
+    </script>
+  </body>
+</html>

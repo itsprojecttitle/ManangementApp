@@ -1,0 +1,803 @@
+<!-- LIVE_MARKER_221907 -->
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>S.A.M.U.E.L // OMNI-DASHBOARD</title>
+    <style>
+      :root {
+        --bg-color: #050505;
+        --term-green: #00ff41;
+        --term-dim: #004411;
+        --alert-red: #ff3333;
+        --warning-yellow: #ffcc00;
+        --panel-bg: rgba(0, 20, 0, 0.6);
+        --border-style: 1px solid var(--term-green);
+      }
+
+      body {
+        background-color: var(--bg-color);
+        color: var(--term-green);
+        font-family: "Courier New", Courier, monospace;
+        margin: 0;
+        padding: 20px;
+        height: 100vh;
+        overflow: hidden;
+        display: grid;
+        grid-template-columns: 250px 1fr;
+        grid-template-rows: 60px 1fr 30px;
+        gap: 15px;
+      }
+
+      /* HEADER */
+      header {
+        grid-column: 1 / -1;
+        border-bottom: 2px solid var(--term-green);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 20px;
+        text-shadow: 0 0 10px var(--term-green);
+      }
+
+      .system-status {
+        font-size: 0.8rem;
+        color: var(--term-dim);
+      }
+
+      .status-active {
+        color: var(--term-green);
+      }
+
+      /* GLOBAL SEARCH */
+      #global-search-container {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        background: var(--panel-bg);
+        border: 1px solid var(--term-dim);
+        padding: 5px 10px;
+      }
+      #global-search {
+        background: transparent;
+        border: none;
+        color: var(--term-green);
+        font-family: inherit;
+        outline: none;
+        width: 200px;
+      }
+
+      /* SIDEBAR NAV */
+      aside {
+        grid-row: 2 / 3;
+        border: var(--border-style);
+        padding: 10px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        background: var(--panel-bg);
+      }
+
+      .nav-btn {
+        background: transparent;
+        border: 1px solid var(--term-dim);
+        color: var(--term-green);
+        padding: 15px;
+        text-align: left;
+        cursor: pointer;
+        transition: 0.2s;
+        font-family: inherit;
+        font-weight: bold;
+        text-transform: uppercase;
+      }
+
+      .nav-btn:hover,
+      .nav-btn.active {
+        background: var(--term-green);
+        color: black;
+        box-shadow: 0 0 15px var(--term-green);
+      }
+
+      /* MAIN CONTENT AREA */
+      main {
+        grid-row: 2 / 3;
+        border: var(--border-style);
+        padding: 20px;
+        overflow-y: auto;
+        position: relative;
+        background: radial-gradient(circle at center, #0a1a0a 0%, #000 100%);
+      }
+
+      .view-panel {
+        display: none;
+      }
+      .view-panel.active {
+        display: block;
+        animation: fadeIn 0.3s ease-in;
+      }
+
+      @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+      }
+
+      h2 {
+        border-bottom: 1px dashed var(--term-green);
+        padding-bottom: 10px;
+        margin-top: 0;
+      }
+
+      /* DATA TABLES */
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 15px;
+        font-size: 0.9rem;
+      }
+      th, td {
+        border: 1px solid var(--term-dim);
+        padding: 8px;
+        text-align: left;
+      }
+      th {
+        background-color: var(--term-dim);
+        color: var(--term-green);
+      }
+      tr:hover {
+        background-color: rgba(0, 255, 65, 0.1);
+      }
+
+      /* OPERATION MODULES GRID */
+      .ops-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: 15px;
+      }
+      .op-card {
+        border: 1px solid var(--term-green);
+        padding: 15px;
+        text-align: center;
+        cursor: pointer;
+        position: relative;
+      }
+      .op-card:hover {
+        background: var(--term-dim);
+      }
+      .op-icon {
+        font-size: 2rem;
+        display: block;
+        margin-bottom: 10px;
+      }
+      .op-delete-btn {
+        position: absolute;
+        top: 5px;
+        right: 5px;
+        background: transparent;
+        border: none;
+        color: var(--alert-red);
+        cursor: pointer;
+        font-size: 1rem;
+        opacity: 0.3;
+        transition: 0.2s;
+      }
+      .op-card:hover .op-delete-btn {
+        opacity: 1;
+      }
+
+      /* BACK BUTTON */
+      .back-btn {
+        background: var(--term-dim);
+        border: 1px solid var(--term-green);
+        color: var(--term-green);
+        padding: 5px 15px;
+        cursor: pointer;
+        font-family: inherit;
+        font-weight: bold;
+        text-transform: uppercase;
+        margin-bottom: 15px;
+        display: inline-block;
+      }
+      .back-btn:hover {
+        background: var(--term-green);
+        color: black;
+      }
+
+      .hidden-by-default {
+  display: none;
+}
+
+      /* HVI CARDS */
+      .hvi-card {
+        border-left: 4px solid var(--warning-yellow);
+        background: rgba(255, 204, 0, 0.05);
+        margin-bottom: 10px;
+        padding: 10px;
+        cursor: pointer;
+      }
+
+      /* PROBE MANUAL STYLES */
+      .manual-view {
+        line-height: 1.6;
+        max-width: 800px;
+      }
+      .manual-view h1, .manual-view h2, .manual-view h3 {
+        color: var(--warning-yellow);
+        border-bottom: 1px solid var(--term-dim);
+        margin-top: 25px;
+      }
+      .manual-view ul {
+        padding-left: 20px;
+      }
+      .manual-view code {
+        background: var(--term-dim);
+        padding: 2px 5px;
+      }
+
+      /* FOOTER */
+      footer {
+        grid-column: 1 / -1;
+        border-top: var(--border-style);
+        display: flex;
+        align-items: center;
+        padding: 0 20px;
+        font-size: 0.8rem;
+        justify-content: space-between;
+      }
+
+      /* SUBMISSION FORMS */
+      .submission-area {
+        border: 1px dashed var(--term-green);
+        background: rgba(0, 255, 65, 0.05);
+        padding: 20px;
+        margin-bottom: 20px;
+      }
+      .form-group {
+        margin-bottom: 15px;
+      }
+      .form-group label {
+        display: block;
+        margin-bottom: 5px;
+        color: var(--term-green);
+        opacity: 0.8;
+      }
+      .form-group input, .form-group select {
+        width: 100%;
+        padding: 8px;
+        background-color: var(--bg-color);
+        border: 1px solid var(--term-dim);
+        color: var(--term-green);
+        font-family: inherit;
+        box-sizing: border-box;
+      }
+      .submit-btn {
+        background-color: var(--term-dim);
+        color: var(--term-green);
+        border: 1px solid var(--term-green);
+        padding: 10px 20px;
+        cursor: pointer;
+        font-weight: bold;
+        text-transform: uppercase;
+      }
+      .submit-btn:hover {
+        background-color: var(--term-green);
+        color: var(--bg-color);
+      }
+      /* HIDDEN DELETE BUTTONS */
+      .hidden-by-default {
+        display: none;
+      }.hidden-by-default {
+  display: none;
+}
+    </style>
+  </head>
+  <body>
+    <!-- HEADER -->
+    <header>
+      <h1>// MANAGEMENT_APP_V1.3</h1>
+      <div class="system-status">
+        CORE: <span class="status-active">ONLINE</span> | CONNECTION:
+        <span class="status-active">SECURE</span> | USER: SLIDER
+      </div>
+    </header>
+
+    <!-- NAVIGATION SIDEBAR -->
+    <aside>
+      <button class="nav-btn active" onclick="switchView('dashboard')">[00] DASHBOARD</button>
+      <button class="nav-btn" id="nav-ops" onclick="switchView('operations')">[02] OPERATIONS</button>
+      <button class="nav-btn" onclick="switchView('blackbook')">[03] BLACK BOOK</button>
+      <button class="nav-btn" onclick="switchView('hvi-intel')">[04] HVI TARGETS</button>
+      <button class="nav-btn" onclick="switchView('probe-manual')">[05] PROBE MANUAL</button>
+      <button class="nav-btn" onclick="switchView('index-log')">[06] PROGRESS LOGS</button>
+    </aside>
+
+    <!-- MAIN DISPLAY -->
+    <main id="main-screen">
+      <!-- DASHBOARD VIEW -->
+      <div id="view-dashboard" class="view-panel active">
+        <h2>// SYSTEM OVERVIEW</h2>
+        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px">
+          <div class="op-card" onclick="switchView('operations')">
+            <span class="op-icon">📁</span>
+            <h3>OPERATIONS</h3>
+            <h1 style="margin: 0" id="op-count-dash">0</h1>
+          </div>
+          <div class="op-card" onclick="switchView('operations')">
+            <span class="op-icon">⚡</span>
+            <h3>MISSIONS</h3>
+            <h1 style="margin: 0" id="mission-count-dash">0</h1>
+          </div>
+          <div class="op-card" onclick="switchView('hvi-intel')">
+            <span class="op-icon">🎯</span>
+            <h3>HVI Intel</h3>
+            <h1 style="margin: 0" id="hvi-count">0</h1>
+          </div>
+        </div>
+        <br />
+        <h3>// OPERATION FOCUS</h3>
+        <div class="hvi-card" style="border-color: var(--term-green)">
+          Total Operations Detected: <span id="op-count-dash-secondary">0</span>
+        </div>
+      </div>
+
+      <!-- MISSION LOG VIEW -->
+      <div id="view-mission-log" class="view-panel">
+        <button class="back-btn" onclick="switchView('operations')">< BACK TO OPERATIONS</button>
+        <h2 id="mission-header">// MASTER MISSION INDEX</h2>
+        <p>Source: <code id="mission-source-code">OperationDir/Operations/[OP]/Missions/[BRIEF]</code></p>
+
+        <div id="mission-submission-area" class="submission-area">
+          <h3>+ LOG NEW MISSION</h3>
+          <div class="form-group">
+            <label for="new-mission-name">Mission Name:</label>
+            <input type="text" id="new-mission-name" placeholder="e.g., Acquire Target X Data" />
+          </div>
+          <div class="form-group">
+            <label for="new-mission-op">Operation:</label>
+            <input type="text" id="new-mission-op" value="ProjectTitle" />
+          </div>
+          <div class="form-group">
+            <label for="new-mission-status">Status:</label>
+            <select id="new-mission-status">
+              <option value="PENDING">PENDING</option>
+              <option value="IN_PROGRESS">IN_PROGRESS</option>
+              <option value="COMPLETE">COMPLETE</option>
+              <option value="BLOCKED">BLOCKED</option>
+            </select>
+          </div>
+          <button class="submit-btn" onclick="submitNewMission()">LOG MISSION</button>
+          <p id="submission-message" style="margin-top: 10px"></p>
+        </div>
+
+        <table id="mission-table">
+          <thead>
+            <tr>
+              <th>DATE</th>
+              <th>OPERATION</th>
+              <th>MISSION</th>
+              <th>STATUS</th>
+              <th style="width: 50px;">ACTIONS</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td colspan="5">Loading missions...</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- OPERATIONS VIEW -->
+      <div id="view-operations" class="view-panel">
+        <h2>// ACTIVE THEATERS</h2>
+        
+        <div id="operation-submission-area" class="submission-area">
+          <h3>+ CREATE NEW OPERATION</h3>
+          <div class="form-group">
+            <label for="new-op-name">Operation Name:</label>
+            <input type="text" id="new-op-name" placeholder="e.g., TargetRecon" />
+          </div>
+          <button class="submit-btn" onclick="submitNewOperation()">INITIALIZE OPERATION</button>
+          <p id="op-submission-message" style="margin-top: 10px"></p>
+        </div>
+
+        <p>Source: <code>OperationDir/Operations/</code></p>
+        <div class="ops-grid">
+          <div class="op-card" style="position: relative;">
+            <button class="op-delete-btn" onclick="deleteOperation('${op}', event)" title="Delete Operation">X</button>
+            <span class="op-icon">📁</span>
+            ${op.toUpperCase()}
+          </div>
+        </div>
+        <button id="edit-ops-btn" class="nav-btn" onclick="toggleEditMode('operations')">EDIT OPERATIONS</button>
+      </div>
+
+      <!-- BLACK BOOK VIEW -->
+      <div id="view-blackbook" class="view-panel">
+        <h2>// BLACK BOOK LAB RESULTS</h2>
+        <p>Source: <code>OperationDir/BLACK_BOOK.md</code></p>
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>HYPOTHESIS</th>
+              <th>PLATFORM</th>
+              <th>RESULT</th>
+              <th style="width: 70px;">ACTIONS</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td colspan="5">Loading probes...</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- HVI VIEW -->
+      <div id="view-hvi-intel" class="view-panel">
+        <h2>// HIGH VALUE INDIVIDUALS (Summary)</h2>
+        <p>Source: <code>OperationDir/HVI_INDEX.md</code></p>
+        <div id="hvi-container">
+          <div class="hvi-card"><p>Loading HVI profiles...</p></div>
+        </div>
+      </div>
+
+      <!-- PROBE MANUAL VIEW -->
+      <div id="view-probe-manual" class="view-panel">
+        <h2>// UNIVERSAL PROBE MANUAL</h2>
+        <div class="manual-view">
+          <h3>BEFORE I DIE</h3>
+          <p>Before I die I wish to make the world happy. Not distracted, but gifted with understanding. Gifted with knowledge. The same knowledge, those currently gifted use to steal from others.</p>
+          <p>The world isn't easy. With the same energy used to survive, to flight, we can use to live & Fight. Life only comes once. And with the life we don't deserve, with this Abyss we chose to turn to hell without awareness, we can use it to explore some cool shit.</p>
+          
+          <h3>0) What a “probe” is</h3>
+          <p>A <strong>probe</strong> is a small, controlled action used to <strong>measure reality</strong>.</p>
+          <p><strong>CRITICAL PRE-REQUISITE: BIOLOGICAL SIGNAL INTEGRITY</strong></p>
+          <ul>
+            <li>Memory (Sleep)</li>
+            <li>Energy (Eat)</li>
+            <li>Mobility (Exercise)</li>
+          </ul>
+          <p>Loop: <strong>Model → Probe → Measure → Update → Repeat</strong></p>
+
+          <h3>1) Core terminology (universal)</h3>
+          <ul>
+            <li><strong>System</strong>: anything with inputs/outputs and feedback (market, audience, body, team, algorithm).</li>
+            <li><strong>Mission</strong>: long-term objective (why).</li>
+            <li><strong>Operation</strong>: a campaign composed of multiple probes (how).</li>
+            <li><strong>Protocol</strong>: repeatable SOP (rules that keep quality\/safety).</li>
+          </ul>
+
+          <h3>2) The 3 Layers of Probing (The Funnel)</h3>
+          <ul>
+            <li><strong>Layer 1: Global Probes (Market-wide)</strong> - Action: Broad tests or public rankings. Goal: Filter the crowd.</li>
+            <li><strong>Layer 2: Segment Probes (Tribe/Cluster)</strong> - Action: Focused tests on specific groups. Goal: Map internal network.</li>
+            <li><strong>Layer 3: Personal Probes (Single Target)</strong> - Action: Direct, one-on-one measurement. Goal: Offer micro-commitment.</li>
+            <li><strong>Layer 4: The Shadow Layer (Gatekeeper Bypass)</strong> - Move: Probe for the Human Proxy.</li>
+            <li><strong>Layer 5: The Meta-Layer (Internal Audit)</strong> - Move: Pivot the Manual, not the Target. Audit own systems.</li>
+          </ul>
+
+          <h3>3) Hypothesis stage (mandatory)</h3>
+          <code>If X is applied to Y under Z, then O changes because R.</code>
+          <ul>
+            <li>X (Intervention/Input): what you do</li>
+            <li>Y (Target/Population): who/what you apply it to</li>
+            <li>Z (Context/Conditions): when/where/constraints</li>
+            <li>O (Output/KPI): what you measure</li>
+            <li>R (Mechanism): why it should work</li>
+          </ul>
+
+          <h3>4) Master Probe Flow</h3>
+          <ol>
+            <li>Validate identity.</li>
+            <li>Highlight subtle misalignment.</li>
+            <li>Introduce risk or opportunity.</li>
+            <li>Ask a thinking question.</li>
+            <li>Let silence work.</li>
+          </ol>
+        </div>
+      </div>
+
+      <!-- LOGS VIEW -->
+      <div id="view-index-log" class="view-panel">
+        <h2>// PROGRESS LOGS</h2>
+        <button class="submit-btn" style="margin-bottom: 10px;" onclick="clearProgressLogs()">CLEAR LOGS</button>
+        <div id="log-output" style="background: #001100; padding: 15px; font-family: monospace; border: 1px solid var(--term-dim);">
+          > System initializing...
+        </div>
+      </div>
+    </main>
+
+    <!-- FOOTER -->
+    <footer>
+      <div id="footer-status-left" class="system-status">
+        <span class="status-active">ONLINE</span> | <span class="status-active">SECURE</span>
+      </div>
+      <div>TERMINAL_ID: 0x992</div>
+      <div id="footer-status-right">
+        <span id="sync-status">LIVE SYNC</span>
+      </div>
+    </footer>
+
+    <script>
+      let isFetching = false;
+      let currentView = "dashboard";
+      let selectedOperation = null;
+      let allMissions = [];
+      let allOps = [];
+      let searchQuery = "";
+
+      function switchView(viewId) {
+        document.querySelectorAll(".view-panel").forEach((el) => el.style.display = "none");
+        const targetView = document.getElementById("view-" + viewId);
+        if (targetView) targetView.style.display = "block";
+        
+        document.querySelectorAll(".nav-btn").forEach((btn) => btn.classList.remove("active"));
+        const targetBtn = document.querySelector(`.nav-btn[onclick*="${viewId}"]`);
+        if (targetBtn) targetBtn.classList.add("active");
+
+        currentView = viewId;
+
+        if (viewId !== "mission-log") {
+          selectedOperation = null;
+          updateMissionHeader();
+        }
+      }
+
+      function updateMissionHeader() {
+        const header = document.getElementById("mission-header");
+        const sourceCode = document.getElementById("mission-source-code");
+        const opInput = document.getElementById("new-mission-op");
+
+        if (selectedOperation) {
+          header.innerText = `// ${selectedOperation.toUpperCase()} MISSIONS`;
+          sourceCode.innerText = `OperationDir/Operations/${selectedOperation}/Missions/[BRIEF]`;
+          if (opInput) opInput.value = selectedOperation;
+        } else {
+          header.innerText = "// MASTER MISSION INDEX";
+          sourceCode.innerText = `OperationDir/Operations/[OP]/Missions/[BRIEF]`;
+          if (opInput) opInput.value = "ProjectTitle";
+        }
+      }
+
+      async function handleOpCardClick(operationName) {
+        selectedOperation = operationName;
+        updateMissionHeader();
+        switchView("mission-log");
+        renderMissions();
+      }
+
+      function handleSearch() {
+        const searchEl = document.getElementById("global-search");
+        searchQuery = searchEl ? searchEl.value.toLowerCase() : "";
+        if (currentView === "mission-log") renderMissions();
+        if (currentView === "operations") renderOperations();
+      }
+
+      async function fetchAndUpdate(endpoint, callback) {
+        try {
+          const res = await fetch(endpoint, { cache: "no-store" });
+          const data = await res.json();
+          callback(data);
+        } catch (e) {
+          console.error(`Fetch to ${endpoint} Failed`, e);
+        }
+      }
+
+      async function submitNewMission() {
+        const nameInput = document.getElementById("new-mission-name");
+        const opInput = document.getElementById("new-mission-op");
+        const statusSelect = document.getElementById("new-mission-status");
+        const msgEl = document.getElementById("submission-message");
+
+        if (!nameInput.value.trim()) {
+          msgEl.innerHTML = '<span style="color:red;">NAME REQUIRED.</span>';
+          return;
+        }
+
+        try {
+          const res = await fetch("/api/missions/new", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              name: nameInput.value.trim(),
+              operation: opInput.value.trim(),
+              status: statusSelect.value
+            })
+          });
+          if (res.ok) {
+            msgEl.innerHTML = '<span style="color:var(--term-green);">SUCCESS.</span>';
+            nameInput.value = "";
+            fetchData();
+          }
+        } catch (e) { msgEl.innerText = "Error: " + e.message; }
+      }
+
+      async function submitNewOperation() {
+        const nameInput = document.getElementById("new-op-name");
+        const msgEl = document.getElementById("op-submission-message");
+
+        if (!nameInput.value.trim()) {
+          msgEl.innerHTML = '<span style="color:red;">NAME REQUIRED.</span>';
+          return;
+        }
+
+        try {
+          const res = await fetch("/api/operation", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name: nameInput.value.trim() })
+          });
+          if (res.ok) {
+            msgEl.innerHTML = '<span style="color:var(--term-green);">INITIALIZED.</span>';
+            nameInput.value = "";
+            fetchData();
+          } else {
+            const err = await res.json();
+            msgEl.innerHTML = `<span style="color:red;">ERROR: ${err.message}</span>`;
+          }
+        } catch (e) { msgEl.innerText = "Error: " + e.message; }
+      }
+
+      async function deleteMission(path) {
+        if (!confirm("Are you absolutely sure you want to nuke this mission? There's no undoing this, Slider.")) return;
+        
+        try {
+          const res = await fetch("/api/mission", {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ path: path })
+          });
+          if (res.ok) fetchData();
+        } catch (e) { alert("Delete failed: " + e.message); }
+      }
+
+      async function deleteOperation(op, event) {
+        if (event) event.stopPropagation();
+        if (!confirm(`Are you sure you want to delete the entire '${op}' operation? This is a permanent wipe.`)) return;
+
+        try {
+          const res = await fetch("/api/operation", {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name: op })
+          });
+          if (res.ok) fetchData();
+        } catch (e) { alert("Delete failed: " + e.message); }
+      }
+
+      async function deleteBlackbookLog(probeId) {
+        if (!confirm(`Delete blackbook log '${probeId}'?`)) return;
+        try {
+          const res = await fetch("/api/blackbook", {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ probe_id: probeId })
+          });
+          if (res.ok) fetchData();
+        } catch (e) { alert("Delete failed: " + e.message); }
+      }
+
+      async function deleteHvi(handle) {
+        if (!confirm(`Delete HVI '${handle}'?`)) return;
+        try {
+          const res = await fetch("/api/hvi", {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ handle: handle })
+          });
+          if (res.ok) fetchData();
+        } catch (e) { alert("Delete failed: " + e.message); }
+      }
+
+      async function clearProgressLogs() {
+        if (!confirm("Clear progress logs?")) return;
+        try {
+          await fetch("/api/logs", { method: "DELETE" });
+          const logOutput = document.getElementById("log-output");
+          if (logOutput) logOutput.innerHTML = "> Logs cleared.";
+        } catch (e) { alert("Failed to clear logs: " + e.message); }
+      }
+
+      function renderMissions() {
+        const tbody = document.querySelector("#view-mission-log tbody");
+        if (!tbody) return;
+
+        let filtered = allMissions;
+        if (selectedOperation) {
+          filtered = filtered.filter(m => m.operation === selectedOperation);
+        }
+        if (searchQuery) {
+          filtered = filtered.filter(m => 
+            m.name.toLowerCase().includes(searchQuery) || 
+            m.operation.toLowerCase().includes(searchQuery)
+          );
+        }
+
+        tbody.innerHTML = filtered.map(m => `
+          <tr>
+            <td>${m.date}</td>
+            <td>${m.operation}</td>
+            <td>${m.name}</td>
+            <td style="color: ${m.status.includes('PENDING') ? 'var(--warning-yellow)' : 'var(--term-green)'}">${m.status}</td>
+            <td style="text-align: center;">
+              <button class="trash-btn" onclick="deleteMission('${m.path}')" title="Delete Mission">X</button>
+            </td>
+          </tr>
+        `).join("") || "<tr><td colspan='5'>No missions found.</td></tr>";
+      }
+
+      function renderOperations() {
+        const grid = document.querySelector(".ops-grid");
+        if (!grid) return;
+
+        let filtered = allOps;
+        if (searchQuery) {
+          filtered = filtered.filter(op => op.toLowerCase().includes(searchQuery));
+        }
+
+        grid.innerHTML = filtered.map(op => `
+          <div class="op-card" onclick="handleOpCardClick('${op}')">
+            <button class="op-delete-btn" onclick="deleteOperation('${op}', event)" title="Delete Operation">X</button>
+            <span class="op-icon">📁</span>
+            ${op.toUpperCase()}
+          </div>
+        `).join("") || "<p>No matching operations.</p>";
+      }
+
+      async function fetchData() {
+        if (isFetching) return;
+        isFetching = true;
+
+        await fetchAndUpdate("/api/operations", (data) => {
+          allOps = data;
+          document.getElementById("op-count-dash").innerText = data.length;
+          document.getElementById("op-count-dash-secondary").innerText = data.length;
+          renderOperations();
+        });
+
+        await fetchAndUpdate("/api/missions", (data) => {
+          allMissions = data;
+          document.getElementById("mission-count-dash").innerText = data.length;
+          renderMissions();
+        });
+
+        await fetchAndUpdate("/api/blackbook", (data) => {
+          const tbody = document.querySelector("#view-blackbook tbody");
+          if (tbody) {
+            tbody.innerHTML = data.map(p => `
+              <tr>
+                <td>${p.Probe_ID || "?"}</td>
+                <td>${p.Hypothesis || ""}</td>
+                <td>${p.Platform || ""}</td>
+                <td>${p.Result_Quantitative || "PENDING"}</td>
+                <td style="text-align:center;">
+                  <button class="trash-btn" onclick="deleteBlackbookLog('${p.Probe_ID || "?"}')" title="Delete Blackbook Log">X</button>
+                </td>
+              </tr>
+            `).join("") || "<tr><td colspan='5'>No blackbook logs.</td></tr>";
+          }
+        });
+
+        await fetchAndUpdate("/api/hvi", (data) => {
+          document.getElementById("hvi-count").innerText = data.length;
+          const container = document.getElementById("hvi-container");
+          if (container) {
+            container.innerHTML = data.map(h => `
+              <div class="hvi-card" style="position: relative;">
+                <button class="trash-btn" style="position:absolute; top:8px; right:8px;" onclick="deleteHvi('${h.handle || "Unknown"}')" title="Delete HVI">X</button>
+                <h3>${h.handle || "Unknown"}</h3>
+                <p><strong>Status:</strong> ${h["stage"] || "N/A"}</p>
+              </div>
+            `).join("") || "<div class='hvi-card'><p>No HVI profiles found.</p></div>";
+          }
+        });
+
+        document.getElementById("log-output").innerHTML = `> System Sync OK @ ${new Date().toLocaleTimeString()}`;
+        isFetching = false;
+      }
+
+      document.addEventListener("DOMContentLoaded", () => {
+        fetchData();
+        setInterval(fetchData, 10000);
+        switchView('dashboard');
+      });
+    </script>
+  </body>
+</html>
