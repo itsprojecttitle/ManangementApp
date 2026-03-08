@@ -166,5 +166,31 @@
     "Result_Quantitative": "PENDING",
     "Notes": "/Users/samuelapata/Desktop/ManagementApp_Project/OperationDir/Operations/Job/Missions/TEST_CREATE_MISSION.md",
     "Probe_ID": "BB-20260307-133309"
+  },
+  {
+    "Date": "2026-03-07",
+    "Time": "23:30",
+    "Operation": "Artist",
+    "Mission": "LARP",
+    "Status": "IN_PROGRESS",
+    "Hypothesis": "Mission execution log entry",
+    "Platform": "Internal",
+    "Result_Quantitative": "PENDING",
+    "Notes": "/Users/samuelapata/Desktop/ManagementApp_Project/OperationDir/Operations/Artist/Missions/LARP.md",
+    "Probe_ID": "BB-20260307-233034",
+    "Description": ""
+  },
+  {
+    "Date": "2026-03-07",
+    "Time": "23:31",
+    "Operation": "ProjectTitle",
+    "Mission": "CTA",
+    "Status": "IN_PROGRESS",
+    "Hypothesis": "Mission execution log entry",
+    "Platform": "Internal",
+    "Result_Quantitative": "PENDING",
+    "Notes": "/Users/samuelapata/Desktop/ManagementApp_Project/OperationDir/Operations/ProjectTitle/Missions/CTA.md",
+    "Probe_ID": "BB-20260307-233110",
+    "Description": ""
   }
 ]
