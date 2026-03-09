@@ -1,0 +1,11 @@
+.DS_Store
+*.pyc
+__pycache__/
+.venv/
+build/
+dist/
+node_modules/
+www/
+backups/
+*.dmg
+*.app/

@@ -7,6 +7,7 @@ import time
 import ipaddress
 import shlex
 import subprocess
+import uuid
 from threading import Lock
 from collections import deque
 from datetime import datetime
@@ -14,7 +15,9 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-WORKSPACE = Path(__file__).resolve().parent
+from omni_runtime import ensure_runtime_root
+
+WORKSPACE = ensure_runtime_root()
 OPERATIONS_DIR = WORKSPACE / "OperationDir" / "Operations"
 BLACKBOOK_FILE = WORKSPACE / "blackbook.crm"
 BLACKBOOK_MD_FILE = WORKSPACE / "OperationDir" / "BLACK_BOOK.md"
@@ -23,6 +26,7 @@ HVI_INDEX_FILE = WORKSPACE / "OperationDir" / "HVI_INDEX.md"
 MANUEL_DIR = WORKSPACE / "OperationDir" / "Manuel"
 EDITABLE_DOC_FILES = {"MissionBriefing.md", "MissionDebrief.md"}
 SWISSKNIFE_SESSIONS_FILE = WORKSPACE / "swissknife_sessions.json"
+SANDBOX_LAB_DIR = WORKSPACE / "SandboxLab"
 SWISSKNIFE_VM_BASE = "/home/samuelapata/SwissknifeSessions"
 GCLOUD_BIN = shutil.which("gcloud") or "/opt/homebrew/bin/gcloud"
 GCLOUD_SSH_BASE = [
@@ -37,6 +41,7 @@ GCLOUD_SSH_BASE = [
 ]
 MISSION_STATUSES = {"PENDING", "IN_PROGRESS", "COMPLETE", "BLOCKED"}
 ALLOWED_HOSTS = {"127.0.0.1:8099", "localhost:8099"}
+ALLOW_LAN = os.environ.get("ALLOW_LAN", "").strip().lower() in {"1", "true", "yes", "on"}
 RATE_LIMIT_WINDOW_SEC = 60
 RATE_LIMIT_API_GET = 240
 RATE_LIMIT_API_MUTATE = 90
@@ -119,6 +124,7 @@ def load_missions():
             m = re.search(r"^\s*Status:\s*([A-Z_]+)\s*$", content, re.M)
             if m and m.group(1) in MISSION_STATUSES:
                 status = m.group(1)
+            status = _derive_mission_status(f, status)
             rows.append({
                 "date": ts,
                 "operation": op_rel,
@@ -127,6 +133,165 @@ def load_missions():
                 "path": str(f),
             })
     return rows
+
+
+def _status_from_mission_file(path: Path) -> str:
+    try:
+        text = path.read_text(encoding="utf-8", errors="ignore")
+    except Exception:
+        return "PENDING"
+    m = re.search(r"^\s*Status:\s*([A-Z_]+)\s*$", text, re.M)
+    if m and m.group(1) in MISSION_STATUSES:
+        return m.group(1)
+    return "PENDING"
+
+
+def _debrief_dir_for_mission(mission_path: Path) -> Path:
+    return mission_path.parent / ".debrief_versions" / mission_path.stem
+
+
+def _debrief_index_path(mission_path: Path) -> Path:
+    return _debrief_dir_for_mission(mission_path) / "index.json"
+
+
+def _load_debrief_index(mission_path: Path):
+    idx = _debrief_index_path(mission_path)
+    if not idx.exists():
+        return {"versions": []}
+    try:
+        data = json.loads(idx.read_text(encoding="utf-8"))
+        if isinstance(data, dict) and isinstance(data.get("versions", []), list):
+            return data
+    except Exception:
+        pass
+    return {"versions": []}
+
+
+def _save_debrief_index(mission_path: Path, data):
+    ddir = _debrief_dir_for_mission(mission_path)
+    ddir.mkdir(parents=True, exist_ok=True)
+    _debrief_index_path(mission_path).write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+
+def _has_mission_debrief(mission_path: Path) -> bool:
+    idx = _load_debrief_index(mission_path)
+    versions = idx.get("versions", []) if isinstance(idx, dict) else []
+    return bool(versions)
+
+
+def _derive_mission_status(mission_path: Path, current_status: str) -> str:
+    cur = current_status if current_status in MISSION_STATUSES else "PENDING"
+    if _has_mission_debrief(mission_path):
+        return "COMPLETE"
+    brief_count, _ = _mission_brief_meta(mission_path)
+    if brief_count > 0:
+        return "IN_PROGRESS"
+    if cur == "BLOCKED":
+        return "BLOCKED"
+    return "PENDING"
+
+
+def _mission_identity_from_path(path: Path):
+    p = Path(path)
+    try:
+        rel = p.parent.relative_to(OPERATIONS_DIR)
+        operation = rel.as_posix().replace("/Missions", "")
+    except Exception:
+        operation = ""
+    mission = p.stem.replace("_", " ")
+    return operation, mission
+
+
+def _mission_brief_meta(mission_path: Path):
+    idx = _load_brief_index(mission_path)
+    versions = idx.get("versions", []) if isinstance(idx, dict) else []
+    latest_phase = 0
+    if versions:
+        latest = versions[-1] if isinstance(versions[-1], dict) else {}
+        try:
+            latest_phase = int(latest.get("phase", 0) or 0)
+        except Exception:
+            latest_phase = 0
+    return len(versions), latest_phase
+
+
+def _blackbook_rows_for_mission(rows, mission_path: str, operation: str, mission: str):
+    matches = []
+    mpath = str(mission_path or "").strip()
+    op_norm = str(operation or "").strip().lower()
+    ms_norm = str(mission or "").strip().lower()
+    for i, row in enumerate(rows):
+        notes = str((row or {}).get("Notes", "")).strip()
+        row_op = str((row or {}).get("Operation", "")).strip().lower()
+        row_ms = str((row or {}).get("Mission", "")).strip().lower()
+        by_path = bool(mpath and (notes == mpath or notes.startswith(f"{mpath} |")))
+        by_identity = bool(op_norm and ms_norm and row_op == op_norm and row_ms == ms_norm)
+        if by_path or by_identity:
+            matches.append(i)
+    return matches
+
+
+def sync_blackbook_for_mission_path(mission_path_str: str, event: str = "UPDATED"):
+    mission_path = _validate_mission_path(mission_path_str)
+    if not mission_path:
+        return None
+    operation, mission = _mission_identity_from_path(mission_path)
+    status = _status_from_mission_file(mission_path)
+    version_count, latest_phase = _mission_brief_meta(mission_path)
+    now = datetime.now()
+
+    rows = load_blackbook()
+    hit_indexes = _blackbook_rows_for_mission(rows, str(mission_path), operation, mission)
+    entry = {
+        "Date": now.strftime("%Y-%m-%d"),
+        "Time": now.strftime("%H:%M"),
+        "Operation": operation,
+        "Mission": mission,
+        "Status": status,
+        "Description": f"Auto-sync: Mission {event.lower()}.",
+        "Hypothesis": f"Mission lifecycle auto-tracked | phases={version_count}",
+        "Platform": "Internal",
+        "Result_Quantitative": status,
+        "Notes": f"{mission_path} | phases:{version_count} | latest_phase:{latest_phase}",
+    }
+
+    if hit_indexes:
+        # Keep first matching row; remove duplicates.
+        keep = hit_indexes[0]
+        rows[keep] = {**rows[keep], **entry}
+        for idx in reversed(hit_indexes[1:]):
+            rows.pop(idx)
+        save_blackbook(rows)
+        return rows[keep].get("Probe_ID", "")
+    return upsert_blackbook(entry)
+
+
+def remove_blackbook_for_mission_path(mission_path_str: str):
+    mission_path = str(mission_path_str or "").strip()
+    if not mission_path:
+        return 0
+    p = Path(mission_path)
+    operation, mission = _mission_identity_from_path(p)
+    rows = load_blackbook()
+    hit_indexes = _blackbook_rows_for_mission(rows, mission_path, operation, mission)
+    if not hit_indexes:
+        return 0
+    for idx in reversed(hit_indexes):
+        rows.pop(idx)
+    save_blackbook(rows)
+    return len(hit_indexes)
+
+
+def remove_blackbook_for_operation(operation: str):
+    op_norm = str(operation or "").strip().lower()
+    if not op_norm:
+        return 0
+    rows = load_blackbook()
+    new_rows = [r for r in rows if str((r or {}).get("Operation", "")).strip().lower() != op_norm]
+    removed = len(rows) - len(new_rows)
+    if removed:
+        save_blackbook(new_rows)
+    return removed
 
 
 def update_mission_status(path: str, status: str) -> bool:
@@ -262,6 +427,105 @@ def get_mission_brief_version(mission_path_str: str, file_name: str):
     }
 
 
+def get_mission_debrief_payload(mission_path_str: str):
+    mission_path = _validate_mission_path(mission_path_str)
+    if not mission_path:
+        return None
+    data = _load_debrief_index(mission_path)
+    versions = data.get("versions", [])
+    latest = versions[-1] if versions else None
+    content = ""
+    if latest:
+        f = _debrief_dir_for_mission(mission_path) / latest.get("file", "")
+        if f.exists():
+            content = f.read_text(encoding="utf-8", errors="ignore")
+    return {
+        "mission_path": str(mission_path),
+        "versions": versions,
+        "latest": latest,
+        "content": content,
+    }
+
+
+def _extract_hvi_handles_from_text(text: str):
+    out = []
+    seen = set()
+    for m in re.finditer(r"(?:\bHVI\b|\bHandle\b|\bTarget\b)\s*[:\-]\s*@?([A-Za-z0-9._-]{2,64})", text or "", re.I):
+        h = m.group(1).strip()
+        key = h.lower()
+        if key not in seen:
+            out.append(h)
+            seen.add(key)
+    for m in re.finditer(r"@([A-Za-z0-9._-]{2,64})", text or ""):
+        h = m.group(1).strip()
+        key = h.lower()
+        if key not in seen:
+            out.append(h)
+            seen.add(key)
+    return out[:24]
+
+
+def _extract_line_value(text: str, patterns):
+    for pat in patterns:
+        m = re.search(pat, text or "", re.I | re.M)
+        if m:
+            return str(m.group(1) or "").strip()
+    return ""
+
+
+def save_mission_debrief_version(mission_path_str: str, content: str):
+    mission_path = _validate_mission_path(mission_path_str)
+    if not mission_path:
+        return None
+    brief_count, latest_phase = _mission_brief_meta(mission_path)
+    if brief_count < 1:
+        return {"error": "Brief required before debrief."}
+
+    ddir = _debrief_dir_for_mission(mission_path)
+    ddir.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    fname = f"debrief_{max(latest_phase, 1):02d}_{stamp}.md"
+    (ddir / fname).write_text(content or "", encoding="utf-8")
+
+    idx = _load_debrief_index(mission_path)
+    version = {
+        "phase": int(max(latest_phase, 1)),
+        "file": fname,
+        "created_at": datetime.now().isoformat(timespec="seconds"),
+    }
+    idx.setdefault("versions", []).append(version)
+    _save_debrief_index(mission_path, idx)
+
+    update_mission_status(str(mission_path), "COMPLETE")
+
+    operation, mission = _mission_identity_from_path(mission_path)
+    status_line = _extract_line_value(content, [
+        r"^\s*HVI\s*Status\s*[:\-]\s*(.+)$",
+        r"^\s*Status\s*[:\-]\s*(.+)$",
+    ]) or "UPDATED"
+    result_line = _extract_line_value(content, [
+        r"^\s*Result\s*[:\-]\s*(.+)$",
+        r"^\s*Outcome\s*[:\-]\s*(.+)$",
+    ]) or "Debrief logged"
+    next_phase = _extract_line_value(content, [r"^\s*Next\s*Phase\s*[:\-]\s*(.+)$"])
+    handles = _extract_hvi_handles_from_text(content)
+    updated_handles = []
+    for handle in handles:
+        h = upsert_hvi(handle, {
+            "Status": status_line,
+            "Mission Stage": "DEBRIEFED",
+            "Operation": operation,
+            "Mission": mission,
+            "Result": result_line,
+            "Next Phase": next_phase or "N/A",
+            "Last Debrief At": datetime.now().isoformat(timespec="seconds"),
+        })
+        if h:
+            updated_handles.append(h)
+
+    return {"version": version, "hvi_updated": updated_handles}
+
+
 def save_mission_brief_version(mission_path_str: str, phase: int, content: str, variables):
     mission_path = _validate_mission_path(mission_path_str)
     if not mission_path:
@@ -286,6 +550,7 @@ def save_mission_brief_version(mission_path_str: str, phase: int, content: str, 
     }
     idx.setdefault("versions", []).append(version)
     _save_brief_index(mission_path, idx)
+    update_mission_status(str(mission_path), "IN_PROGRESS")
     return version
 
 
@@ -715,6 +980,173 @@ def swissknife_download_to_session(session_id: str, url: str, do_login: bool):
     return {"session": rows[idx], "download": record}
 
 
+def swissknife_delete_session(session_id: str):
+    sid = str(session_id or "").strip()
+    if not sid:
+        raise RuntimeError("session_id is required")
+    rows = _load_swissknife_sessions()
+    idx = _find_session(rows, sid)
+    if idx < 0:
+        raise RuntimeError("Session not found")
+    row = rows[idx]
+    rows.pop(idx)
+    _save_swissknife_sessions(rows)
+    return {"id": sid, "remote_path": str(row.get("remote_path", ""))}
+
+
+def run_python_sandbox(code: str):
+    source = str(code or "")
+    if not source.strip():
+        raise RuntimeError("Code is empty")
+    if len(source) > 60000:
+        raise RuntimeError("Code too large")
+    blocked = [
+        r"\bimport\s+os\b",
+        r"\bimport\s+subprocess\b",
+        r"\bimport\s+socket\b",
+        r"\bimport\s+requests\b",
+        r"\bfrom\s+os\s+import\b",
+        r"\bfrom\s+subprocess\s+import\b",
+        r"\bos\.system\s*\(",
+        r"\bsubprocess\.",
+        r"\beval\s*\(",
+        r"\bexec\s*\(",
+        r"\bopen\s*\(",
+        r"__import__\s*\(",
+    ]
+    lower_src = source.lower()
+    for pat in blocked:
+        if re.search(pat, lower_src):
+            raise RuntimeError("Blocked operation in sandbox code")
+
+    SANDBOX_LAB_DIR.mkdir(parents=True, exist_ok=True)
+    script_name = f"lab_{uuid.uuid4().hex}.py"
+    script_path = SANDBOX_LAB_DIR / script_name
+    script_path.write_text(source, encoding="utf-8")
+    t0 = time.time()
+    env = {
+        "PATH": os.environ.get("PATH", ""),
+        "PYTHONNOUSERSITE": "1",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "HOME": str(SANDBOX_LAB_DIR),
+    }
+    try:
+        proc = subprocess.run(
+            ["python3", "-I", str(script_path.name)],
+            cwd=str(SANDBOX_LAB_DIR),
+            capture_output=True,
+            text=True,
+            timeout=8,
+            env=env,
+        )
+        out = (proc.stdout or "")[:120000]
+        err = (proc.stderr or "")[:120000]
+        return {
+            "ok": True,
+            "exit_code": int(proc.returncode),
+            "stdout": out,
+            "stderr": err,
+            "duration_ms": int((time.time() - t0) * 1000),
+        }
+    except subprocess.TimeoutExpired as exc:
+        return {
+            "ok": True,
+            "exit_code": 124,
+            "stdout": (exc.stdout or "")[:120000] if isinstance(exc.stdout, str) else "",
+            "stderr": ((exc.stderr or "")[:120000] if isinstance(exc.stderr, str) else "") + "\nExecution timed out (8s).",
+            "duration_ms": int((time.time() - t0) * 1000),
+        }
+    finally:
+        try:
+            script_path.unlink(missing_ok=True)
+        except Exception:
+            pass
+
+
+def _validate_bash_script(source: str):
+    src = str(source or "")
+    if not src.strip():
+        raise RuntimeError("Code is empty")
+    if len(src) > 60000:
+        raise RuntimeError("Code too large")
+    blocked_fragments = [
+        "sudo", "ssh", "scp", "sftp", "curl", "wget", "nc ", "netcat", "nmap",
+        "python", "perl", "ruby", "php", "node", "docker", "podman", "kubectl",
+        "rm ", "mv ", "cp ", "chmod", "chown", "dd ", "mkfs", "mount", "umount",
+        "apt ", "brew ", "pip ", "pip3 ", "git ", ">", ">>", "<", "|", "&", ";", "$(",
+        "`", "~", "..", "/etc", "/var", "/usr", "/home",
+    ]
+    low = src.lower()
+    for frag in blocked_fragments:
+        if frag in low:
+            raise RuntimeError("Blocked operation in bash sandbox code")
+    allowed = {
+        "echo", "printf", "pwd", "ls", "cat", "grep", "sed", "awk", "cut", "sort",
+        "uniq", "wc", "head", "tail", "tr", "date", "uname", "whoami", "seq", "sleep",
+        "true", "false", "test", "[", "expr", "clear",
+        "for", "do", "done", "if", "then", "fi", "while", "in",
+    }
+    for raw in src.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        cmd = line.split()[0].strip()
+        if cmd not in allowed:
+            raise RuntimeError(f"Command not allowed in bash sandbox: {cmd}")
+
+
+def run_bash_sandbox(code: str):
+    source = str(code or "")
+    _validate_bash_script(source)
+    SANDBOX_LAB_DIR.mkdir(parents=True, exist_ok=True)
+    script_name = f"lab_{uuid.uuid4().hex}.sh"
+    script_path = SANDBOX_LAB_DIR / script_name
+    script_path.write_text(source, encoding="utf-8")
+    t0 = time.time()
+    env = {
+        "PATH": "/usr/bin:/bin",
+        "HOME": str(SANDBOX_LAB_DIR),
+    }
+    try:
+        proc = subprocess.run(
+            ["bash", "--noprofile", "--norc", str(script_path.name)],
+            cwd=str(SANDBOX_LAB_DIR),
+            capture_output=True,
+            text=True,
+            timeout=8,
+            env=env,
+        )
+        return {
+            "ok": True,
+            "exit_code": int(proc.returncode),
+            "stdout": (proc.stdout or "")[:120000],
+            "stderr": (proc.stderr or "")[:120000],
+            "duration_ms": int((time.time() - t0) * 1000),
+        }
+    except subprocess.TimeoutExpired as exc:
+        return {
+            "ok": True,
+            "exit_code": 124,
+            "stdout": (exc.stdout or "")[:120000] if isinstance(exc.stdout, str) else "",
+            "stderr": ((exc.stderr or "")[:120000] if isinstance(exc.stderr, str) else "") + "\nExecution timed out (8s).",
+            "duration_ms": int((time.time() - t0) * 1000),
+        }
+    finally:
+        try:
+            script_path.unlink(missing_ok=True)
+        except Exception:
+            pass
+
+
+def run_code_sandbox(mode: str, code: str):
+    m = str(mode or "python").strip().lower()
+    if m == "python":
+        return run_python_sandbox(code)
+    if m == "bash":
+        return run_bash_sandbox(code)
+    raise RuntimeError("Unsupported sandbox mode")
+
+
 def load_blueprints():
     rows = []
     for f in sorted(WORKSPACE.glob("BLUEPRINT*.md")):
@@ -820,13 +1252,22 @@ class Handler(SimpleHTTPRequestHandler):
     def _is_local_client(self) -> bool:
         ip = self._client_ip()
         try:
-            return ipaddress.ip_address(ip).is_loopback
+            addr = ipaddress.ip_address(ip)
+            if addr.is_loopback:
+                return True
+            if ALLOW_LAN and addr.is_private:
+                return True
+            return False
         except Exception:
             return False
 
     def _is_allowed_host(self) -> bool:
         host = (self.headers.get("Host") or "").strip().lower()
-        return host in ALLOWED_HOSTS
+        if host in ALLOWED_HOSTS:
+            return True
+        if ALLOW_LAN and host.endswith(":8099"):
+            return True
+        return False
 
     def _is_allowed_origin(self) -> bool:
         host = (self.headers.get("Host") or "").strip().lower()
@@ -935,6 +1376,12 @@ class Handler(SimpleHTTPRequestHandler):
             if payload is None:
                 return _json_response(self, {"error": "Brief version not found"}, 404)
             return _json_response(self, payload, 200)
+        if path == "/api/mission/debrief":
+            mission_path = (query.get("mission_path", [""])[0] or "").strip()
+            payload = get_mission_debrief_payload(mission_path)
+            if payload is None:
+                return _json_response(self, {"error": "Invalid mission_path"}, 400)
+            return _json_response(self, payload, 200)
         if path == "/api/mission/content":
             mission_path = (query.get("path", [""])[0] or "").strip()
             payload = get_mission_content(mission_path)
@@ -984,29 +1431,24 @@ class Handler(SimpleHTTPRequestHandler):
         if path == "/api/mission":
             op = _safe_name(body.get("operation", "ProjectTitle"))
             name = _safe_name(body.get("name", "NEW_MISSION"))
-            status = (body.get("status") or "PENDING")
+            status = str(body.get("status") or "PENDING").strip()
+            if status not in MISSION_STATUSES:
+                status = "PENDING"
             missions_dir = OPERATIONS_DIR / op / "Missions"
             missions_dir.mkdir(parents=True, exist_ok=True)
             f = missions_dir / f"{name}.md"
             if not f.exists():
                 f.write_text(f"# {name}\n\nStatus: {status}\n", encoding="utf-8")
-            upsert_blackbook({
-                "Date": datetime.now().strftime("%Y-%m-%d"),
-                "Time": datetime.now().strftime("%H:%M"),
-                "Operation": op,
-                "Mission": name.replace("_", " "),
-                "Status": status,
-                "Hypothesis": "Mission execution log entry",
-                "Platform": "Internal",
-                "Result_Quantitative": "PENDING",
-                "Notes": str(f),
-            })
+            else:
+                update_mission_status(str(f), status)
+            sync_blackbook_for_mission_path(str(f), event="CREATED")
             return _json_response(self, {"ok": True, "path": str(f)}, 201)
 
         if path == "/api/mission/status":
             mission_path = body.get("path", "")
             status = body.get("status", "")
             if update_mission_status(mission_path, status):
+                sync_blackbook_for_mission_path(mission_path, event="STATUS UPDATED")
                 return _json_response(self, {"ok": True})
             return _json_response(self, {"error": "Invalid mission path or status"}, 400)
 
@@ -1014,6 +1456,7 @@ class Handler(SimpleHTTPRequestHandler):
             mission_path = body.get("path", "")
             content = body.get("content", "")
             if save_mission_content(mission_path, content):
+                sync_blackbook_for_mission_path(mission_path, event="CONTENT UPDATED")
                 return _json_response(self, {"ok": True}, 200)
             return _json_response(self, {"error": "Invalid mission path"}, 400)
 
@@ -1051,7 +1494,19 @@ class Handler(SimpleHTTPRequestHandler):
             version = save_mission_brief_version(mission_path, phase, content, variables)
             if version is None:
                 return _json_response(self, {"error": "Invalid mission_path"}, 400)
+            sync_blackbook_for_mission_path(mission_path, event=f"PHASE {version.get('phase', phase)} SAVED")
             return _json_response(self, {"ok": True, "version": version}, 201)
+
+        if path == "/api/mission/debrief/save":
+            mission_path = body.get("mission_path", "")
+            content = body.get("content", "")
+            result = save_mission_debrief_version(mission_path, content)
+            if result is None:
+                return _json_response(self, {"error": "Invalid mission_path"}, 400)
+            if isinstance(result, dict) and result.get("error"):
+                return _json_response(self, {"error": result.get("error")}, 400)
+            sync_blackbook_for_mission_path(mission_path, event="DEBRIEF SAVED")
+            return _json_response(self, {"ok": True, **result}, 201)
 
         if path == "/api/blackbook/upsert":
             probe_id = upsert_blackbook({
@@ -1077,6 +1532,20 @@ class Handler(SimpleHTTPRequestHandler):
                 return _json_response(self, {"error": "Invalid HVI handle"}, 400)
             return _json_response(self, {"ok": True, "handle": saved}, 200)
 
+        if path == "/api/sandbox/python":
+            try:
+                result = run_python_sandbox(body.get("code", ""))
+            except Exception as exc:
+                return _json_response(self, {"error": str(exc)}, 400)
+            return _json_response(self, result, 200)
+
+        if path == "/api/sandbox/run":
+            try:
+                result = run_code_sandbox(body.get("mode", "python"), body.get("code", ""))
+            except Exception as exc:
+                return _json_response(self, {"error": str(exc)}, 400)
+            return _json_response(self, result, 200)
+
         return _json_response(self, {"error": "Not Found"}, 404)
 
     def do_DELETE(self):
@@ -1088,7 +1557,9 @@ class Handler(SimpleHTTPRequestHandler):
         if path == "/api/mission":
             p = Path(body.get("path", ""))
             if p.exists() and str(p).startswith(str(WORKSPACE)) and p.is_file():
+                p_str = str(p)
                 p.unlink()
+                remove_blackbook_for_mission_path(p_str)
                 return _json_response(self, {"ok": True})
             return _json_response(self, {"error": "Mission file not found"}, 404)
 
@@ -1097,6 +1568,7 @@ class Handler(SimpleHTTPRequestHandler):
             p = OPERATIONS_DIR / op
             if p.exists() and p.is_dir():
                 shutil.rmtree(p)
+                remove_blackbook_for_operation(op)
                 return _json_response(self, {"ok": True})
             return _json_response(self, {"error": "Operation not found"}, 404)
 
@@ -1112,10 +1584,21 @@ class Handler(SimpleHTTPRequestHandler):
                 return _json_response(self, {"ok": True})
             return _json_response(self, {"error": "HVI not found"}, 404)
 
+        if path == "/api/swissknife/session":
+            try:
+                result = swissknife_delete_session(body.get("session_id", ""))
+            except Exception as exc:
+                return _json_response(self, {"error": str(exc)}, 400)
+            return _json_response(self, {"ok": True, **result}, 200)
+
         return _json_response(self, {"error": "Not Found"}, 404)
 
 
 if __name__ == "__main__":
-    server = ThreadingHTTPServer(("127.0.0.1", 8099), Handler)
-    print("ManagementApp server listening on http://127.0.0.1:8099")
+    bind_addr = "0.0.0.0" if ALLOW_LAN else "127.0.0.1"
+    server = ThreadingHTTPServer((bind_addr, 8099), Handler)
+    if ALLOW_LAN:
+        print("ManagementApp server (LAN mode) listening on http://0.0.0.0:8099")
+    else:
+        print("ManagementApp server listening on http://127.0.0.1:8099")
     server.serve_forever()

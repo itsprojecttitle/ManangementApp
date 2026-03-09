@@ -1,0 +1,30 @@
+{
+  "name": "omni-mobile",
+  "version": "1.0.0",
+  "description": "",
+  "main": "sw.js",
+  "scripts": {
+    "build:web": "bash ./scripts/build_web.sh",
+    "build": "npm run build:web",
+    "cap:sync": "npx cap sync ios",
+    "cap:copy": "npx cap copy ios",
+    "cap:open": "npx cap open ios"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/itsprojecttitle/ManangementApp.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/itsprojecttitle/ManangementApp/issues"
+  },
+  "homepage": "https://github.com/itsprojecttitle/ManangementApp#readme",
+  "private": true,
+  "dependencies": {
+    "@capacitor/cli": "^8.2.0",
+    "@capacitor/core": "^8.2.0",
+    "@capacitor/ios": "^8.2.0"
+  }
+}

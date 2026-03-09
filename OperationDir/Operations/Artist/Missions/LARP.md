@@ -1,3 +1,2 @@
 # LARP
-
-Status: IN_PROGRESS
+Status: PENDING
