@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'mgmtapp-v1';
+const CACHE_VERSION = 'mgmtapp-v20260311-classic-2';
 const SHELL_CACHE = `shell-${CACHE_VERSION}`;
 const DATA_CACHE = `data-${CACHE_VERSION}`;
 

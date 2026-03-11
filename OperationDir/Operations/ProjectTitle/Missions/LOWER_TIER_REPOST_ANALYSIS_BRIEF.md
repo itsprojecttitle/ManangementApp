@@ -1,5 +1,10 @@
 # Mission Brief: Operation ProjectTitle Mission sales - Lower Tier Repost Analysis
 
+Mission ID: MIS-013
+Created: 2026-03-11 18:04
+Mission Name: Mission Brief: Operation ProjectTitle Mission sales - Lower Tier Repost Analysis
+Status: PENDING
+
 ## (Analyzing Engagement Impact of Lower-Tier Artist Friend Reposts)
 
 ### Operation:: Action

@@ -6,8 +6,8 @@ import stat
 import sys
 from pathlib import Path
 
-APP_NAME = "OMNI"
-APP_SUPPORT_DIRNAME = "OMNI"
+APP_NAME = "PROJECTTITLE Draft"
+APP_SUPPORT_DIRNAME = "PROJECTTITLE Draft"
 BUNDLE_SEED_DIRNAME = "app_seed"
 
 MUTABLE_EXACT_PATHS = {
@@ -90,7 +90,7 @@ def _files_match(src_path: Path, dst_path: Path) -> bool:
 
 
 def _warn_seed_skip(rel_path: Path, exc: Exception) -> None:
-    print(f"[omni_runtime] Skipped protected seed file: {rel_path.as_posix()} ({exc})", file=sys.stderr)
+    print(f"[omni_runtime_draft] Skipped protected seed file: {rel_path.as_posix()} ({exc})", file=sys.stderr)
 
 
 def _copy_seed_tree(src_root: Path, dst_root: Path) -> None:

@@ -2,24 +2,24 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-BUILD_DIR="$ROOT_DIR/build/mac"
-VENV_DIR="$BUILD_DIR/venv"
+BUILD_DIR="$ROOT_DIR/build/mac-draft"
+VENV_DIR="$ROOT_DIR/build/mac/venv"
 SEED_DIR="$BUILD_DIR/app_seed"
-DIST_DIR="$ROOT_DIR/dist"
-APP_PATH="$DIST_DIR/OMNI.app"
-DMG_PATH="$BUILD_DIR/OMNI-macOS.dmg"
+DIST_DIR="$ROOT_DIR/dist-draft"
+APP_NAME="PROJECTTITLE Draft"
+APP_PATH="$DIST_DIR/$APP_NAME.app"
 ICON_SRC="$ROOT_DIR/packaging/omni-icon.svg"
-ICONSET_DIR="$BUILD_DIR/OMNI.iconset"
-ICON_PNG="$BUILD_DIR/omni-icon.png"
-ICON_ICNS="$BUILD_DIR/OMNI.icns"
+ICONSET_DIR="$BUILD_DIR/$APP_NAME.iconset"
+ICON_PNG="$BUILD_DIR/projecttitle-draft-icon.png"
+ICON_ICNS="$BUILD_DIR/$APP_NAME.icns"
 INCLUDE_MANUALS=1
 SKIP_INSTALL=0
 
 usage() {
   cat <<'EOF'
-Usage: ./scripts/package_mac.sh [--lite-data] [--skip-install]
+Usage: ./scripts/package_mac_draft.sh [--lite-data] [--skip-install]
 
-  --lite-data     Exclude OperationDir/Manuel from the app seed to keep the app and DMG smaller.
+  --lite-data     Exclude OperationDir/Manuel from the app seed to keep the draft app smaller.
   --skip-install  Reuse the existing packaging virtualenv without reinstalling py2app/pywebview.
 EOF
 }
@@ -107,7 +107,7 @@ stage_seed() {
       cat > "$SEED_DIR/OperationDir/Manuel/README.md" <<'EOF'
 # Manuals Excluded
 
-This OMNI build was created with `--lite-data`, so the bundled manual PDFs were excluded to keep the installer smaller.
+This PROJECTTITLE Draft build was created with `--lite-data`, so the bundled manual PDFs were excluded to keep the app smaller.
 EOF
     fi
   fi
@@ -125,27 +125,16 @@ install_packaging_tools() {
 }
 
 build_app() {
-  rm -rf "$DIST_DIR" "$ROOT_DIR/build/bdist.macosx-"*
-  "$VENV_DIR/bin/python" "$ROOT_DIR/setup.py" py2app
-}
-
-build_dmg() {
-  local dmg_stage="$BUILD_DIR/dmg-root"
-  rm -rf "$dmg_stage" "$DMG_PATH"
-  mkdir -p "$dmg_stage"
-  cp -R "$APP_PATH" "$dmg_stage/"
-  ln -s /Applications "$dmg_stage/Applications"
-  hdiutil create -volname "OMNI Installer" -srcfolder "$dmg_stage" -ov -format UDZO "$DMG_PATH" >/dev/null
+  rm -rf "$DIST_DIR" "$BUILD_DIR/bdist"
+  "$VENV_DIR/bin/python" "$ROOT_DIR/setup_draft.py" py2app --dist-dir "$DIST_DIR" --bdist-base "$BUILD_DIR/bdist"
 }
 
 render_icon
 stage_seed
 install_packaging_tools
 build_app
-build_dmg
 
 cat <<EOF
 Built:
   App: $APP_PATH
-  DMG: $DMG_PATH
 EOF

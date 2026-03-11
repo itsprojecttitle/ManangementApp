@@ -5,9 +5,9 @@ import time
 
 import webview
 
-from omni_runtime import APP_NAME, ensure_runtime_root
+from omni_runtime_draft import APP_NAME, ensure_runtime_root
 
-os.environ.setdefault("OMNI_RUNTIME_VARIANT", "omni")
+os.environ["OMNI_RUNTIME_VARIANT"] = "draft"
 ensure_runtime_root()
 
 
@@ -20,7 +20,7 @@ def create_server(mod):
             return server, actual_port
         except OSError:
             continue
-    raise RuntimeError("Unable to bind a local OMNI server port.")
+    raise RuntimeError("Unable to bind a local draft server port.")
 
 
 def main():
@@ -31,9 +31,9 @@ def main():
     thread.start()
 
     time.sleep(0.2)
-    url = f"http://127.0.0.1:{port}/ManagementApp.html?v=20260311-classic-2"
+    url = f"http://127.0.0.1:{port}/ManagementApp.html?draft=terminal"
 
-    webview.create_window(APP_NAME, url, width=1440, height=900, min_size=(1200, 780))
+    webview.create_window(APP_NAME, url, width=1500, height=940, min_size=(1240, 780))
 
     def shutdown():
         try:
@@ -46,5 +46,5 @@ def main():
     shutdown()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

@@ -3,15 +3,25 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover" />
     <meta name="theme-color" content="#050505" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="icon" href="/icon-192.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/icon-192.svg" />
-    <title>OMNI // DASHBOARD</title>
-        <link rel="stylesheet" href="/assets/managementapp.css" />
+    <title>PROJECTTITLE // DASHBOARD</title>
+    <script>
+      (() => {
+        const draftMode = new URLSearchParams(window.location.search).get("draft");
+        window.OMNI_DRAFT_MODE = draftMode === "terminal";
+        if (window.OMNI_DRAFT_MODE) {
+          document.documentElement.setAttribute("data-omni-draft-mode", "terminal");
+        }
+      })();
+    </script>
+    <link rel="stylesheet" href="/assets/managementapp.css?v=20260311-classic-2" />
+    <link rel="stylesheet" href="/assets/managementapp-draft.css?v=20260311-classic-2" />
 
   </head>
   <body>
@@ -20,7 +30,7 @@
     <!-- HEADER -->
     <header>
       <button class="mobile-nav-toggle" type="button" onclick="toggleMobileMenu()">☰</button>
-      <h1 id="app-title">// OMNI</h1>
+      <h1 id="app-title">PROJECTTITLE</h1>
       <div class="system-status">
         CORE: <span class="status-active">ONLINE</span> | CONNECTION:
         <span class="status-active">SECURE</span> | USER: SLIDER
@@ -30,22 +40,22 @@
 
     <!-- NAVIGATION SIDEBAR -->
     <aside>
-      <button class="nav-btn active" onclick="switchView('dashboard')">[00] DASHBOARD</button>
-      <button class="nav-btn" onclick="switchView('routines')">[01] ROUTINES</button>
-      <button class="nav-btn" onclick="switchView('gym-planner')">[02] GYM PLANNER</button>
-      <button class="nav-btn" id="nav-ops" onclick="switchView('operations')">[03] OPERATIONS</button>
-      <button class="nav-btn nav-yellow" onclick="switchView('probe-skill')">[05] PROBE SKILL</button>
-      <button class="nav-btn nav-yellow" onclick="switchView('probe-manual')">[06] PROBE MANUEL</button>
-      <button class="nav-btn nav-yellow" onclick="switchView('mission-briefing')">[07] MISSION BRIEFING</button>
+      <button class="nav-btn nav-gray" onclick="switchView('global-search')">[00] GLOBAL SEARCH</button>
+      <button class="nav-btn active" onclick="switchView('dashboard')">[01] DASHBOARD</button>
+      <button class="nav-btn" onclick="switchView('routines')">[02] ROUTINES</button>
+      <button class="nav-btn" onclick="switchView('gym-planner')">[03] GYM PLANNER</button>
+      <button class="nav-btn" id="nav-ops" onclick="switchView('operations')">[04] OPERATIONS</button>
+      <button class="nav-btn nav-yellow" onclick="switchView('mission-probe')">[05] MISSION + PROBE</button>
+      <button class="nav-btn nav-yellow" onclick="switchView('posting-template')">[06] POSTING TEMPLATE</button>
+      <button class="nav-btn nav-yellow" onclick="switchView('datawells')">[07] DATAWELLS</button>
       <button class="nav-btn nav-yellow" onclick="switchView('hvi-intel')">[08] HVI TARGETS</button>
       <button class="nav-btn nav-red" onclick="switchView('checklist')">[09] CHECKLIST & REMINDERS</button>
       <button class="nav-btn nav-red" onclick="switchView('journal')">[10] JOURNAL</button>
       <button class="nav-btn nav-red" onclick="switchView('blueprints')">[11] ORACLE</button>
       <button class="nav-btn nav-red" onclick="switchView('books')">[12] BOOKS</button>
       <button class="nav-btn nav-gray" onclick="switchView('swissknife')">[13] SWISSKNIFE</button>
-      <button class="nav-btn nav-gray" onclick="switchView('terminal-lab')">[14] TERMINAL LAB</button>
+      <button class="nav-btn nav-gray" onclick="switchView('terminal-lab')">[14] STUDY TERMINAL</button>
       <button class="nav-btn nav-gray" onclick="switchView('settings')">[15] SETTINGS</button>
-      <button class="nav-btn nav-gray" onclick="switchView('tutor')">[16] TUTOR</button>
       <div id="nav-hover-desc" class="nav-hover-desc">Hover and hold a button to load description.</div>
     </aside>
 
@@ -97,6 +107,11 @@
       <div id="view-routines" class="view-panel">
         <h2>// MORNING + NIGHT ROUTINES</h2>
         <p>Structured daily flow with descriptions. Use the Gym Planner page for workout catalog and daily training checklist.</p>
+        <div class="settings-actions" style="margin-bottom:10px;">
+          <button class="confirm-btn" type="button" onclick="carryIncompleteRoutineTasksToReminders()">CARRY INCOMPLETE -> REMINDERS</button>
+          <button class="confirm-btn" type="button" onclick="snoozeIncompleteRoutineTasks(60)">SNOOZE INCOMPLETE +1H</button>
+          <button class="confirm-btn" type="button" onclick="resetRoutineProgress()">RESET ROUTINE CHECKS</button>
+        </div>
         <div class="routine-grid">
           <div class="routine-box">
             <div class="routine-head">
@@ -129,6 +144,27 @@
         <h2>// GYM PLANNER</h2>
         <p>Select a block category first, then manage exercises in a focused subpage.</p>
         <div class="routine-gym">
+          <div class="gym-global-session-bar">
+            <div class="gym-global-session-main">
+              <strong style="color:var(--warning-yellow);">PICKED SESSION</strong>
+              <div id="gym-session-status" class="gym-session-status">Pick exercises anywhere in Gym to build a mixed manual session.</div>
+            </div>
+            <div class="gym-exercise-toolbar-actions">
+              <button id="gym-session-save-btn" class="confirm-btn" type="button" onclick="saveCurrentGymSelectionSnapshot()" disabled>SAVE PICKS</button>
+              <button id="gym-session-clear-btn" class="confirm-btn" type="button" onclick="clearGymExerciseSelection()" disabled>CLEAR PICKS</button>
+              <button id="gym-session-play-btn" class="submit-btn" type="button" onclick="openGymSessionRunner()" disabled>PLAY SESSION</button>
+            </div>
+          </div>
+          <div class="gym-saved-session-bar">
+            <div class="gym-global-session-main">
+              <strong style="color:var(--warning-yellow);">PRELOAD PREVIOUS SESSION</strong>
+              <div id="gym-saved-session-status" class="gym-session-status">No saved sessions yet.</div>
+            </div>
+            <div class="gym-saved-session-actions">
+              <select id="gym-saved-session-select" class="search-input"></select>
+              <button id="gym-session-preload-btn" class="submit-btn" type="button" onclick="preloadSelectedGymSession()" disabled>PRELOAD PREVIOUS SESSION</button>
+            </div>
+          </div>
           <div id="gym-top-add-launch" class="add-launch-row"><button class="add-plus-btn" type="button" onclick="openAddPopup('gym-category-add-panel')">+</button></div>
           <div id="gym-category-home" class="gym-category-home"></div>
           <div id="gym-category-add-panel" class="gym-category-add add-popup-panel submission-area">
@@ -154,8 +190,13 @@
               </div>
             </div>
             <div id="gym-exercise-page" style="display:none;">
-            <div class="add-launch-row"><button class="add-plus-btn" type="button" onclick="addBlankGymExercise()">+</button></div>
-            <div id="gym-list" class="gym-list"></div>
+              <div class="gym-exercise-toolbar">
+                <div class="gym-exercise-toolbar-main">
+                  <button class="add-plus-btn" type="button" onclick="addBlankGymExercise()">+</button>
+                  <div id="gym-category-note" class="gym-session-status">Open an exercise to edit its preset.</div>
+                </div>
+              </div>
+              <div id="gym-list" class="gym-list"></div>
             </div>
           </div>
         </div>
@@ -207,7 +248,7 @@
         <table id="mission-table">
           <thead>
             <tr>
-              <th>DATE</th>
+              <th>CREATED</th>
               <th>OPERATION</th>
               <th>MISSION</th>
               <th>STATUS</th>
@@ -347,12 +388,14 @@
         <div class="settings-grid">
           <div class="settings-card" ondblclick="resetNotificationSettings()">
             <h3>// NOTIFICATIONS</h3>
-            <div class="settings-help">Global alert controls. Click <code>TEST</code> to verify sound output on this device.</div>
+            <div class="settings-help">Global alert controls. On iPhone, enabled alerts can trigger real phone notifications. Click <code>TEST ALERT</code> to verify the local notification path on this device.</div>
             <div class="notify-settings" style="margin-bottom:10px;" ondblclick="resetNotificationSettings()">
               <label><input id="notify-enabled" class="checklist-check" type="checkbox" onchange="saveNotificationSettings()" checked /> NOTIFICATIONS ON</label>
-              <label><input id="notify-quarter" class="checklist-check" type="checkbox" onchange="saveNotificationSettings()" checked /> QUARTER ALERTS</label>
+              <label><input id="notify-quarter" class="checklist-check" type="checkbox" onchange="saveNotificationSettings()" checked /> QUARTER / HOUR / BREAK ALERTS</label>
               <label><input id="notify-reminder" class="checklist-check" type="checkbox" onchange="saveNotificationSettings()" checked /> REMINDER ALERTS</label>
+              <label><input id="notify-upcoming" class="checklist-check" type="checkbox" onchange="saveNotificationSettings()" checked /> UPCOMING TASK ALERTS</label>
               <label><input id="notify-checklist" class="checklist-check" type="checkbox" onchange="saveNotificationSettings()" checked /> CHECKLIST ALERTS</label>
+              <label><input id="notify-quiet-enabled" class="checklist-check" type="checkbox" onchange="saveNotificationSettings()" /> QUIET HOURS</label>
             </div>
             <div class="settings-row">
               <label for="notify-sound">Alert Sound</label>
@@ -374,13 +417,22 @@
               </select>
               <button class="confirm-btn settings-reset-mini" type="button" onclick="resetPerformanceSettings()">RESET</button>
             </div>
+            <div class="settings-row">
+              <label for="notify-quiet-start">Quiet Window</label>
+              <div class="settings-dual-inline">
+                <input id="notify-quiet-start" class="search-input" type="time" onchange="saveNotificationSettings()" />
+                <input id="notify-quiet-end" class="search-input" type="time" onchange="saveNotificationSettings()" />
+              </div>
+              <button class="confirm-btn settings-reset-mini" type="button" onclick="resetNotificationField('quiet')">RESET</button>
+            </div>
             <div class="settings-actions">
-              <button class="confirm-btn" type="button" onclick="testNotificationSound()">TEST</button>
+              <button class="confirm-btn" type="button" onclick="testNotificationSound()">TEST ALERT</button>
               <button class="confirm-btn" type="button" onclick="manualSyncNow()">SYNC NOW</button>
               <button class="confirm-btn" type="button" onclick="clearAppCache()">CLEAR CACHE</button>
               <button class="confirm-btn" type="button" onclick="exportAllDataBackup()">EXPORT BACKUP</button>
               <button class="confirm-btn" type="button" onclick="shareAllDataBackup()">EXPORT + SHARE</button>
               <button class="confirm-btn" type="button" onclick="triggerImportBackupPicker()">IMPORT BACKUP</button>
+              <button class="confirm-btn" type="button" onclick="openSettingsSyncCenter()">OPEN SYNC CENTER</button>
               <button class="confirm-btn" type="button" onclick="resetNotificationSettings()">RESET NOTIFICATIONS</button>
             </div>
             <input id="import-backup-file" type="file" accept="application/json,.json" style="display:none;" onchange="importAllDataBackupFromInput(this)" />
@@ -444,31 +496,54 @@
               <button class="confirm-btn" type="button" onclick="lockNow()">LOCK NOW</button>
             </div>
           </div>
-        </div>
-      </div>
-
-      <div id="view-tutor" class="view-panel">
-        <h2>// OMNI TUTOR (OFFLINE)</h2>
-        <div class="tutor-head">
-          <p>Structured beginner-to-builder pathway: coding, bash, networking, cybersecurity foundations, and local lab tasks.</p>
-          <div id="tutor-progress" class="tutor-progress">Progress: 0%</div>
-        </div>
-        <div class="tutor-layout">
-          <div class="tutor-side">
-            <h3>// TRACKS</h3>
-            <div id="tutor-track-list"></div>
-            <h3>// LESSONS</h3>
-            <div id="tutor-lesson-list" class="tutor-lesson-list"></div>
+          <div class="settings-card" ondblclick="resetPrivacySettings()">
+            <h3>// PRIVACY + ACCESS</h3>
+            <div class="settings-help">Use the existing OMNI lock system as the main privacy layer. Lock on launch and auto-lock on background can both be enabled here.</div>
+            <div class="notify-settings" style="margin-bottom:10px;">
+              <label><input id="privacy-lock-on-launch" class="checklist-check" type="checkbox" onchange="savePrivacySettings()" /> LOCK ON LAUNCH</label>
+              <label><input id="privacy-auto-lock-bg" class="checklist-check" type="checkbox" onchange="savePrivacySettings()" /> AUTO LOCK ON BACKGROUND</label>
+            </div>
+            <div class="settings-actions">
+              <button class="confirm-btn" type="button" onclick="lockNow()">LOCK NOW</button>
+              <button class="confirm-btn" type="button" onclick="openSettingsSyncCenter()">OPEN SYNC CENTER</button>
+              <button class="confirm-btn" type="button" onclick="resetPrivacySettings()">RESET PRIVACY</button>
+            </div>
           </div>
-          <div class="tutor-main">
-            <div id="tutor-lesson-view" class="manual-view">Select a track and lesson to begin.</div>
+          <div class="settings-card settings-card-span" id="settings-sync-center-panel">
+            <h3>// SYNC CENTER</h3>
+            <div class="settings-help">Build info, manual backup/export, offline sync queue state, upcoming alert preview, dismissed notification history, and Mac-side iPhone live controls. This is the control panel for keeping phone and Mac data in step.</div>
+            <div class="settings-actions" style="margin-bottom:10px;">
+              <button class="confirm-btn" type="button" onclick="manualSyncNow()">SYNC NOW</button>
+              <button class="confirm-btn" type="button" onclick="exportAllDataBackup()">EXPORT BACKUP</button>
+              <button class="confirm-btn" type="button" onclick="shareAllDataBackup()">EXPORT + SHARE</button>
+              <button class="confirm-btn" type="button" onclick="triggerImportBackupPicker()">IMPORT BACKUP</button>
+              <button class="confirm-btn" type="button" onclick="saveSyncCenterReport()">SAVE REPORT</button>
+            </div>
+            <div class="sync-center-grid">
+              <section class="settings-card">
+                <h3>// BUILD + SYNC STATUS</h3>
+                <div id="sync-center-summary" class="manual-view">Loading sync state...</div>
+              </section>
+              <section class="settings-card">
+                <h3>// UPCOMING ALERT PREVIEW</h3>
+                <div id="sync-center-notify-preview" class="manual-view">No alerts scheduled.</div>
+              </section>
+              <section class="settings-card">
+                <h3>// DISMISSED ALERT LOG</h3>
+                <div id="sync-center-history" class="manual-view">No dismissed alerts yet.</div>
+              </section>
+              <section class="settings-card">
+                <h3>// DATA COUNTS</h3>
+                <div id="sync-center-counts" class="manual-view">Loading counts...</div>
+              </section>
+            </div>
           </div>
         </div>
       </div>
 
       <div id="view-terminal-lab" class="view-panel">
         <h2>// TERMINAL LAB (PYTHON SANDBOX)</h2>
-        <p>Local-only Python execution sandbox for offline scripting practice. Network tools and shell access are not exposed here.</p>
+        <p>Study mode is now terminal-only. Use this local sandbox for offline Python and limited Bash practice without the old lesson and quiz blocks.</p>
         <div class="terminal-wrap">
           <div class="terminal-grid">
             <div class="terminal-actions">
@@ -488,6 +563,75 @@ for i in range(3):
             </div>
             <div id="terminal-output" class="terminal-out">Ready.</div>
           </div>
+        </div>
+      </div>
+
+      <div id="view-datawells" class="view-panel">
+        <h2>// DATAWELLS</h2>
+        <p>Map source wells that expose painpoints, community entry points, and indexing paths. Add social accounts, websites, articles, or comment sections, then keep links and notes editable.</p>
+        <div class="add-launch-row"><button class="add-plus-btn" type="button" onclick="openAddPopup('datawells-submission-area')">+</button></div>
+        <div id="datawells-submission-area" class="submission-area add-popup-panel" style="margin-top:10px;">
+          <button class="add-popup-close" type="button" onclick="closeAllAddPopups()">X</button>
+          <h3>+ ADD DATAWELL SOURCE</h3>
+          <div class="form-group">
+            <label for="new-datawell-title">Title</label>
+            <input class="search-input" id="new-datawell-title" type="text" placeholder="Source title / profile / community name" />
+          </div>
+          <div class="form-group">
+            <label for="new-datawell-type">Source Type</label>
+            <input class="search-input" id="new-datawell-type" type="text" placeholder="Social Account / Website / Article / Like & Comment Section" />
+          </div>
+          <div class="form-group">
+            <label for="new-datawell-platform">Platform</label>
+            <input class="search-input" id="new-datawell-platform" type="text" placeholder="Instagram / TikTok / YouTube / Forum / Blog" />
+          </div>
+          <div class="form-group">
+            <label for="new-datawell-link">Link</label>
+            <input class="search-input" id="new-datawell-link" type="text" placeholder="https://..." />
+          </div>
+          <div class="form-group">
+            <label for="new-datawell-description">Description</label>
+            <textarea class="mission-intel-textarea" id="new-datawell-description" rows="3" placeholder="What is this source and why does it matter?"></textarea>
+          </div>
+          <div class="form-group">
+            <label for="new-datawell-community">Community</label>
+            <textarea class="mission-intel-textarea" id="new-datawell-community" rows="3" placeholder="Which people, scene, or community does this expose?"></textarea>
+          </div>
+          <div class="form-group">
+            <label for="new-datawell-painpoints">Painpoints</label>
+            <textarea class="mission-intel-textarea" id="new-datawell-painpoints" rows="3" placeholder="What problems, frustrations, or wants show up here?"></textarea>
+          </div>
+          <div class="form-group">
+            <label for="new-datawell-entrypoints">Entry Points</label>
+            <textarea class="mission-intel-textarea" id="new-datawell-entrypoints" rows="3" placeholder="How do you enter and index this source?"></textarea>
+          </div>
+          <div class="form-group">
+            <label for="new-datawell-notes">Notes</label>
+            <textarea class="mission-intel-textarea" id="new-datawell-notes" rows="3" placeholder="Reference notes, engagement patterns, posting clues, etc."></textarea>
+          </div>
+          <div class="form-group">
+            <label for="new-datawell-tags">Tags</label>
+            <input class="search-input" id="new-datawell-tags" type="text" placeholder="music, comments, youth, finance, cyber, law..." />
+          </div>
+          <button class="submit-btn" type="button" onclick="submitNewDatawell()">ADD SOURCE</button>
+        </div>
+        <div class="search-toolbar">
+          <input class="search-input" id="datawells-search-input" type="text" placeholder="Search Datawells..." oninput="setDatawellSearch()" onkeydown="if(event.key==='Enter') setDatawellSearch()" />
+          <button class="submit-btn" type="button" onclick="setDatawellSearch()">SEARCH</button>
+        </div>
+        <div class="hvi-filter-bar">
+          <div class="hvi-filter-grid">
+            <select id="datawells-filter-type" class="search-input" onchange="setDatawellFilters()">
+              <option value="">All Source Types</option>
+            </select>
+            <div class="hvi-meta" style="align-self:center;">Source wells reveal painpoints and community entry points for indexing.</div>
+            <div></div>
+            <div></div>
+            <button class="submit-btn" type="button" onclick="clearDatawellFilters()">RESET</button>
+          </div>
+        </div>
+        <div id="datawells-container">
+          <div class="hvi-card"><p>No Datawells yet.</p></div>
         </div>
       </div>
 
@@ -552,7 +696,7 @@ for i in range(3):
 
       <div id="view-brief-studio" class="view-panel">
         <h2>// BRIEF STUDIO</h2>
-        <p>Paste full mission brief text, auto-extract variables, save phase versions, and load previous versions.</p>
+        <p>Paste a consistent mission brief template, auto-fill the profile offline, save phase versions, and load previous versions.</p>
         <div class="brief-toolbar">
           <select id="brief-operation-filter" onchange="onBriefOperationFilterChange()"></select>
           <select id="brief-mission-select" onchange="onBriefMissionChange()"></select>
@@ -562,14 +706,21 @@ for i in range(3):
         </div>
         <div class="brief-grid">
           <div class="brief-main">
-            <textarea id="brief-content" class="brief-editor" placeholder="Paste mission brief here..."></textarea>
+            <textarea id="brief-content" class="brief-editor" placeholder="Paste mission brief here..." oninput="onBriefEditorInput()"></textarea>
             <div class="brief-main-actions">
-              <button class="submit-btn" type="button" onclick="parseBriefVariablesFromEditor()">AUTO PARSE VARIABLES</button>
+              <button class="submit-btn" type="button" onclick="parseBriefVariablesFromEditor()">AUTO FILL PROFILE</button>
               <button class="submit-btn" type="button" onclick="createNextBriefPhase()">NEXT PHASE (CLONE + COPY)</button>
             </div>
           </div>
           <div class="brief-side">
-            <h4>// EXTRACTED VARIABLES</h4>
+            <div class="brief-profile-shell">
+              <div class="brief-profile-head">
+                <strong>// OFFLINE BRIEF PROFILE</strong>
+                <span class="routine-ex-note">Consistent mission templates auto-fill this view offline.</span>
+              </div>
+              <div id="brief-profile-preview" class="brief-profile-body"></div>
+            </div>
+            <h4 style="margin-top:14px;">// EXTRACTED VARIABLES</h4>
             <div id="brief-vars"></div>
             <h4 style="margin-top:14px;">// PHASE HISTORY</h4>
             <ul id="brief-history" class="brief-history-list"></ul>
@@ -596,16 +747,145 @@ for i in range(3):
         </div>
       </div>
 
-      <div id="view-mission-briefing" class="view-panel">
-        <h2>// MISSION BRIEFING</h2>
-        <p>Source: <code>MissionBriefing.md</code></p>
-        <button class="submit-btn" type="button" onclick="copyMissionBriefing()" style="margin-bottom: 10px;">COPY</button>
-        <button class="submit-btn" type="button" onclick="openDocEditor('MissionBriefing.md','// MISSION BRIEFING EDITOR','mission-briefing-content')" style="margin-bottom: 10px; margin-left: 8px;">EDIT</button>
-        <div class="manual-view mission-brief-view">
-          <div id="mission-briefing-content">Loading Mission Briefing...</div>
+      <div id="view-mission-probe" class="view-panel">
+        <h2>// MISSION + PROBE WORKFLOW</h2>
+        <p id="mission-probe-intro">Combined AI workspace. Mission Brief defines the mission. Probe Skill sharpens it and fills the gaps.</p>
+        <div class="mission-probe-actions">
+          <button class="submit-btn" type="button" onclick="focusMissionProbeSection('manual')">PROBE MANUEL</button>
+          <button class="submit-btn" type="button" onclick="saveMissionProbePackToFile()">SAVE AI PACK FILE</button>
+          <button class="submit-btn" type="button" onclick="shareMissionProbePackFile()">SHARE AI PACK</button>
+          <button class="submit-btn" type="button" onclick="focusMissionProbeSection('brief')">MISSION BRIEF</button>
+          <button class="submit-btn" type="button" onclick="focusMissionProbeSection('skill')">PROBE SKILL</button>
+          <button class="submit-btn" type="button" onclick="openDocEditor('MissionBriefing.md','// MISSION BRIEFING EDITOR','mission-probe-brief-content')">EDIT BRIEF</button>
+          <button class="confirm-btn" type="button" onclick="openMissionBriefingViewer()">FULL BRIEF VIEW</button>
+        </div>
+        <div class="mission-probe-tutorial">
+          <div class="mission-probe-guide-head">
+            <strong>// HOW TO USE</strong>
+            <span class="routine-ex-note">Mission Brief first. Probe Skill second. Then write only confirmed answers back into the brief.</span>
+          </div>
+          <div id="mission-probe-tutorial-content" class="mission-probe-tutorial-body">
+            <ol>
+              <li>Write the mission first.</li>
+              <li>Use Probe Skill to find missing pressure points, blockers, leverage, and next questions.</li>
+              <li>Update the Mission Brief with confirmed answers only.</li>
+              <li>Keep raw probe thinking separate from the clean brief.</li>
+              <li>Use SHARE AI PACK when you want the AI to read the workflow, the current brief, and the probe framework together.</li>
+            </ol>
+          </div>
+        </div>
+        <div class="mission-probe-guide">
+          <div class="mission-probe-guide-head">
+            <strong>// AI BOT INSTRUCTION</strong>
+            <span class="routine-ex-note">Use this across life, systems, institutions, and cybernetics. The bot should question missing mission details and write a cleaner brief back.</span>
+          </div>
+          <div id="mission-probe-guide-content" class="manual-view mission-probe-guide-body">Loading Mission + Probe workflow...</div>
+        </div>
+        <div class="mission-probe-datawell-board">
+          <div class="mission-probe-guide-head">
+            <strong>// LINKED DATAWELLS / INDEXING CHAIN</strong>
+            <span id="mission-probe-datawell-count" class="routine-ex-note">0 linked</span>
+          </div>
+          <div class="mission-probe-datawell-body">
+            <div class="linked-datawell-add-row">
+              <select id="mission-probe-datawell-select" class="search-input">
+                <option value="">Select Datawell source...</option>
+              </select>
+              <button class="submit-btn" type="button" onclick="addMissionProbeDatawellLink()">LINK SOURCE</button>
+              <button class="confirm-btn" type="button" onclick="switchView('datawells')">OPEN DATAWELLS</button>
+            </div>
+            <div id="mission-probe-datawell-list"></div>
+          </div>
+        </div>
+        <div class="mission-probe-grid">
+          <section id="mission-probe-brief-card" class="mission-probe-card">
+            <div class="mission-probe-card-head">
+              <strong>// MISSION BRIEF</strong>
+              <span class="routine-ex-note">Stable mission truth. Update this with confirmed answers only.</span>
+            </div>
+            <div class="manual-view mission-brief-view mission-probe-card-body">
+              <div id="mission-probe-brief-content">Loading Mission Briefing...</div>
+            </div>
+          </section>
+          <section id="mission-probe-skill-card" class="mission-probe-card">
+            <div class="mission-probe-card-head">
+              <strong>// PROBE SKILL</strong>
+              <span class="routine-ex-note">Use this to identify pain points, leverage, execution gaps, and next questions across human and systemic domains.</span>
+            </div>
+            <div class="manual-view mission-probe-card-body">
+              <div id="mission-probe-skill-content">Loading Probe Skill...</div>
+            </div>
+          </section>
+          <section id="mission-probe-manual-card" class="mission-probe-card">
+            <div class="mission-probe-card-head">
+              <strong>// PROBE MANUEL</strong>
+              <span class="routine-ex-note">Official reference manual for the probe system, kept inside the workflow page.</span>
+            </div>
+            <div class="manual-view mission-probe-card-body">
+              <div id="mission-probe-manual-content">Loading Probe Manuel...</div>
+            </div>
+          </section>
         </div>
       </div>
 
+      <div id="view-mission-briefing" class="view-panel">
+        <button class="back-btn" type="button" onclick="goBackView('dashboard')">< BACK</button>
+        <h2>// MISSION BRIEFING</h2>
+        <p>Source: <code>MissionBriefing.md</code></p>
+        <div class="mission-brief-actions">
+          <button class="submit-btn" type="button" onclick="copyMissionBriefing()">COPY</button>
+          <button class="submit-btn" type="button" onclick="saveMissionBriefingToFile()">SAVE FILE</button>
+          <button class="submit-btn" type="button" onclick="shareMissionBriefingFile()">SHARE FILE</button>
+          <button class="submit-btn" type="button" onclick="openDocEditor('MissionBriefing.md','// MISSION BRIEFING EDITOR','mission-briefing-content')">EDIT</button>
+          <button class="confirm-btn" type="button" onclick="openMissionBriefingViewer()">FULL VIEW</button>
+        </div>
+        <div class="mission-brief-shell">
+          <div class="mission-brief-shell-head">
+            <strong>// LIVE BRIEF READER</strong>
+            <span class="routine-ex-note">Full-height mission briefing panel. Use FULL VIEW for the modal reader.</span>
+          </div>
+          <div class="manual-view mission-brief-view mission-brief-shell-body">
+            <div id="mission-briefing-content">Loading Mission Briefing...</div>
+          </div>
+        </div>
+      </div>
+
+      <div id="view-posting-template" class="view-panel">
+        <button class="back-btn" type="button" onclick="goBackView('dashboard')">< BACK</button>
+        <h2>// POSTING TEMPLATE</h2>
+        <p>Timeline reference of mission styles in order. Edit the yellow title fields and green subtext directly, then drag or move stages to reorder them.</p>
+        <div class="posting-template-shell">
+          <div class="posting-template-summary">
+            <div class="posting-template-label">// TEMPLATE TITLE</div>
+            <input id="posting-template-board-title" class="posting-template-board-title" type="text" placeholder="Posting template title..." oninput="updatePostingTemplateBoardField('title', this.value)" />
+            <div class="posting-template-label">// TEMPLATE SUBTEXT</div>
+            <textarea id="posting-template-board-subtitle" class="posting-template-board-subtitle" placeholder="Overall description..." oninput="updatePostingTemplateBoardField('subtitle', this.value)"></textarea>
+            <div class="mission-probe-actions" style="margin-bottom:0;">
+              <button class="submit-btn" type="button" onclick="addPostingTemplateItem()">ADD STAGE</button>
+            </div>
+          </div>
+          <div id="posting-template-list" class="posting-template-list"></div>
+        </div>
+      </div>
+
+      <div id="view-global-search" class="view-panel">
+        <h2>// GLOBAL SEARCH</h2>
+        <p>Search across missions, operations, HVI, blackbook, Datawells, routines, checklist, books, oracle docs, reminders, journal, and gym catalog from one place.</p>
+        <div class="search-toolbar">
+          <input class="search-input" id="global-search-input" type="text" placeholder="Search everything..." oninput="setGlobalSearch()" onkeydown="if(event.key==='Enter') setGlobalSearch()" />
+          <select id="global-search-scope" class="search-input" onchange="setGlobalSearch()">
+            <option value="all">All</option>
+            <option value="missions">Missions</option>
+            <option value="operations">Operations</option>
+            <option value="intel">Blackbook / HVI / Datawells</option>
+            <option value="docs">Books / Oracle</option>
+            <option value="routine">Routine / Checklist</option>
+            <option value="gym">Gym</option>
+          </select>
+          <button class="submit-btn" type="button" onclick="setGlobalSearch()">SEARCH</button>
+        </div>
+        <div id="global-search-results" class="manual-view">Type to search the app.</div>
+      </div>
 
       <div id="view-checklist" class="view-panel">
         <h2>// CHECKLIST & REMINDERS</h2>
@@ -652,7 +932,7 @@ for i in range(3):
     </main>
 
     <!-- FOOTER -->
-    <footer>
+    <footer aria-hidden="true">
       <div id="footer-status-left" class="system-status">
         <span class="status-active">ONLINE</span> | <span class="status-active">SECURE</span>
       </div>
@@ -697,14 +977,17 @@ for i in range(3):
       </div>
     </div>
 
-    <div id="doc-overlay" class="doc-overlay" aria-hidden="true">
+      <div id="doc-overlay" class="doc-overlay" aria-hidden="true">
       <div class="doc-modal" role="dialog" aria-modal="true" aria-labelledby="doc-title">
         <div class="doc-head">
           <div>
             <h3 id="doc-title" class="doc-title">// DOCUMENT</h3>
             <div id="doc-sub" class="doc-sub"></div>
           </div>
-          <button class="confirm-btn" type="button" onclick="closeDocPopup()">Close</button>
+          <div class="doc-head-actions">
+            <button id="doc-back-btn" class="confirm-btn" type="button" onclick="closeDocPopup()" style="display:none;">BACK</button>
+            <button id="doc-close-btn" class="confirm-btn" type="button" onclick="closeDocPopup()">Close</button>
+          </div>
         </div>
         <div id="doc-body" class="doc-body"></div>
       </div>
@@ -733,13 +1016,49 @@ for i in range(3):
             <button class="submit-btn" type="button" onclick="addReminderEntry()">ADD</button>
           </div>
           <div class="reminder-offsets">
-            <label><input class="checklist-check reminder-offset" type="checkbox" value="0" checked /> At time</label>
-            <label><input class="checklist-check reminder-offset" type="checkbox" value="60" /> 1h before</label>
-            <label><input class="checklist-check reminder-offset" type="checkbox" value="180" /> 3h before</label>
-            <label><input class="checklist-check reminder-offset" type="checkbox" value="720" /> 12h before</label>
-            <label><input class="checklist-check reminder-offset" type="checkbox" value="1440" /> 1 day before</label>
-            <label><input class="checklist-check reminder-offset" type="checkbox" value="2880" /> 2 days before</label>
-            <label><input class="checklist-check reminder-offset" type="checkbox" value="4320" /> 3 days before</label>
+            <label class="reminder-offset-inline"><input id="reminder-offset-at-time" class="checklist-check" type="checkbox" checked /> At time</label>
+            <div class="reminder-offset-slots">
+              <label class="reminder-offset-slot-wrap">Lead 1
+                <select id="reminder-offset-slot-1" class="search-input reminder-offset-slot">
+                  <option value="">None</option>
+                  <option value="15">15m before</option>
+                  <option value="30">30m before</option>
+                  <option value="60">1h before</option>
+                  <option value="180">3h before</option>
+                  <option value="720">12h before</option>
+                  <option value="1440">1 day before</option>
+                  <option value="2880">2 days before</option>
+                  <option value="4320">3 days before</option>
+                </select>
+              </label>
+              <label class="reminder-offset-slot-wrap">Lead 2
+                <select id="reminder-offset-slot-2" class="search-input reminder-offset-slot">
+                  <option value="">None</option>
+                  <option value="15">15m before</option>
+                  <option value="30">30m before</option>
+                  <option value="60">1h before</option>
+                  <option value="180">3h before</option>
+                  <option value="720">12h before</option>
+                  <option value="1440">1 day before</option>
+                  <option value="2880">2 days before</option>
+                  <option value="4320">3 days before</option>
+                </select>
+              </label>
+              <label class="reminder-offset-slot-wrap">Lead 3
+                <select id="reminder-offset-slot-3" class="search-input reminder-offset-slot">
+                  <option value="">None</option>
+                  <option value="15">15m before</option>
+                  <option value="30">30m before</option>
+                  <option value="60">1h before</option>
+                  <option value="180">3h before</option>
+                  <option value="720">12h before</option>
+                  <option value="1440">1 day before</option>
+                  <option value="2880">2 days before</option>
+                  <option value="4320">3 days before</option>
+                </select>
+              </label>
+            </div>
+            <div class="settings-help">Up to three prior alerts plus the main reminder time.</div>
           </div>
           <div id="reminder-list" class="reminder-list"></div>
         </div>
@@ -752,14 +1071,15 @@ for i in range(3):
       <div class="exercise-modal" role="dialog" aria-modal="true" aria-labelledby="exercise-title">
         <div class="exercise-head">
           <h3 id="exercise-title" class="doc-title">// EXERCISE VIEWER</h3>
-          <button class="confirm-btn" type="button" onclick="closeExerciseViewer()">Close</button>
+          <button id="exercise-close-btn" class="confirm-btn" type="button" onclick="requestCloseExerciseViewer()">Close</button>
         </div>
         <div class="exercise-body">
           <div id="exercise-main" class="exercise-main"></div>
         </div>
         <div class="exercise-foot">
-          <button class="confirm-btn" type="button" onclick="prevExercise()">PREV</button>
-          <button class="confirm-btn" type="button" onclick="nextExercise()">NEXT</button>
+          <button id="exercise-end-session-btn" class="confirm-btn danger" type="button" onclick="requestCloseExerciseViewer()" style="display:none;">CANCEL SESSION</button>
+          <button id="exercise-prev-btn" class="confirm-btn" type="button" onclick="prevExercise()">PREV</button>
+          <button id="exercise-next-btn" class="confirm-btn" type="button" onclick="nextExercise()">NEXT</button>
         </div>
       </div>
     </div>
@@ -840,8 +1160,8 @@ for i in range(3):
         <div id="lock-meta" class="lock-meta"></div>
       </div>
     </div>
-
-        <script src="/assets/managementapp.js"></script>
+    <script src="/assets/managementapp.js?v=20260311-classic-2"></script>
+    <script src="/assets/managementapp-draft.js?v=20260311-classic-2"></script>
 
   </body>
 </html>

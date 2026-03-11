@@ -75,6 +75,7 @@
       let intelPopupDatawellId = "";
       let missionDatawellPopupReturnView = "";
       let navDescTimer = 0;
+      let appTitleTerminalTimer = 0;
       let hviPopupPage = 1;
       let hviStatDragIndex = -1;
       let hviLayoutTemplate = "grid";
@@ -179,6 +180,22 @@
         currentUrl: "",
         localUrl: "",
         remoteUrl: "",
+      };
+      let macIphoneLiveFetchPromise = null;
+      let macIphoneLiveBusy = false;
+      let macIphoneLiveState = {
+        available: false,
+        configuredMode: "bundled",
+        configuredUrl: "",
+        configuredHost: "",
+        serverRunning: false,
+        managedByApp: false,
+        serverControl: "stopped",
+        lastAction: "",
+        lastChangedAt: "",
+        lastError: "",
+        lastSummary: "",
+        xcodeStepRequired: true,
       };
 
       function b64FromBytes(bytes) {
@@ -328,6 +345,24 @@
         if (!overlay) return;
         overlay.classList.remove("active");
         overlay.setAttribute("aria-hidden", "true");
+      }
+
+      function initTerminalAppTitle() {
+        if (window.OMNI_DRAFT_MODE || appTitleTerminalTimer) return;
+        const titleEl = document.getElementById("app-title");
+        if (!titleEl) return;
+        const baseTitle = String(titleEl.dataset.baseTitle || titleEl.textContent || "PROJECTTITLE").trim().toUpperCase();
+        titleEl.dataset.baseTitle = baseTitle;
+        const frames = ["|", "/", "-", "\\"];
+        let frameIndex = 0;
+        const render = () => {
+          const left = frames[frameIndex % frames.length];
+          const right = frames[(frameIndex + 2) % frames.length];
+          titleEl.textContent = `[${left}] ${baseTitle} [${right}]`;
+          frameIndex += 1;
+        };
+        render();
+        appTitleTerminalTimer = window.setInterval(render, 140);
       }
 
       function showLockOverlay() {
@@ -1695,6 +1730,146 @@
           : "Bundled offline fallback";
       }
 
+      function canControlIphoneLiveFromMac() {
+        return !isNativeRuntime();
+      }
+
+      function defaultMacIphoneLiveState() {
+        return {
+          available: canControlIphoneLiveFromMac(),
+          configuredMode: "bundled",
+          configuredUrl: "",
+          configuredHost: "",
+          serverRunning: false,
+          managedByApp: false,
+          serverControl: "stopped",
+          lastAction: "",
+          lastChangedAt: "",
+          lastError: "",
+          lastSummary: "",
+          xcodeStepRequired: true,
+        };
+      }
+
+      function setMacIphoneLiveState(payload = {}) {
+        macIphoneLiveState = {
+          ...defaultMacIphoneLiveState(),
+          ...(payload && typeof payload === "object" ? {
+            available: payload.available !== false,
+            configuredMode: String(payload.configured_mode || payload.configuredMode || "bundled").toLowerCase(),
+            configuredUrl: String(payload.configured_url || payload.configuredUrl || ""),
+            configuredHost: String(payload.configured_host || payload.configuredHost || ""),
+            serverRunning: !!payload.server_running || !!payload.serverRunning,
+            managedByApp: !!payload.managed_by_app || !!payload.managedByApp,
+            serverControl: String(payload.server_control || payload.serverControl || "stopped").toLowerCase(),
+            lastAction: String(payload.last_action || payload.lastAction || ""),
+            lastChangedAt: String(payload.last_changed_at || payload.lastChangedAt || ""),
+            lastError: String(payload.last_error || payload.lastError || ""),
+            lastSummary: String(payload.last_summary || payload.lastSummary || ""),
+            xcodeStepRequired: payload.xcode_step_required !== false,
+          } : {}),
+        };
+        return macIphoneLiveState;
+      }
+
+      async function refreshMacIphoneLiveState(force = false) {
+        if (!canControlIphoneLiveFromMac()) {
+          return setMacIphoneLiveState(defaultMacIphoneLiveState());
+        }
+        if (macIphoneLiveFetchPromise && !force) return macIphoneLiveFetchPromise;
+        macIphoneLiveFetchPromise = nativeWindowFetch("/api/iphone/live/status", { cache: "no-store" })
+          .then((res) => {
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            return res.json();
+          })
+          .then((payload) => setMacIphoneLiveState(payload))
+          .catch((e) => setMacIphoneLiveState({
+            ...defaultMacIphoneLiveState(),
+            lastError: e?.message || "Unable to load iPhone live status.",
+          }))
+          .finally(() => {
+            macIphoneLiveFetchPromise = null;
+            if (currentView === "settings") renderSyncCenter();
+          });
+        return macIphoneLiveFetchPromise;
+      }
+
+      function macIphoneConfiguredModeLabel() {
+        return String(macIphoneLiveState?.configuredMode || "bundled").toUpperCase();
+      }
+
+      function macIphoneServerStatusLabel() {
+        if (macIphoneLiveBusy) return "WORKING";
+        return macIphoneLiveState?.serverRunning ? "RUNNING" : "STOPPED";
+      }
+
+      function macIphoneServerDetailLabel() {
+        const control = String(macIphoneLiveState?.serverControl || "stopped").toLowerCase();
+        if (control === "managed") return "Managed by Mac app";
+        if (control === "external") return "External OMNI live server";
+        return "No live server on port 8099";
+      }
+
+      function macIphoneSummaryLabel() {
+        if (macIphoneLiveBusy) return "Applying iPhone mode change...";
+        if (macIphoneLiveState?.lastSummary) return macIphoneLiveState.lastSummary;
+        return macIphoneLiveState?.configuredMode === "live"
+          ? "Live build configured on this Mac."
+          : "Bundled/offline build configured on this Mac.";
+      }
+
+      async function toggleMacIphoneLiveMode(targetMode) {
+        const target = String(targetMode || "").trim().toLowerCase();
+        if (!canControlIphoneLiveFromMac()) {
+          themedNotice("Mac iPhone live controls are only available from the Mac version of OMNI.");
+          return;
+        }
+        if (target !== "live" && target !== "bundled") {
+          themedNotice("Invalid iPhone live mode request.");
+          return;
+        }
+        if (macIphoneLiveBusy) return;
+        const confirmText = target === "live"
+          ? "Prepare the iPhone build for LIVE mode and start the Mac LAN server now? You will still need to press Run in Xcode on the phone build."
+          : "Restore the iPhone build to BUNDLED/OFFLINE mode now, stop the Mac LAN server, and sync iOS again?";
+        if (!(await themedConfirm(confirmText))) return;
+
+        macIphoneLiveBusy = true;
+        if (currentView === "settings") renderSyncCenter();
+        const path = target === "live" ? "/api/iphone/live/on" : "/api/iphone/live/off";
+        try {
+          const res = await nativeWindowFetch(path, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: "{}",
+          });
+          const payload = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            if (payload?.status) setMacIphoneLiveState(payload.status);
+            throw new Error(payload?.error || `HTTP ${res.status}`);
+          }
+          setMacIphoneLiveState(payload);
+          recordSyncCenterEvent(
+            target === "live" ? "iphone_live_enabled_from_mac" : "iphone_live_disabled_from_mac",
+            {
+              message: target === "live"
+                ? "Mac prepared iPhone live mode."
+                : "Mac restored iPhone bundled mode.",
+            },
+          );
+          themedNotice(
+            target === "live"
+              ? "Mac prepared iPhone LIVE mode. Press Run in Xcode on the iPhone build."
+              : "Mac restored the iPhone BUNDLED mode. Press Run in Xcode again for the offline build.",
+          );
+        } catch (e) {
+          themedNotice(`iPhone mode change failed: ${e?.message || "Unknown error"}`);
+        } finally {
+          macIphoneLiveBusy = false;
+          await refreshMacIphoneLiveState(true).catch(() => {});
+        }
+      }
+
       async function switchOmniRuntimeMode(targetMode) {
         const target = String(targetMode || "").trim().toLowerCase();
         const plugin = getRuntimeModePlugin();
@@ -1754,6 +1929,28 @@
           privacySettings.lockOnLaunch ? "LAUNCH LOCK" : "",
           privacySettings.autoLockOnBackground ? "BG LOCK" : "",
         ].filter(Boolean).join(" • ") || "UNLOCKED ON START";
+        const macIphoneLiveControls = canControlIphoneLiveFromMac()
+          ? `
+              <div class="sync-center-list">
+                <div class="sync-center-list-title">Mac iPhone Live Control</div>
+                <div class="mission-profile-highlights">
+                  <div class="mission-highlight-card"><span class="mission-highlight-key">iPhone Build</span><span class="mission-highlight-value">${escapeHtmlAttr(macIphoneConfiguredModeLabel())}</span></div>
+                  <div class="mission-highlight-card"><span class="mission-highlight-key">LAN Server</span><span class="mission-highlight-value">${escapeHtmlAttr(macIphoneServerStatusLabel())}</span></div>
+                  <div class="mission-highlight-card"><span class="mission-highlight-key">Server Detail</span><span class="mission-highlight-value">${escapeHtmlAttr(macIphoneServerDetailLabel())}</span></div>
+                  <div class="mission-highlight-card"><span class="mission-highlight-key">iPhone URL</span><span class="mission-highlight-value">${escapeHtmlAttr(macIphoneLiveState?.configuredUrl || "Not configured")}</span></div>
+                  <div class="mission-highlight-card"><span class="mission-highlight-key">Last Change</span><span class="mission-highlight-value">${escapeHtmlAttr(macIphoneLiveState?.lastChangedAt ? formatLocalDateTime(macIphoneLiveState.lastChangedAt) : "No change logged")}</span></div>
+                </div>
+                <div class="settings-actions">
+                  <button class="confirm-btn" type="button" onclick="toggleMacIphoneLiveMode('live')" ${macIphoneLiveBusy ? "disabled" : ""}>TURN IPHONE LIVE ON</button>
+                  <button class="confirm-btn" type="button" onclick="toggleMacIphoneLiveMode('bundled')" ${macIphoneLiveBusy ? "disabled" : ""}>TURN IPHONE LIVE OFF</button>
+                  <button class="confirm-btn" type="button" onclick="refreshMacIphoneLiveState(true)" ${macIphoneLiveBusy ? "disabled" : ""}>REFRESH LIVE STATUS</button>
+                </div>
+                <div class="routine-ex-note">${escapeHtmlAttr(macIphoneSummaryLabel())}</div>
+                ${macIphoneLiveState?.xcodeStepRequired ? `<div class="routine-ex-note">After changing this mode on Mac, press <code>Run</code> in Xcode on the iPhone again to apply it to the installed app.</div>` : ""}
+                ${macIphoneLiveState?.lastError ? `<div class="routine-ex-note" style="color:var(--warning-yellow);">${escapeHtmlAttr(macIphoneLiveState.lastError)}</div>` : ""}
+              </div>
+            `
+          : "";
         const runtimeActions = runtimeModeState?.remoteCapable
           ? `
               <div class="settings-actions">
@@ -1779,6 +1976,7 @@
             <div class="mission-highlight-card"><span class="mission-highlight-key">Privacy</span><span class="mission-highlight-value">${escapeHtmlAttr(privacyLabel)}</span></div>
           </div>
           ${runtimeActions}
+          ${macIphoneLiveControls}
           <div class="sync-center-list">
             <div class="sync-center-list-title">Recent Sync Events</div>
             ${recentEvents.length
@@ -2539,6 +2737,7 @@
         if (viewId === "settings") {
           loadPrivacySettings();
           refreshRuntimeModeState(true).catch(() => {});
+          refreshMacIphoneLiveState(true).catch(() => {});
           renderSyncCenter();
           if ((!allMissions.length || !allOps.length) && !isFetching) fetchData();
         }
@@ -9828,14 +10027,9 @@
 
       function buildQuarterNativeNotifications(nowMs, horizonMs) {
         const out = [];
-        const now = new Date(nowMs);
-        const q = getQuarterState(now);
-        const opDay = operationalDayKey(now);
-        for (let qi = 0; qi < DASHBOARD_QUARTER_COUNT; qi += 1) {
-          const qNum = qi + 1;
-          const startAt = new Date(q.dayStart.getTime() + qi * QUARTER_DURATION_MS);
-          const atMs = startAt.getTime();
-          if (atMs <= nowMs + 15000 || atMs > horizonMs) continue;
+        forEachQuarterWindowInRange(nowMs, horizonMs, ({ qNum, qStart, opDay }) => {
+          const atMs = qStart.getTime();
+          if (atMs <= nowMs + 15000 || atMs > horizonMs) return;
           const key = `quarter:${opDay}:Q${qNum}`;
           const copy = getQuarterAlertCopy(qNum);
           out.push({
@@ -9843,10 +10037,57 @@
             id: nativeNotificationIdForKey(key),
             title: copy.title,
             body: copy.body,
-            at: startAt.toISOString(),
+            at: qStart.toISOString(),
             extra: { omniSource: "omni-app", key, kind: "quarter" },
           });
-        }
+        });
+        return out;
+      }
+
+      function buildHourNativeNotifications(nowMs, horizonMs) {
+        const out = [];
+        forEachQuarterWindowInRange(nowMs, horizonMs, ({ qNum, qStart, opDay }) => {
+          [2, 3].forEach((hourNumber) => {
+            const startAt = new Date(qStart.getTime() + (hourNumber - 1) * 60 * 60000);
+            const atMs = startAt.getTime();
+            if (atMs <= nowMs + 15000 || atMs > horizonMs) return;
+            const key = `hour:${opDay}:Q${qNum}:H${hourNumber}`;
+            const copy = getQuarterHourAlertCopy(qNum, hourNumber);
+            out.push({
+              key,
+              id: nativeNotificationIdForKey(key),
+              title: copy.title,
+              body: copy.body,
+              at: startAt.toISOString(),
+              extra: { omniSource: "omni-app", key, kind: "hour" },
+            });
+          });
+        });
+        return out;
+      }
+
+      function buildBreakNativeNotifications(nowMs, horizonMs) {
+        const out = [];
+        const breakStarts = [25, 55, 85, 115, 145, 175];
+        forEachQuarterWindowInRange(nowMs, horizonMs, ({ qNum, qStart, opDay, preset }) => {
+          if (preset) return;
+          breakStarts.forEach((minute, index) => {
+            const startAt = new Date(qStart.getTime() + minute * 60000);
+            const atMs = startAt.getTime();
+            if (atMs <= nowMs + 15000 || atMs > horizonMs) return;
+            const breakIndex = index + 1;
+            const key = `break:${opDay}:Q${qNum}:B${breakIndex}`;
+            const copy = getQuarterBreakAlertCopy(qNum, breakIndex);
+            out.push({
+              key,
+              id: nativeNotificationIdForKey(key),
+              title: copy.title,
+              body: copy.body,
+              at: startAt.toISOString(),
+              extra: { omniSource: "omni-app", key, kind: "break" },
+            });
+          });
+        });
         return out;
       }
 
@@ -9917,7 +10158,11 @@
         const horizonMs = nowMs + (72 * 60 * 60 * 1000);
         let rows = [];
         if (notificationSettings.reminder) rows = rows.concat(buildReminderNativeNotifications(nowMs, horizonMs));
-        if (notificationSettings.quarter) rows = rows.concat(buildQuarterNativeNotifications(nowMs, horizonMs));
+        if (notificationSettings.quarter) {
+          rows = rows.concat(buildQuarterNativeNotifications(nowMs, horizonMs));
+          rows = rows.concat(buildHourNativeNotifications(nowMs, horizonMs));
+          rows = rows.concat(buildBreakNativeNotifications(nowMs, horizonMs));
+        }
         if (notificationSettings.upcoming) rows = rows.concat(buildUpcomingTaskNativeNotifications(nowMs, horizonMs));
         if (notificationSettings.checklist) rows = rows.concat(buildChecklistNativeNotifications(nowMs, horizonMs));
         rows = rows.filter((row) => row && row.key && row.at).sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
@@ -9962,6 +10207,7 @@
               title: row.title,
               body: row.body,
               schedule: { at: new Date(row.at) },
+              sound: nativeNotificationSoundName(row?.extra?.kind || ""),
               threadIdentifier: OMNI_NOTIFICATION_THREAD_ID,
               extra: row.extra,
             })),
@@ -10365,21 +10611,66 @@
         if (explicit) return explicit;
         const rawKey = String(key || "").trim().toLowerCase();
         if (rawKey.startsWith("quarter:")) return "quarter";
+        if (rawKey.startsWith("hour:")) return "hour";
+        if (rawKey.startsWith("break:")) return "break";
         if (rawKey.startsWith("rem:")) return "reminder";
         if (rawKey.startsWith("upcoming:")) return "upcoming";
         if (rawKey.startsWith("checklist:")) return "checklist";
         if (rawKey.startsWith("test:")) return "test";
         const rawTitle = String(title || "").trim().toLowerCase();
         if (rawTitle.includes("quarter")) return "quarter";
+        if (rawTitle.includes("hour")) return "hour";
+        if (rawTitle.includes("break")) return "break";
         if (rawTitle.includes("reminder")) return "reminder";
         return "generic";
       }
 
       function notificationToneFromKind(kind = "") {
         const value = String(kind || "").trim().toLowerCase();
-        if (value === "quarter" || value === "upcoming") return "quarter";
+        if (value === "quarter") return "quarter";
+        if (value === "hour" || value === "upcoming") return "hour";
+        if (value === "break") return "break";
         if (value === "reminder") return "reminder";
         return "neutral";
+      }
+
+      function nativeNotificationSoundName(kind = "") {
+        const value = inferNotificationKind("", "", kind);
+        if (value === "quarter") return "omni_quarter_beep.wav";
+        if (value === "hour") return "omni_hour_beep.wav";
+        if (value === "break") return "omni_break_beep.wav";
+        return "omni_alert_beep.wav";
+      }
+
+      function notificationSoundPattern(kind = "") {
+        const value = inferNotificationKind("", "", kind);
+        if (value === "quarter") {
+          return [{ f: 784, t: 0.07 }, { f: 1046, t: 0.08 }, { f: 1318, t: 0.12 }];
+        }
+        if (value === "hour" || value === "upcoming") {
+          return [{ f: 659, t: 0.08 }, { f: 880, t: 0.12 }];
+        }
+        if (value === "break") {
+          return [{ f: 440, t: 0.07 }, { f: 349, t: 0.07 }, { f: 440, t: 0.11 }];
+        }
+        if (value === "reminder" || value === "test") {
+          return [{ f: 698, t: 0.08 }, { f: 523, t: 0.12 }];
+        }
+        if (value === "checklist") {
+          return [{ f: 523, t: 0.06 }, { f: 523, t: 0.12 }];
+        }
+        return [{ f: 698, t: 0.08 }, { f: 523, t: 0.12 }];
+      }
+
+      function notificationSoundProfile(mode = "") {
+        const value = String(mode || "matrix").trim().toLowerCase();
+        if (value === "ping") {
+          return { oscType: "sine", peakGain: 0.085, spacing: 0.02, stretch: 0.92 };
+        }
+        if (value === "soft") {
+          return { oscType: "triangle", peakGain: 0.06, spacing: 0.045, stretch: 1.05 };
+        }
+        return { oscType: "triangle", peakGain: 0.12, spacing: 0.03, stretch: 1 };
       }
 
       function logNotificationHistory(title, message, key, kind = "") {
@@ -10425,7 +10716,7 @@
         return !!key && firedNotificationKeys.includes(key);
       }
 
-      function playNotificationSound() {
+      function playNotificationSound(kind = "") {
         const mode = String(notificationSettings.sound || "matrix");
         if (mode === "off") return;
         try {
@@ -10436,32 +10727,30 @@
           }
           const ctx = notificationAudioCtx;
           if (ctx.state === "suspended") ctx.resume();
-          const seq = mode === "ping"
-            ? [{ f: 900, t: 0.15 }]
-            : mode === "soft"
-              ? [{ f: 520, t: 0.10 }, { f: 420, t: 0.18 }]
-              : [{ f: 760, t: 0.08 }, { f: 980, t: 0.10 }, { f: 640, t: 0.14 }];
+          const seq = notificationSoundPattern(kind);
+          const profile = notificationSoundProfile(mode);
           let at = ctx.currentTime;
           seq.forEach((x) => {
             const o = ctx.createOscillator();
             const g = ctx.createGain();
-            o.type = "triangle";
+            const duration = x.t * profile.stretch;
+            o.type = profile.oscType;
             o.frequency.value = x.f;
             g.gain.setValueAtTime(0.0001, at);
-            g.gain.exponentialRampToValueAtTime(0.12, at + 0.02);
-            g.gain.exponentialRampToValueAtTime(0.0001, at + x.t);
+            g.gain.exponentialRampToValueAtTime(profile.peakGain, at + 0.02);
+            g.gain.exponentialRampToValueAtTime(0.0001, at + duration);
             o.connect(g);
             g.connect(ctx.destination);
             o.start(at);
-            o.stop(at + x.t + 0.02);
-            at += x.t + 0.03;
+            o.stop(at + duration + 0.02);
+            at += duration + profile.spacing;
           });
         } catch (e) {}
       }
 
       async function testNotificationSound() {
         saveNotificationSettings();
-        playNotificationSound();
+        playNotificationSound("test");
         const plugin = getLocalNotificationsPlugin();
         if (!plugin) return;
         const granted = await ensureNativeNotificationPermission({ prompt: true, showNotice: true });
@@ -10473,6 +10762,7 @@
             title: "OMNI Test Alert",
             body: "Phone notifications are active.",
             schedule: { at: new Date(Date.now() + 2000) },
+            sound: nativeNotificationSoundName("test"),
             threadIdentifier: OMNI_NOTIFICATION_THREAD_ID,
             extra: { omniSource: "omni-app", key, kind: "test" },
           }],
@@ -10503,7 +10793,7 @@
         `;
         host.prepend(card);
         if (host.children.length > 6) host.removeChild(host.lastElementChild);
-        playNotificationSound();
+        playNotificationSound(resolvedKind);
         if (key) rememberNotificationKey(key);
       }
 
@@ -10568,12 +10858,35 @@
         const useNative = nativeNotificationsActive();
         if (notificationSettings.quarter && !useNative) {
           const now = new Date();
+          const nowMs = now.getTime();
           const q = getQuarterState(now);
           const opDay = operationalDayKey(now);
           const qKey = `quarter:${opDay}:Q${q.quarterIndex}`;
-          if (!isNotificationFired(qKey)) {
+          const quarterDiffSec = Math.floor((nowMs - q.quarterStart.getTime()) / 1000);
+          if (quarterDiffSec >= 0 && quarterDiffSec <= 55 && !isNotificationFired(qKey)) {
             const copy = getQuarterAlertCopy(q.quarterIndex);
-            pushNotification(copy.title, copy.body, qKey);
+            pushNotification(copy.title, copy.body, qKey, "quarter");
+          }
+          if (Number(q.minuteInQuarter || 0) >= 60) {
+            const hourNumber = Number(q.minuteInQuarter || 0) >= 120 ? 3 : 2;
+            const hKey = `hour:${opDay}:Q${q.quarterIndex}:H${hourNumber}`;
+            const hourStart = new Date(q.quarterStart.getTime() + (hourNumber - 1) * 60 * 60000);
+            const hourDiffSec = Math.floor((nowMs - hourStart.getTime()) / 1000);
+            if (hourDiffSec >= 0 && hourDiffSec <= 55 && !isNotificationFired(hKey)) {
+              const copy = getQuarterHourAlertCopy(q.quarterIndex, hourNumber);
+              pushNotification(copy.title, copy.body, hKey, "hour");
+            }
+          }
+          const breakIndex = currentBreakIndexFromQuarterState(q);
+          if (breakIndex > 0) {
+            const bKey = `break:${opDay}:Q${q.quarterIndex}:B${breakIndex}`;
+            const breakStarts = [25, 55, 85, 115, 145, 175];
+            const breakStart = new Date(q.quarterStart.getTime() + breakStarts[breakIndex - 1] * 60000);
+            const breakDiffSec = Math.floor((nowMs - breakStart.getTime()) / 1000);
+            if (breakDiffSec >= 0 && breakDiffSec <= 55 && !isNotificationFired(bKey)) {
+              const copy = getQuarterBreakAlertCopy(q.quarterIndex, breakIndex);
+              pushNotification(copy.title, copy.body, bKey, "break");
+            }
           }
         }
         if (notificationSettings.reminder && !useNative && routineData && Array.isArray(routineData.reminders)) {
@@ -10587,7 +10900,7 @@
                 const leadText = offsetMins === 0
                   ? "now"
                   : (offsetMins % 1440 === 0 ? `${offsetMins / 1440} day(s)` : (offsetMins % 60 === 0 ? `${offsetMins / 60} hour(s)` : `${offsetMins} min`)) + " prior";
-                pushNotification("Reminder", `${r.title} (${leadText})`, key);
+                pushNotification("Reminder", `${r.title} (${leadText})`, key, "reminder");
               }
             });
           });
@@ -10595,7 +10908,7 @@
         const nextBlock = useNative ? null : getNextPlannedBlockInfo(new Date());
         if (notificationSettings.upcoming && nextBlock && nextBlock.kind === "mission" && nextBlock.mins >= 0 && nextBlock.mins <= 5) {
           const key = `upcoming:${nextBlock.key}`;
-          pushNotification("Upcoming Task", `Q${nextBlock.quarter} Block ${nextBlock.slot} in ${nextBlock.mins}m: ${nextBlock.label}`, key);
+          pushNotification("Upcoming Task", `Q${nextBlock.quarter} Block ${nextBlock.slot} in ${nextBlock.mins}m: ${nextBlock.label}`, key, "upcoming");
         }
         if (notificationSettings.checklist && Array.isArray(checklistItems)) {
           const pending = checklistItems.filter((x) => !x.done);
@@ -10603,7 +10916,7 @@
             const bucket = Math.floor(Date.now() / (3 * 60 * 60 * 1000)); // every 3 hours
             const key = `checklist:${operationalDayKey(new Date())}:${bucket}`;
             const preview = pending.slice(0, 2).map((x) => x.text).join(" | ");
-            pushNotification("Checklist Pending", `${pending.length} item(s) pending. ${preview}`, key);
+            pushNotification("Checklist Pending", `${pending.length} item(s) pending. ${preview}`, key, "checklist");
           }
         }
       }
@@ -13737,7 +14050,7 @@
         const preset = getQuarterPreset(quarterNum);
         if (!preset) {
           return {
-            title: "Quarter Alert",
+            title: "QUARTER START",
             body: `Q${quarterNum}/${DASHBOARD_QUARTER_COUNT} is live now.`,
           };
         }
@@ -13755,6 +14068,75 @@
           title: preset.title,
           body: preset.detailCopy,
         };
+      }
+
+      function getQuarterHourAlertCopy(quarterNum, hourNumber) {
+        const preset = getQuarterPreset(quarterNum);
+        const hourLabel = `hour ${Math.max(1, Math.min(3, Number(hourNumber) || 1))}/3`;
+        if (preset?.kind === "routine") {
+          return {
+            title: "HOUR START",
+            body: `${preset.title.toUpperCase()} ${hourLabel} is live now.`,
+          };
+        }
+        if (preset?.kind === "sleep") {
+          return {
+            title: "HOUR START",
+            body: `${preset.title.toUpperCase()} ${hourLabel} is live. Stay quiet and protected.`,
+          };
+        }
+        return {
+          title: "HOUR START",
+          body: `Q${quarterNum}/${DASHBOARD_QUARTER_COUNT} ${hourLabel} is live now.`,
+        };
+      }
+
+      function getQuarterBreakAlertCopy(quarterNum, breakIndex) {
+        const labels = {
+          1: "after block 1",
+          2: "after block 2",
+          3: "after block 3",
+          4: "after block 4",
+          5: "after recovery block 5",
+          6: "final reset window",
+        };
+        const idx = Math.max(1, Math.min(6, Number(breakIndex) || 1));
+        return {
+          title: "BREAK START",
+          body: `Q${quarterNum}/${DASHBOARD_QUARTER_COUNT} break ${idx}/6 is live now (${labels[idx]}).`,
+        };
+      }
+
+      function currentBreakIndexFromQuarterState(state) {
+        if (!state || state.preset || state.cadence !== "BREAK") return 0;
+        const minute = Number(state.minuteInQuarter || 0);
+        if (minute < 30) return 1;
+        if (minute < 60) return 2;
+        if (minute < 90) return 3;
+        if (minute < 120) return 4;
+        if (minute < 150) return 5;
+        return 6;
+      }
+
+      function forEachQuarterWindowInRange(nowMs, horizonMs, callback) {
+        const baseDayStart = getQuarterState(new Date(nowMs)).dayStart;
+        const dayMs = 24 * 60 * 60 * 1000;
+        for (let dayOffset = -1; dayOffset <= 4; dayOffset += 1) {
+          const dayStart = new Date(baseDayStart.getTime() + dayOffset * dayMs);
+          for (let qi = 0; qi < DASHBOARD_QUARTER_COUNT; qi += 1) {
+            const qNum = qi + 1;
+            const qStart = new Date(dayStart.getTime() + qi * QUARTER_DURATION_MS);
+            const qEnd = new Date(qStart.getTime() + QUARTER_DURATION_MS);
+            if (qEnd.getTime() <= nowMs + 15000 || qStart.getTime() > horizonMs) continue;
+            callback({
+              qNum,
+              qStart,
+              qEnd,
+              opDay: operationalDayKey(new Date(qStart.getTime() + 1000)),
+              preset: getQuarterPreset(qNum),
+            });
+          }
+        }
       }
 
       function renderDashboardRoutineQuarter(period, quarterNum) {
@@ -13910,6 +14292,7 @@
           quarterIndex: quarterIndex + 1,
           quarterStart,
           quarterEnd,
+          minuteInQuarter,
           hourInQuarter,
           phase,
           cadence,
@@ -15236,6 +15619,7 @@
         if (appStarted) return;
         appStarted = true;
         window.alert = (message) => themedNotice(message);
+        initTerminalAppTitle();
         initMatrixRain();
         window.addEventListener("resize", initMatrixRain);
         loadGymPhotoManifest().catch(() => {});
@@ -15260,6 +15644,7 @@
         initMobileMenuGestures();
         initLiveDevReload();
         refreshRuntimeModeState().catch(() => {});
+        refreshMacIphoneLiveState().catch(() => {});
         initNativeNotifications().catch(() => {});
         queueOmniCalendarSync(700, { prompt: true });
         refreshHviTimeMeta();

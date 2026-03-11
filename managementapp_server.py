@@ -15,7 +15,12 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from omni_runtime import ensure_runtime_root
+RUNTIME_VARIANT = os.environ.get("OMNI_RUNTIME_VARIANT", "").strip().lower()
+
+if RUNTIME_VARIANT == "draft":
+    from omni_runtime_draft import ensure_runtime_root
+else:
+    from omni_runtime import ensure_runtime_root
 
 WORKSPACE = ensure_runtime_root()
 OPERATIONS_DIR = WORKSPACE / "OperationDir" / "Operations"

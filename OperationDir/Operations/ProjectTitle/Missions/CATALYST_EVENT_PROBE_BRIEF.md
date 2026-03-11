@@ -1,5 +1,10 @@
 # Mission Brief: Operation Fandom Catalyst
 
+Mission ID: MIS-010
+Created: 2026-03-11 18:04
+Mission Name: Mission Brief: Operation Fandom Catalyst
+Status: PENDING
+
 ## Purpose:
 - To probe all assets and participants involved in a 'Catalyst Event' (a gathering of influencers within a community).
 - To leverage and continue the 'script (Fandom)' originating from this event.
@@ -11,5 +16,3 @@
 
 ## Status:
 - Initialized.
-
-Status: PENDING

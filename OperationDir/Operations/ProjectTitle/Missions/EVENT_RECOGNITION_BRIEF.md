@@ -1,5 +1,10 @@
 # Mission Brief: Operation ProjectTitle Mission sales - Event Recognition
 
+Mission ID: MIS-012
+Created: 2026-03-11 18:04
+Mission Name: Mission Brief: Operation ProjectTitle Mission sales - Event Recognition
+Status: PENDING
+
 ## (Understanding Audience Appreciation for UK Underground Event Lineups)
 
 ### Operation:: Action
