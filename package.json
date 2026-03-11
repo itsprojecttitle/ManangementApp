@@ -6,6 +6,9 @@
   "scripts": {
     "build:web": "bash ./scripts/build_web.sh",
     "build": "npm run build:web",
+    "ios:sync": "npm run build:web && npx cap sync ios",
+    "ios:live:on": "bash ./scripts/set_ios_dev_mode.sh live",
+    "ios:live:off": "bash ./scripts/set_ios_dev_mode.sh bundle",
     "cap:sync": "npx cap sync ios",
     "cap:copy": "npx cap copy ios",
     "cap:open": "npx cap open ios"
@@ -25,6 +28,7 @@
   "dependencies": {
     "@capacitor/cli": "^8.2.0",
     "@capacitor/core": "^8.2.0",
-    "@capacitor/ios": "^8.2.0"
+    "@capacitor/ios": "^8.2.0",
+    "@capacitor/local-notifications": "^8.0.2"
   }
 }

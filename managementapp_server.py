@@ -60,10 +60,278 @@ BLOCKED_UA_PATTERNS = (
 )
 _RATE_BUCKETS = {}
 _RATE_LOCK = Lock()
+DEV_WATCH_FILES = (
+    "ManagementApp.html",
+    "assets/managementapp.js",
+    "assets/managementapp.css",
+    "sw.js",
+)
 
 
 def _safe_name(name: str) -> str:
     return re.sub(r"[^A-Za-z0-9_-]+", "_", (name or "").strip()).strip("_") or "Untitled"
+
+
+def _safe_operation_rel(operation: str) -> str:
+    parts = [_safe_name(part) for part in str(operation or "").split("/") if str(part).strip()]
+    parts = [part for part in parts if part]
+    return "/".join(parts) or "ProjectTitle"
+
+
+def _operation_dir_for_rel(operation: str) -> Path:
+    rel = _safe_operation_rel(operation)
+    return OPERATIONS_DIR.joinpath(*rel.split("/"))
+
+
+def _mission_identity_from_sync_payload(payload):
+    payload = payload if isinstance(payload, dict) else {}
+    operation = _safe_operation_rel(payload.get("operation", ""))
+    mission_name = _safe_name(payload.get("name") or payload.get("mission") or "")
+    raw_path = str(payload.get("path") or payload.get("mission_path") or "").replace("\\", "/")
+    if raw_path:
+        match = re.search(r"OperationDir/Operations/(.+?)/Missions/([^/]+)\.md$", raw_path)
+        if match:
+            if not operation:
+                operation = _safe_operation_rel(match.group(1))
+            if not mission_name:
+                mission_name = _safe_name(match.group(2))
+    return operation or "ProjectTitle", mission_name or "NEW_MISSION"
+
+
+def _ensure_sync_mission_path(payload, default_status="PENDING"):
+    operation, mission_name = _mission_identity_from_sync_payload(payload)
+    mission_display = mission_name.replace("_", " ")
+    op_dir = _operation_dir_for_rel(operation)
+    missions_dir = op_dir / "Missions"
+    missions_dir.mkdir(parents=True, exist_ok=True)
+    mission_path = missions_dir / f"{_safe_name(mission_name)}.md"
+    status = str(payload.get("status") or default_status or "PENDING").strip()
+    if status not in MISSION_STATUSES:
+        status = "PENDING"
+    if not mission_path.exists():
+        mission_path.write_text(_build_mission_file_content(mission_display, status, "", _mission_created_fallback(mission_path)), encoding="utf-8")
+    else:
+        update_mission_status(str(mission_path), status)
+    ensure_mission_file_metadata(mission_path, mission_name=mission_display, status=status)
+    return mission_path, operation, mission_display
+
+
+def _merge_operation_dirs(source: str, target: str, merged: str):
+    source = _safe_name(source)
+    target = _safe_name(target)
+    merged = _safe_name(merged or f"{source}_{target}")
+    if not source or not target or source == target:
+        raise RuntimeError("Invalid source/target operation names")
+    source_dir = OPERATIONS_DIR / source
+    target_dir = OPERATIONS_DIR / target
+    if not source_dir.exists() or not source_dir.is_dir():
+        raise RuntimeError(f"Source operation not found: {source}")
+    if not target_dir.exists() or not target_dir.is_dir():
+        raise RuntimeError(f"Target operation not found: {target}")
+    merged_dir = OPERATIONS_DIR / merged
+    if merged_dir.exists():
+        raise RuntimeError(f"Operation already exists: {merged}")
+    merged_dir.mkdir(parents=True, exist_ok=False)
+    (merged_dir / "Missions").mkdir(parents=True, exist_ok=True)
+    shutil.move(str(source_dir), str(merged_dir / source))
+    shutil.move(str(target_dir), str(merged_dir / target))
+    return merged
+
+
+def _apply_backup_sync_action(action):
+    action = action if isinstance(action, dict) else {}
+    action_type = str(action.get("type", "")).strip()
+    payload = action.get("payload", {}) if isinstance(action.get("payload", {}), dict) else {}
+    if not action_type:
+        raise RuntimeError("Missing sync action type")
+
+    if action_type == "operation.create":
+        op = _safe_operation_rel(payload.get("name", ""))
+        (_operation_dir_for_rel(op) / "Missions").mkdir(parents=True, exist_ok=True)
+        return "operation"
+
+    if action_type == "operation.delete":
+        op = _safe_name(payload.get("name", ""))
+        if not op:
+            raise RuntimeError("Missing operation name")
+        target = OPERATIONS_DIR / op
+        if target.exists() and target.is_dir():
+            shutil.rmtree(target)
+            remove_blackbook_for_operation(op)
+            reindex_all_mission_metadata()
+            sync_blackbook_for_all_missions(event="ID REINDEXED")
+        return "operation"
+
+    if action_type == "operation.merge":
+        _merge_operation_dirs(payload.get("source", ""), payload.get("target", ""), payload.get("name", ""))
+        return "operation"
+
+    if action_type == "mission.create":
+        mission_path, _, _ = _ensure_sync_mission_path(payload, payload.get("status", "PENDING"))
+        reindex_all_mission_metadata()
+        sync_blackbook_for_mission_path(str(mission_path), event="CREATED")
+        return "mission"
+
+    if action_type == "mission.delete":
+        mission_path, _, _ = _ensure_sync_mission_path(payload, payload.get("status", "PENDING"))
+        if mission_path.exists():
+            mission_path.unlink()
+            remove_blackbook_for_mission_path(str(mission_path))
+            reindex_all_mission_metadata()
+            sync_blackbook_for_all_missions(event="ID REINDEXED")
+        return "mission"
+
+    if action_type == "mission.status":
+        mission_path, _, _ = _ensure_sync_mission_path(payload, payload.get("status", "PENDING"))
+        if not update_mission_status(str(mission_path), payload.get("status", "")):
+            raise RuntimeError("Invalid mission status update")
+        sync_blackbook_for_mission_path(str(mission_path), event="STATUS UPDATED")
+        return "mission"
+
+    if action_type == "mission.brief.save":
+        mission_path, _, _ = _ensure_sync_mission_path(payload, "IN_PROGRESS")
+        phase = int(payload.get("phase", 1) or 1)
+        version = save_mission_brief_version(
+            str(mission_path),
+            phase,
+            payload.get("content", ""),
+            payload.get("variables", []),
+        )
+        if version is None:
+            raise RuntimeError("Failed to save mission brief")
+        sync_blackbook_for_mission_path(str(mission_path), event=f"PHASE {version.get('phase', phase)} SAVED")
+        return "mission"
+
+    if action_type == "mission.debrief.save":
+        mission_path, _, _ = _ensure_sync_mission_path(payload, "IN_PROGRESS")
+        result = save_mission_debrief_version(str(mission_path), payload.get("content", ""))
+        if result is None or (isinstance(result, dict) and result.get("error")):
+            raise RuntimeError((result or {}).get("error", "Failed to save mission debrief"))
+        update_mission_status(str(mission_path), "COMPLETE")
+        sync_blackbook_for_mission_path(str(mission_path), event="DEBRIEF SAVED")
+        return "mission"
+
+    if action_type == "blackbook.upsert":
+        upsert_blackbook({
+            "Probe_ID": payload.get("Probe_ID", ""),
+            "Date": payload.get("Date", ""),
+            "Time": payload.get("Time", ""),
+            "Operation": payload.get("Operation", ""),
+            "Mission": payload.get("Mission", ""),
+            "Status": payload.get("Status", "PENDING"),
+            "Description": payload.get("Description", ""),
+            "Hypothesis": payload.get("Hypothesis", ""),
+            "Platform": payload.get("Platform", ""),
+            "Result_Quantitative": payload.get("Result_Quantitative", ""),
+            "Notes": payload.get("Notes", ""),
+        })
+        return "blackbook"
+
+    if action_type == "blackbook.delete":
+        probe_id = str(payload.get("probe_id", "")).strip()
+        if probe_id:
+            delete_blackbook_probe(probe_id)
+        return "blackbook"
+
+    if action_type == "hvi.upsert":
+        handle = upsert_hvi(payload.get("handle", ""), payload.get("fields", {}))
+        if not handle:
+            raise RuntimeError("Invalid HVI handle")
+        return "hvi"
+
+    if action_type == "hvi.delete":
+        handle = str(payload.get("handle", "")).strip()
+        if handle:
+            delete_hvi(handle)
+        return "hvi"
+
+    if action_type == "doc.save":
+        if not save_doc_content(payload.get("file", ""), payload.get("content", "")):
+            raise RuntimeError("Invalid editable document")
+        return "doc"
+
+    raise RuntimeError(f"Unsupported sync action: {action_type}")
+
+
+def _apply_backup_snapshot(snapshot, summary):
+    snapshot = snapshot if isinstance(snapshot, dict) else {}
+    for op in snapshot.get("operations", []) if isinstance(snapshot.get("operations", []), list) else []:
+        clean = _safe_operation_rel(op)
+        (_operation_dir_for_rel(clean) / "Missions").mkdir(parents=True, exist_ok=True)
+        summary["operations"] += 1
+    for mission in snapshot.get("missions", []) if isinstance(snapshot.get("missions", []), list) else []:
+        mission_path, _, _ = _ensure_sync_mission_path(mission, mission.get("status", "PENDING"))
+        sync_blackbook_for_mission_path(str(mission_path), event="SNAPSHOT IMPORTED")
+        summary["missions"] += 1
+    for row in snapshot.get("blackbook", []) if isinstance(snapshot.get("blackbook", []), list) else []:
+        upsert_blackbook(row if isinstance(row, dict) else {})
+        summary["blackbook"] += 1
+    for row in snapshot.get("hvi", []) if isinstance(snapshot.get("hvi", []), list) else []:
+        row = row if isinstance(row, dict) else {}
+        handle = row.get("handle", "")
+        fields = row.get("fields", {})
+        if handle:
+            upsert_hvi(handle, fields)
+            summary["hvi"] += 1
+
+
+def _extract_sync_queue_from_backup(payload):
+    queue = payload.get("sync_queue", []) if isinstance(payload, dict) else []
+    if isinstance(queue, list) and queue:
+        return queue
+    local_storage = payload.get("local_storage", {}) if isinstance(payload, dict) else {}
+    raw = local_storage.get("omniSyncQueue:v1") if isinstance(local_storage, dict) else ""
+    if isinstance(raw, str) and raw.strip():
+        try:
+            parsed = json.loads(raw)
+            if isinstance(parsed, list):
+                return parsed
+        except Exception:
+            pass
+    return []
+
+
+def import_backup_payload_to_workspace(payload):
+    payload = payload if isinstance(payload, dict) else {}
+    summary = {
+        "applied_actions": 0,
+        "operations": 0,
+        "missions": 0,
+        "blackbook": 0,
+        "hvi": 0,
+        "docs": 0,
+    }
+    errors = []
+
+    sync_queue = _extract_sync_queue_from_backup(payload)
+    if sync_queue:
+        for idx, action in enumerate(sync_queue):
+            try:
+                bucket = _apply_backup_sync_action(action)
+                summary["applied_actions"] += 1
+                if bucket == "operation":
+                    summary["operations"] += 1
+                elif bucket == "mission":
+                    summary["missions"] += 1
+                elif bucket == "blackbook":
+                    summary["blackbook"] += 1
+                elif bucket == "hvi":
+                    summary["hvi"] += 1
+                elif bucket == "doc":
+                    summary["docs"] += 1
+            except Exception as exc:
+                errors.append(f"action[{idx}] {exc}")
+    else:
+        try:
+            _apply_backup_snapshot(payload.get("snapshot", {}), summary)
+        except Exception as exc:
+            errors.append(str(exc))
+
+    return {
+        "ok": not errors,
+        "summary": summary,
+        "errors": errors,
+    }
 
 
 def _json_response(handler: SimpleHTTPRequestHandler, payload, status=200):
@@ -109,29 +377,152 @@ def load_operations():
     return ops
 
 
-def load_missions():
-    rows = []
+def _mission_created_fallback(path: Path) -> str:
+    try:
+        stat = path.stat()
+        ts = getattr(stat, "st_birthtime", 0) or stat.st_mtime
+    except Exception:
+        ts = time.time()
+    return datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M")
+
+
+def _extract_mission_line_value(text: str, label: str) -> str:
+    match = re.search(rf"^\s*{re.escape(label)}:\s*(.+?)\s*$", text or "", re.M)
+    return match.group(1).strip() if match else ""
+
+
+def _extract_mission_heading(text: str) -> str:
+    match = re.search(r"^\s*#\s+(.+?)\s*$", text or "", re.M)
+    return match.group(1).strip() if match else ""
+
+
+def _strip_mission_header_lines(text: str) -> str:
+    lines = str(text or "").replace("\r\n", "\n").split("\n")
+    if lines and re.match(r"^\s*#\s+.+$", lines[0]):
+        lines = lines[1:]
+    filtered = []
+    for line in lines:
+        if re.match(r"^\s*(Mission ID|Created|Mission Name|Status):\s*.*$", line):
+            continue
+        filtered.append(line.rstrip())
+    return "\n".join(filtered).strip("\n").strip()
+
+
+def _build_mission_file_content(mission_name: str, status: str, mission_id: str, created_at: str, body: str = "") -> str:
+    header = [
+        f"# {mission_name}",
+        "",
+        f"Mission ID: {mission_id}",
+        f"Created: {created_at}",
+        f"Mission Name: {mission_name}",
+        f"Status: {status}",
+    ]
+    content = "\n".join(header)
+    body = str(body or "").strip()
+    if body:
+        content = f"{content}\n\n{body}"
+    return f"{content.rstrip()}\n"
+
+
+def _read_mission_file_state(path: Path):
+    p = Path(path)
+    mission_name = p.stem.replace("_", " ")
+    status = "PENDING"
+    mission_id = ""
+    created_at = _mission_created_fallback(p)
+    body = ""
+    try:
+        text = p.read_text(encoding="utf-8", errors="ignore")
+        mission_name = _extract_mission_line_value(text, "Mission Name") or _extract_mission_heading(text) or mission_name
+        mission_id = _extract_mission_line_value(text, "Mission ID")
+        created_at = _extract_mission_line_value(text, "Created") or created_at
+        raw_status = _extract_mission_line_value(text, "Status")
+        if raw_status in MISSION_STATUSES:
+            status = raw_status
+        body = _strip_mission_header_lines(text)
+    except Exception:
+        text = ""
+    return {
+        "path": p,
+        "mission_name": mission_name,
+        "mission_id": mission_id,
+        "created_at": created_at,
+        "status": status,
+        "body": body,
+    }
+
+
+def ensure_mission_file_metadata(path: Path, mission_id: str = "", created_at: str = "", mission_name: str = "", status: str = "", body: str = None):
+    p = Path(path)
+    state = _read_mission_file_state(p)
+    next_name = str(mission_name or state["mission_name"] or p.stem.replace("_", " ")).strip() or p.stem.replace("_", " ")
+    next_status = str(status or state["status"] or "PENDING").strip().upper()
+    if next_status not in MISSION_STATUSES:
+        next_status = "PENDING"
+    next_created = str(created_at or state["created_at"] or _mission_created_fallback(p)).strip() or _mission_created_fallback(p)
+    next_id = str(mission_id or state["mission_id"] or "").strip()
+    next_body = state["body"] if body is None else str(body or "").strip()
+    content = _build_mission_file_content(next_name, next_status, next_id, next_created, next_body)
+    current = ""
+    try:
+        current = p.read_text(encoding="utf-8", errors="ignore")
+    except Exception:
+        pass
+    if content != current:
+        p.write_text(content, encoding="utf-8")
+    return {
+        "path": p,
+        "mission_name": next_name,
+        "mission_id": next_id,
+        "created_at": next_created,
+        "status": next_status,
+        "body": next_body,
+    }
+
+
+def reindex_all_mission_metadata():
+    records = []
     if not OPERATIONS_DIR.exists():
-        return rows
+        return records
     for missions_dir in sorted(OPERATIONS_DIR.rglob("Missions")):
         if not missions_dir.is_dir():
             continue
-        op_rel = missions_dir.parent.relative_to(OPERATIONS_DIR).as_posix()
         for f in sorted(missions_dir.glob("*.md")):
-            ts = datetime.fromtimestamp(f.stat().st_mtime).strftime("%Y-%m-%d")
-            status = "PENDING"
-            content = f.read_text(encoding="utf-8", errors="ignore")
-            m = re.search(r"^\s*Status:\s*([A-Z_]+)\s*$", content, re.M)
-            if m and m.group(1) in MISSION_STATUSES:
-                status = m.group(1)
-            status = _derive_mission_status(f, status)
-            rows.append({
-                "date": ts,
-                "operation": op_rel,
-                "name": f.stem.replace("_", " "),
-                "status": status,
-                "path": str(f),
-            })
+            state = _read_mission_file_state(f)
+            state["status"] = _derive_mission_status(f, state["status"])
+            operation, _ = _mission_identity_from_path(f)
+            state["operation"] = operation
+            records.append(state)
+    records.sort(key=lambda row: (
+        str(row.get("created_at") or ""),
+        str(row.get("operation") or "").lower(),
+        str(row.get("mission_name") or "").lower(),
+        str(row.get("path") or "").lower(),
+    ))
+    for index, row in enumerate(records, start=1):
+        row.update(ensure_mission_file_metadata(
+            row["path"],
+            mission_id=f"MIS-{index:03d}",
+            created_at=row.get("created_at", ""),
+            mission_name=row.get("mission_name", ""),
+            status=row.get("status", "PENDING"),
+            body=row.get("body", ""),
+        ))
+    return records
+
+
+def load_missions():
+    rows = []
+    for row in reindex_all_mission_metadata():
+        rows.append({
+            "date": row.get("created_at", ""),
+            "created_at": row.get("created_at", ""),
+            "mission_id": row.get("mission_id", ""),
+            "operation": row.get("operation", ""),
+            "name": row.get("mission_name", ""),
+            "status": row.get("status", "PENDING"),
+            "path": str(row.get("path", "")),
+        })
     return rows
 
 
@@ -202,6 +593,32 @@ def _mission_identity_from_path(path: Path):
     return operation, mission
 
 
+def _mission_blackbook_probe_id(operation: str, mission: str) -> str:
+    return f"MISSION:{_safe_operation_rel(operation)}:{_safe_name(mission)}"
+
+
+def _merge_blackbook_mission_notes(existing_notes: str, mission_id: str, created_at: str, fallback: str) -> str:
+    text = str(existing_notes or "").strip()
+    text = re.sub(r"^\s*Mission ID:\s*[^|]+(?:\s*\|\s*Created:\s*[^|]+)?\s*\|?\s*", "", text, count=1, flags=re.I)
+    text = text.strip(" |")
+    suffix = text or str(fallback or "").strip()
+    parts = [
+        f"Mission ID: {mission_id or 'MIS-000'}",
+        f"Created: {created_at or 'unknown'}",
+    ]
+    if suffix:
+        parts.append(suffix)
+    return " | ".join(parts)
+
+
+def sync_blackbook_for_all_missions(event: str = "REINDEXED"):
+    for row in reindex_all_mission_metadata():
+        try:
+            sync_blackbook_for_mission_path(str(row["path"]), event=event)
+        except Exception:
+            continue
+
+
 def _mission_brief_meta(mission_path: Path):
     idx = _load_brief_index(mission_path)
     versions = idx.get("versions", []) if isinstance(idx, dict) else []
@@ -236,33 +653,48 @@ def sync_blackbook_for_mission_path(mission_path_str: str, event: str = "UPDATED
     if not mission_path:
         return None
     operation, mission = _mission_identity_from_path(mission_path)
+    mission_meta = _read_mission_file_state(mission_path)
+    probe_id = _mission_blackbook_probe_id(operation, mission)
     status = _status_from_mission_file(mission_path)
     version_count, latest_phase = _mission_brief_meta(mission_path)
     now = datetime.now()
 
     rows = load_blackbook()
     hit_indexes = _blackbook_rows_for_mission(rows, str(mission_path), operation, mission)
+    keep = None
+    for idx in hit_indexes:
+        if str((rows[idx] or {}).get("Probe_ID", "")).strip() == probe_id:
+            keep = idx
+            break
+    if keep is None and hit_indexes:
+        keep = hit_indexes[0]
+    existing = rows[keep] if keep is not None else {}
     entry = {
+        "Probe_ID": probe_id,
         "Date": now.strftime("%Y-%m-%d"),
         "Time": now.strftime("%H:%M"),
         "Operation": operation,
         "Mission": mission,
         "Status": status,
-        "Description": f"Auto-sync: Mission {event.lower()}.",
-        "Hypothesis": f"Mission lifecycle auto-tracked | phases={version_count}",
-        "Platform": "Internal",
-        "Result_Quantitative": status,
-        "Notes": f"{mission_path} | phases:{version_count} | latest_phase:{latest_phase}",
+        "Description": str(existing.get("Description") or "").strip() or f"[{mission_meta.get('mission_id') or 'MIS-000'}] Auto-sync: Mission {event.lower()}.",
+        "Hypothesis": str(existing.get("Hypothesis") or "").strip() or f"Mission lifecycle auto-tracked | created={mission_meta.get('created_at') or 'unknown'} | phases={version_count}",
+        "Platform": str(existing.get("Platform") or "").strip() or "Internal",
+        "Result_Quantitative": str(existing.get("Result_Quantitative") or "").strip() or status,
+        "Notes": _merge_blackbook_mission_notes(
+            existing.get("Notes", ""),
+            mission_meta.get("mission_id", ""),
+            mission_meta.get("created_at", ""),
+            f"{mission_path} | phases:{version_count} | latest_phase:{latest_phase}",
+        ),
     }
 
-    if hit_indexes:
-        # Keep first matching row; remove duplicates.
-        keep = hit_indexes[0]
+    if keep is not None:
         rows[keep] = {**rows[keep], **entry}
-        for idx in reversed(hit_indexes[1:]):
+        rows[keep]["Probe_ID"] = probe_id
+        for idx in reversed([i for i in hit_indexes if i != keep]):
             rows.pop(idx)
         save_blackbook(rows)
-        return rows[keep].get("Probe_ID", "")
+        return probe_id
     return upsert_blackbook(entry)
 
 
@@ -307,6 +739,7 @@ def update_mission_status(path: str, status: str) -> bool:
     else:
         content = f"{content.rstrip()}\n\nStatus: {status}\n"
     p.write_text(content, encoding="utf-8")
+    ensure_mission_file_metadata(p, status=status)
     return True
 
 
@@ -335,6 +768,7 @@ def save_mission_content(path: str, content: str) -> bool:
         content = f"{content.rstrip()}\n\nStatus: {prev_status}\n"
 
     p.write_text(content, encoding="utf-8")
+    ensure_mission_file_metadata(p, status=prev_status)
     return True
 
 
@@ -1215,6 +1649,30 @@ def load_manuels():
     return rows
 
 
+def load_dev_build_meta():
+    workspace_root = WORKSPACE.resolve()
+    latest_mtime = 0.0
+    watched = []
+    for rel_path in DEV_WATCH_FILES:
+        path = (WORKSPACE / rel_path).resolve()
+        try:
+            if not path.exists() or not path.is_file() or not str(path).startswith(str(workspace_root)):
+                continue
+            stat = path.stat()
+        except Exception:
+            continue
+        latest_mtime = max(latest_mtime, stat.st_mtime)
+        watched.append({
+            "path": rel_path,
+            "modified_at": datetime.fromtimestamp(stat.st_mtime).isoformat(timespec="seconds"),
+        })
+    return {
+        "version": str(int(latest_mtime * 1000)) if latest_mtime else "0",
+        "updated_at": datetime.fromtimestamp(latest_mtime).isoformat(timespec="seconds") if latest_mtime else "",
+        "files": watched,
+    }
+
+
 class Handler(SimpleHTTPRequestHandler):
     server_version = "ManagementApp"
     sys_version = ""
@@ -1363,6 +1821,8 @@ class Handler(SimpleHTTPRequestHandler):
             return _json_response(self, load_manuels())
         if path == "/api/swissknife/sessions":
             return _json_response(self, swissknife_list_sessions())
+        if path == "/api/dev/version":
+            return _json_response(self, load_dev_build_meta())
         if path == "/api/mission/brief":
             mission_path = (query.get("mission_path", [""])[0] or "").strip()
             payload = get_mission_brief_payload(mission_path)
@@ -1429,20 +1889,32 @@ class Handler(SimpleHTTPRequestHandler):
             return _json_response(self, {"ok": True, "operation": merged}, 201)
 
         if path == "/api/mission":
-            op = _safe_name(body.get("operation", "ProjectTitle"))
+            op = _safe_operation_rel(body.get("operation", "ProjectTitle"))
             name = _safe_name(body.get("name", "NEW_MISSION"))
             status = str(body.get("status") or "PENDING").strip()
             if status not in MISSION_STATUSES:
                 status = "PENDING"
-            missions_dir = OPERATIONS_DIR / op / "Missions"
+            missions_dir = _operation_dir_for_rel(op) / "Missions"
             missions_dir.mkdir(parents=True, exist_ok=True)
             f = missions_dir / f"{name}.md"
             if not f.exists():
-                f.write_text(f"# {name}\n\nStatus: {status}\n", encoding="utf-8")
+                display_name = name.replace("_", " ")
+                f.write_text(_build_mission_file_content(display_name, status, "", _mission_created_fallback(f)), encoding="utf-8")
             else:
                 update_mission_status(str(f), status)
+            ensure_mission_file_metadata(f, mission_name=name.replace("_", " "), status=status)
+            reindex_all_mission_metadata()
+            meta = _read_mission_file_state(f)
+            meta["status"] = _derive_mission_status(f, meta.get("status", "PENDING"))
             sync_blackbook_for_mission_path(str(f), event="CREATED")
-            return _json_response(self, {"ok": True, "path": str(f)}, 201)
+            return _json_response(self, {
+                "ok": True,
+                "path": str(f),
+                "operation": op,
+                "name": meta.get("mission_name", name.replace("_", " ")),
+                "mission_id": meta.get("mission_id", ""),
+                "created_at": meta.get("created_at", ""),
+            }, 201)
 
         if path == "/api/mission/status":
             mission_path = body.get("path", "")
@@ -1532,6 +2004,10 @@ class Handler(SimpleHTTPRequestHandler):
                 return _json_response(self, {"error": "Invalid HVI handle"}, 400)
             return _json_response(self, {"ok": True, "handle": saved}, 200)
 
+        if path == "/api/backup/import":
+            result = import_backup_payload_to_workspace(body)
+            return _json_response(self, result, 200)
+
         if path == "/api/sandbox/python":
             try:
                 result = run_python_sandbox(body.get("code", ""))
@@ -1560,6 +2036,8 @@ class Handler(SimpleHTTPRequestHandler):
                 p_str = str(p)
                 p.unlink()
                 remove_blackbook_for_mission_path(p_str)
+                reindex_all_mission_metadata()
+                sync_blackbook_for_all_missions(event="ID REINDEXED")
                 return _json_response(self, {"ok": True})
             return _json_response(self, {"error": "Mission file not found"}, 404)
 
@@ -1569,6 +2047,8 @@ class Handler(SimpleHTTPRequestHandler):
             if p.exists() and p.is_dir():
                 shutil.rmtree(p)
                 remove_blackbook_for_operation(op)
+                reindex_all_mission_metadata()
+                sync_blackbook_for_all_missions(event="ID REINDEXED")
                 return _json_response(self, {"ok": True})
             return _json_response(self, {"error": "Operation not found"}, 404)
 
