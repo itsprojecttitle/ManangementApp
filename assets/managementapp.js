@@ -25,6 +25,8 @@
       let allHvi = [];
       let allDatawells = [];
       let missionDatawellLinks = { workflow: [], missions: {} };
+      let missionIntelDatawellSyncTimer = 0;
+      let briefStudioDatawellSyncTimer = 0;
       let hviProfileExtras = {};
       let hviStatTemplates = [];
       let operationColors = {};
@@ -69,6 +71,7 @@
       let missionCommandSelectedPath = "";
       let missionCommandCache = {};
       let missionPopupSection = "brief";
+      let templatesActiveSection = "brief";
       let intelPopupType = "";
       let intelPopupProbeId = "";
       let intelPopupHviHandle = "";
@@ -122,6 +125,22 @@
         { value: "alphabetical", label: "A-Z" },
         { value: "progress", label: "PROGRESS" },
       ];
+      const TEMPLATE_DOC_PATHS = {
+        workflow: "OperationDir/Templates/MissionProbeWorkflow.md",
+        brief: "OperationDir/Templates/MissionBriefing.md",
+        probe: "OperationDir/Templates/ProbeSkill.md",
+        manual: "OperationDir/Templates/OfficialProbeManuel.md",
+        datawell: "OperationDir/Templates/DatawellDiscovery.md",
+      };
+      const EDITABLE_DOC_PATHS = new Set([
+        "MissionBriefing.md",
+        "MissionDebrief.md",
+        TEMPLATE_DOC_PATHS.workflow,
+        TEMPLATE_DOC_PATHS.brief,
+        TEMPLATE_DOC_PATHS.probe,
+        TEMPLATE_DOC_PATHS.manual,
+        TEMPLATE_DOC_PATHS.datawell,
+      ]);
       let notificationSettings = {
         enabled: true,
         quarter: true,
@@ -189,6 +208,61 @@
         },
       ];
       const nativeWindowFetch = window.fetch.bind(window);
+
+      function getDesktopBridgeApi() {
+        const api = window.pywebview?.api;
+        return api && typeof api === "object" ? api : null;
+      }
+
+      function hasDesktopBridge() {
+        const api = getDesktopBridgeApi();
+        return Boolean(api && typeof api.save_text_file === "function");
+      }
+
+      function isDesktopLocalServerSession() {
+        const protocol = String(window.location?.protocol || "");
+        const hostname = String(window.location?.hostname || "").trim().toLowerCase();
+        if (!["http:", "https:"].includes(protocol)) return false;
+        return hostname === "127.0.0.1" || hostname === "localhost";
+      }
+
+      async function desktopCopyText(text) {
+        const api = getDesktopBridgeApi();
+        if (!api || typeof api.copy_text !== "function") return false;
+        try {
+          const result = await api.copy_text(String(text || ""));
+          return Boolean(result?.ok);
+        } catch (_) {
+          return false;
+        }
+      }
+
+      async function desktopServerCopyText(text) {
+        if (!isDesktopLocalServerSession()) return false;
+        try {
+          const res = await nativeWindowFetch("/api/system/clipboard/copy", {
+            method: "POST",
+            headers: { "Content-Type": "application/json; charset=utf-8" },
+            body: JSON.stringify({ text: String(text || "") }),
+          });
+          if (!res.ok) return false;
+          const payload = await res.json().catch(() => null);
+          return Boolean(payload?.ok);
+        } catch (_) {
+          return false;
+        }
+      }
+
+      async function desktopSaveTextFile(name, text) {
+        const api = getDesktopBridgeApi();
+        if (!api || typeof api.save_text_file !== "function") return null;
+        const result = await api.save_text_file(String(name || "omni-export.txt"), String(text || ""));
+        if (!result?.ok) {
+          throw new Error(result?.error || "Desktop save failed.");
+        }
+        return result;
+      }
+
       let offlineSyncQueue = null;
       let offlineSyncShadow = null;
       let liveDevBuildVersion = "";
@@ -826,6 +900,15 @@
         allHvi = cloneSyncData(shadow.hvi || []) || [];
       }
 
+      function applyOfflineShadowWorkspaceToRuntime(shadow) {
+        const src = shadow && typeof shadow === "object" ? shadow : getOfflineSyncShadow();
+        reindexShadowMissions(src);
+        allOps = cloneSyncData(src.operations || []) || [];
+        allMissions = cloneSyncData(src.missions || []) || [];
+        allBlackbook = cloneSyncData(src.blackbook || []) || [];
+        allHvi = cloneSyncData(src.hvi || []) || [];
+      }
+
       function markOfflineSyncDirty(shadow) {
         shadow.dirty = true;
         shadow.seeded = true;
@@ -909,6 +992,9 @@
           Hypothesis: String(entry?.Hypothesis || "").trim(),
           Platform: String(entry?.Platform || "Internal").trim() || "Internal",
           Result_Quantitative: String(entry?.Result_Quantitative || "PENDING").trim() || "PENDING",
+          Datawell_Present: String(entry?.Datawell_Present || "").trim(),
+          Datawell_Name: String(entry?.Datawell_Name || "").trim(),
+          Datawell_Relation: String(entry?.Datawell_Relation || "").trim(),
           Notes: String(entry?.Notes || "").trim(),
         };
         const idx = shadow.blackbook.findIndex((item) => String(item?.Probe_ID || "").trim() === probeId);
@@ -1053,8 +1139,8 @@
         }
 
         if (method === "GET" && path === "/api/doc/content") {
-          const fileName = String(query.get("file") || "").split("/").pop();
-          if (!fileName) return errorJsonResponse("Invalid or locked file", 400);
+          const fileName = String(query.get("file") || "").replace(/^\/+/, "").trim();
+          if (!fileName || !EDITABLE_DOC_PATHS.has(fileName)) return errorJsonResponse("Invalid or locked file", 400);
           const shadow = getOfflineSyncShadow();
           if (shadow.docs[fileName]) {
             return jsonResponse({
@@ -1290,6 +1376,9 @@
             Hypothesis: body?.Hypothesis || "",
             Platform: body?.Platform || "",
             Result_Quantitative: body?.Result_Quantitative || "",
+            Datawell_Present: body?.Datawell_Present || "",
+            Datawell_Name: body?.Datawell_Name || "",
+            Datawell_Relation: body?.Datawell_Relation || "",
             Notes: body?.Notes || "",
           }, `blackbook.upsert:${probeId}`);
           return jsonResponse({ ok: true, Probe_ID: probeId }, 200);
@@ -1331,8 +1420,8 @@
 
         if (method === "POST" && path === "/api/doc/content") {
           const shadow = seedOfflineSyncShadowFromMemory();
-          const fileName = String(body?.file || "").split("/").pop();
-          if (!["MissionBriefing.md", "MissionDebrief.md"].includes(fileName || "")) {
+          const fileName = String(body?.file || "").replace(/^\/+/, "").trim();
+          if (!fileName || !EDITABLE_DOC_PATHS.has(fileName)) {
             return errorJsonResponse("Invalid or locked file", 400);
           }
           shadow.docs[fileName] = {
@@ -1420,22 +1509,29 @@
         return { file, name, text };
       }
 
-      function downloadBackupText(name, text) {
-        const blob = new Blob([text], { type: "application/json" });
+      async function downloadBackupText(name, text) {
+        const fileName = String(name || "omni-export.txt");
+        const value = String(text || "");
+        if (hasDesktopBridge()) {
+          return desktopSaveTextFile(fileName, value);
+        }
+        const mimeType = /\.json$/i.test(fileName) ? "application/json" : "text/plain;charset=utf-8";
+        const blob = new Blob([value], { type: mimeType });
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
-        a.download = name;
+        a.download = fileName;
         document.body.appendChild(a);
         a.click();
         a.remove();
         setTimeout(() => URL.revokeObjectURL(url), 1000);
+        return { ok: true, path: fileName };
       }
 
       async function exportAllDataBackup() {
         try {
           const { file, name, text } = buildBackupFile();
-          downloadBackupText(file.name || name, text);
+          await downloadBackupText(file.name || name, text);
           recordSyncCenterEvent("backup_exported", { message: file.name || name });
           if (currentView === "settings") renderSyncCenter();
           themedNotice("Backup exported.");
@@ -1458,10 +1554,12 @@
             themedNotice("Backup shared.");
             return;
           }
-          downloadBackupText(name, text);
+          await downloadBackupText(name, text);
           recordSyncCenterEvent("backup_exported", { message: name });
           if (currentView === "settings") renderSyncCenter();
-          themedNotice("Share not available. Backup downloaded instead.");
+          themedNotice(hasDesktopBridge()
+            ? "Share not available. Backup saved to Downloads/OMNI Exports."
+            : "Share not available. Backup downloaded instead.");
         } catch (e) {
           themedNotice("Share cancelled or failed.");
         }
@@ -1469,6 +1567,89 @@
 
       function backupLocalStorageKeyFilter(key) {
         return /^(managementapp:|operationColors:|operationOrder:|hvi|checklist|routineData|journal|reminder|notification|appearance|performance|tutor|missionPlan:|dashboardSession:|swissknife|omniSync)/i.test(String(key || ""));
+      }
+
+      function pendingWorkspaceSyncCount() {
+        return Array.isArray(getOfflineSyncQueue()) ? getOfflineSyncQueue().length : 0;
+      }
+
+      function replaceOfflineWorkspaceFromBackupPayload(payload) {
+        const snapshot = payload && payload.snapshot && typeof payload.snapshot === "object"
+          ? payload.snapshot
+          : null;
+        if (!snapshot) return false;
+        const shadow = getOfflineSyncShadow();
+        shadow.operations = Array.isArray(snapshot.operations) ? cloneSyncData(snapshot.operations) : [];
+        shadow.missions = Array.isArray(snapshot.missions) ? cloneSyncData(snapshot.missions) : [];
+        shadow.blackbook = Array.isArray(snapshot.blackbook) ? cloneSyncData(snapshot.blackbook) : [];
+        shadow.hvi = Array.isArray(snapshot.hvi) ? cloneSyncData(snapshot.hvi) : [];
+        shadow.seeded = true;
+        shadow.dirty = false;
+        reindexShadowMissions(shadow);
+        saveOfflineSyncShadow();
+        applyOfflineShadowWorkspaceToRuntime(shadow);
+        return true;
+      }
+
+      async function syncWorkspaceWithLiveServerOnPhone(plugin, targetMode) {
+        const target = String(targetMode || "").trim().toLowerCase();
+        if (!plugin) return { pushed: false, pulled: false, appliedActions: 0 };
+        const canPush = typeof plugin.pushBackupToLive === "function";
+        const canPull = typeof plugin.fetchBackupFromLive === "function";
+        if (target === "live") {
+          let pushed = false;
+          let appliedActions = 0;
+          if (pendingWorkspaceSyncCount() > 0 && canPush) {
+            const payload = collectAppBackupPayload();
+            const pushResult = await plugin.pushBackupToLive({ payload });
+            if (!pushResult?.ok) {
+              throw new Error(pushResult?.error || "Workspace merge into Mac failed.");
+            }
+            offlineSyncQueue = [];
+            saveOfflineSyncQueue();
+            pushed = true;
+            appliedActions = Number(pushResult?.summary?.applied_actions || 0);
+            recordSyncCenterEvent("iphone_workspace_push", {
+              message: `Phone workspace merged into Mac: ${appliedActions} action(s).`,
+            });
+          }
+          let pulled = false;
+          if (canPull) {
+            try {
+              const backup = await plugin.fetchBackupFromLive();
+              pulled = replaceOfflineWorkspaceFromBackupPayload(backup);
+              if (pulled) {
+                recordSyncCenterEvent("iphone_workspace_pull", {
+                  message: pushed
+                    ? "Phone cached the merged Mac workspace before live mode."
+                    : "Phone cached the current Mac workspace before live mode.",
+                });
+              }
+            } catch (e) {
+              recordSyncCenterEvent("iphone_workspace_pull_failed", {
+                message: `Workspace cache pull skipped: ${e?.message || "Unknown error"}`,
+              });
+            }
+          }
+          return { pushed, pulled, appliedActions };
+        }
+        if (target === "bundled" && canPull) {
+          try {
+            const backup = await plugin.fetchBackupFromLive();
+            const pulled = replaceOfflineWorkspaceFromBackupPayload(backup);
+            if (pulled) {
+              recordSyncCenterEvent("iphone_workspace_pull", {
+                message: "Phone cached the latest Mac workspace before bundled mode.",
+              });
+            }
+            return { pushed: false, pulled, appliedActions: 0 };
+          } catch (e) {
+            recordSyncCenterEvent("iphone_workspace_pull_failed", {
+              message: `Bundled cache refresh skipped: ${e?.message || "Unknown error"}`,
+            });
+          }
+        }
+        return { pushed: false, pulled: false, appliedActions: 0 };
       }
 
       function triggerImportBackupPicker() {
@@ -1661,8 +1842,8 @@
         ].join("\n");
       }
 
-      function saveTextFile(name, text) {
-        downloadBackupText(String(name || "omni-export.txt"), String(text || ""));
+      async function saveTextFile(name, text) {
+        return downloadBackupText(String(name || "omni-export.txt"), String(text || ""));
       }
 
       async function shareTextFile(title, name, text) {
@@ -1675,13 +1856,13 @@
           });
           return true;
         }
-        saveTextFile(name, text);
+        await saveTextFile(name, text);
         return false;
       }
 
-      function saveSyncCenterReport() {
+      async function saveSyncCenterReport() {
         const fileName = `omni-sync-report-${new Date().toISOString().replace(/[:.]/g, "-")}.txt`;
-        saveTextFile(fileName, buildSyncCenterReportText());
+        await saveTextFile(fileName, buildSyncCenterReportText());
         recordSyncCenterEvent("sync_report_saved", { message: fileName });
         if (currentView === "settings") renderSyncCenter();
         themedNotice("Sync report saved.");
@@ -1910,10 +2091,22 @@
           recordSyncCenterEvent(target === "bundled" ? "runtime_switch_bundled" : "runtime_switch_live", {
             message: target === "bundled" ? "Disconnecting phone from Mac live mode." : "Connecting phone to Mac live mode.",
           });
+          let syncResult = null;
+          if (target === "live" || target === "bundled") {
+            syncResult = await syncWorkspaceWithLiveServerOnPhone(plugin, target);
+          }
           if (target === "bundled") {
             await plugin.switchToBundled();
+            if (syncResult?.pulled) themedNotice("Disconnected. Latest Mac workspace cached for offline mode.");
           } else {
             await plugin.switchToLive();
+            if (syncResult?.pushed || syncResult?.pulled) {
+              const applied = Number(syncResult?.appliedActions || 0);
+              const parts = [];
+              if (syncResult?.pushed) parts.push(`merged ${applied} phone action(s) into Mac`);
+              if (syncResult?.pulled) parts.push("cached merged workspace on phone");
+              themedNotice(`Connected. ${parts.join(" and ")}.`);
+            }
           }
         } catch (e) {
           themedNotice(`Runtime switch failed: ${e?.message || "Unknown error"}`);
@@ -2383,6 +2576,8 @@
             <div class="form-group"><label>Time</label><input id="intel-bb-time" type="time" value="${escapeHtmlAttr(item.Time || "")}" /></div>
             <div class="form-group"><label>Operation</label><input id="intel-bb-operation" type="text" value="${escapeHtmlAttr(item.Operation || "")}" /></div>
             <div class="form-group"><label>Mission</label><input id="intel-bb-mission" type="text" value="${escapeHtmlAttr(item.Mission || "")}" /></div>
+            <div class="form-group"><label>Datawell Present</label><input id="intel-bb-datawell-present" type="text" value="${escapeHtmlAttr(item.Datawell_Present || "")}" placeholder="YES / NO" /></div>
+            <div class="form-group"><label>Datawell Name</label><input id="intel-bb-datawell-name" type="text" value="${escapeHtmlAttr(item.Datawell_Name || "")}" placeholder="Linked source name..." /></div>
             <div class="form-group"><label>Status</label>
               <select id="intel-bb-status">
                 <option value="PENDING" ${(item.Status || "PENDING") === "PENDING" ? "selected" : ""}>PENDING</option>
@@ -2391,6 +2586,7 @@
                 <option value="BLOCKED" ${(item.Status || "") === "BLOCKED" ? "selected" : ""}>BLOCKED</option>
               </select>
             </div>
+            <div class="form-group full"><label>Datawell Relation</label><input id="intel-bb-datawell-relation" type="text" value="${escapeHtmlAttr(item.Datawell_Relation || "")}" placeholder="Connected to / part of / owned / sourced from..." /></div>
             <div class="form-group full"><label>Description</label><textarea id="intel-bb-description" placeholder="Description...">${escapeHtmlAttr(item.Description || "")}</textarea></div>
             <div class="form-group"><label>Platform</label><input id="intel-bb-platform" type="text" value="${escapeHtmlAttr(item.Platform || "")}" /></div>
             <div class="form-group full"><label>Hypothesis</label><textarea id="intel-bb-hypothesis" placeholder="Hypothesis...">${escapeHtmlAttr(item.Hypothesis || "")}</textarea></div>
@@ -2604,6 +2800,9 @@
           Operation: document.getElementById("intel-bb-operation")?.value || "",
           Mission: document.getElementById("intel-bb-mission")?.value || "",
           Status: document.getElementById("intel-bb-status")?.value || "PENDING",
+          Datawell_Present: document.getElementById("intel-bb-datawell-present")?.value || "",
+          Datawell_Name: document.getElementById("intel-bb-datawell-name")?.value || "",
+          Datawell_Relation: document.getElementById("intel-bb-datawell-relation")?.value || "",
           Description: document.getElementById("intel-bb-description")?.value || "",
           Hypothesis: document.getElementById("intel-bb-hypothesis")?.value || "",
           Platform: document.getElementById("intel-bb-platform")?.value || "",
@@ -2655,6 +2854,7 @@
       }
 
       function switchView(viewId) {
+        if (viewId === "templates") viewId = "mission-probe";
         if (viewId === "sync-center") {
           openSettingsSyncCenter();
           return;
@@ -2668,7 +2868,8 @@
         if (targetView) targetView.style.display = "block";
         
         document.querySelectorAll(".nav-btn").forEach((btn) => btn.classList.remove("active"));
-        const targetBtn = document.querySelector(`.nav-btn[onclick="switchView('${viewId}')"]`);
+        const navTargetView = viewId === "mission-probe" ? "templates" : viewId;
+        const targetBtn = document.querySelector(`.nav-btn[onclick="switchView('${navTargetView}')"]`);
         if (targetBtn) targetBtn.classList.add("active");
         applyViewTitleTheme(viewId, targetBtn);
 
@@ -2726,17 +2927,19 @@
           renderJournal();
         }
         if (viewId === "probe-skill") {
-          ensureMarkdownLoaded("/ProbeSkill.md", "probe-skill-content", "Failed to load ProbeSkill.md");
+          ensureMarkdownLoaded(`/${TEMPLATE_DOC_PATHS.probe}`, "probe-skill-content", "Failed to load ProbeSkill.md");
         }
         if (viewId === "probe-manual") {
-          ensureMarkdownLoaded("/OfficialProbeManuel.md", "probe-manual-content", "Failed to load OfficialProbeManuel.md");
+          ensureMarkdownLoaded(`/${TEMPLATE_DOC_PATHS.manual}`, "probe-manual-content", "Failed to load OfficialProbeManuel.md");
         }
         if (viewId === "mission-probe") {
-          ensureMarkdownLoaded("/MissionProbeWorkflow.md", "mission-probe-guide-content", "Failed to load MissionProbeWorkflow.md");
-          ensureMarkdownLoaded("/MissionBriefing.md", "mission-probe-brief-content", "Failed to load MissionBriefing.md");
-          ensureMarkdownLoaded("/ProbeSkill.md", "mission-probe-skill-content", "Failed to load ProbeSkill.md");
-          ensureMarkdownLoaded("/OfficialProbeManuel.md", "mission-probe-manual-content", "Failed to load OfficialProbeManuel.md");
-          renderMissionProbeDatawellLinks();
+          ensureMarkdownLoaded(`/${TEMPLATE_DOC_PATHS.brief}`, "mission-probe-brief-content", "Failed to load MissionBriefing.md");
+          ensureMarkdownLoaded(`/${TEMPLATE_DOC_PATHS.probe}`, "mission-probe-skill-content", "Failed to load ProbeSkill.md");
+          ensureMarkdownLoaded(`/${TEMPLATE_DOC_PATHS.manual}`, "mission-probe-manual-content", "Failed to load OfficialProbeManuel.md");
+          ensureMarkdownLoaded(`/${TEMPLATE_DOC_PATHS.datawell}`, "mission-probe-datawell-prompt-content", "Failed to load DatawellDiscovery.md");
+          renderPostingTemplate();
+          renderMissionProbePackPreview();
+          renderTemplatesWorkspace();
         }
         if (viewId === "posting-template") {
           renderPostingTemplate();
@@ -2756,7 +2959,7 @@
           if ((!allMissions.length || !allOps.length) && !isFetching) fetchData();
         }
         if (viewId === "mission-briefing") {
-          ensureMarkdownLoaded("/MissionBriefing.md", "mission-briefing-content", "Failed to load MissionBriefing.md");
+          ensureMarkdownLoaded(`/${TEMPLATE_DOC_PATHS.brief}`, "mission-briefing-content", "Failed to load MissionBriefing.md");
         }
         if (viewId === "hvi-intel") {
           renderHvi();
@@ -2823,21 +3026,84 @@
       function focusMissionProbeSection(section = "") {
         const key = String(section || "").trim().toLowerCase();
         const map = {
+          workflow: "mission-probe-workflow-card",
+          datawell: "mission-probe-datawell-card",
           brief: "mission-probe-brief-card",
           skill: "mission-probe-skill-card",
           manual: "mission-probe-manual-card",
+          posting: "mission-probe-posting-card",
         };
         const targetId = map[key];
-        if (currentView !== "mission-probe") switchView("mission-probe");
-        const el = targetId ? document.getElementById(targetId) : null;
-        if (!el || typeof el.scrollIntoView !== "function") return;
+        if (currentView !== "mission-probe") switchView("templates");
         setTimeout(() => {
+          setTemplatesActiveSection(key);
+          const el = targetId ? document.getElementById(targetId) : null;
+          if (!el || typeof el.scrollIntoView !== "function") return;
           try {
             el.scrollIntoView({ behavior: "smooth", block: "start" });
           } catch (_) {
             el.scrollIntoView();
           }
         }, 40);
+      }
+
+      function normalizeTemplatesSection(section = "") {
+        const key = String(section || "").trim().toLowerCase();
+        return ["workflow", "brief", "skill", "manual", "datawell", "posting"].includes(key) ? key : "brief";
+      }
+
+      function setTemplatesActiveSection(section = "") {
+        templatesActiveSection = normalizeTemplatesSection(section || templatesActiveSection);
+        document.querySelectorAll("[data-template-nav]").forEach((el) => {
+          const active = String(el.getAttribute("data-template-nav") || "") === templatesActiveSection;
+          el.classList.toggle("active", active);
+          el.setAttribute("aria-pressed", active ? "true" : "false");
+        });
+        document.querySelectorAll("[data-template-section]").forEach((el) => {
+          const active = String(el.getAttribute("data-template-section") || "") === templatesActiveSection;
+          el.classList.toggle("active", active);
+          el.setAttribute("aria-hidden", active ? "false" : "true");
+        });
+      }
+
+      function renderTemplatesWorkspace() {
+        setTemplatesActiveSection(templatesActiveSection);
+      }
+
+      async function renderMissionProbePackPreview() {
+        const target = document.getElementById("mission-probe-guide-content");
+        if (!target) return;
+        try {
+          const text = await buildMissionProbePackText();
+          if ("value" in target) target.value = text;
+          else target.textContent = text;
+        } catch (e) {
+          const fallback = `Full Mission + Probe failed to render.\n\n${String(e?.message || "Unknown error")}`;
+          if ("value" in target) target.value = fallback;
+          else target.textContent = fallback;
+        }
+      }
+
+      function scrollTemplatesTop() {
+        if (currentView !== "mission-probe") switchView("templates");
+        const panel = document.getElementById("view-mission-probe");
+        const main = document.querySelector("main");
+        try {
+          if (document.scrollingElement) {
+            document.scrollingElement.scrollTo({ top: 0, behavior: "smooth" });
+          }
+        } catch (_) {}
+        try {
+          if (main && typeof main.scrollTo === "function") {
+            main.scrollTo({ top: 0, behavior: "smooth" });
+          }
+        } catch (_) {}
+        if (!panel || typeof panel.scrollIntoView !== "function") return;
+        try {
+          panel.scrollIntoView({ behavior: "smooth", block: "start" });
+        } catch (_) {
+          panel.scrollIntoView();
+        }
       }
 
       function openRoutineView(period = "") {
@@ -3308,7 +3574,7 @@
 
       function hviBriefText(h) {
         const fields = (h && h.fields && typeof h.fields === "object") ? h.fields : {};
-        return String(
+        const base = String(
           fields["Brief"] ||
           fields["Mission Stage"] ||
           fields["Status"] ||
@@ -3316,6 +3582,8 @@
           h?.status ||
           "No brief"
         ).trim() || "No brief";
+        const datawellName = String(fields["Datawell Name"] || "").trim();
+        return datawellName ? `${base} | Datawell: ${datawellName}` : base;
       }
 
       function hviCategoryFromItem(h) {
@@ -3486,6 +3754,7 @@
           removeCall: "removeMissionProbeDatawellLink",
           openCall: "openLinkedWorkflowDatawell",
         });
+        renderMissionProbePackPreview();
       }
 
       function addMissionProbeDatawellLink() {
@@ -3499,7 +3768,7 @@
         if (!ids.includes(nextId)) ids.push(nextId);
         setWorkflowLinkedDatawellIds(ids);
         saveMissionDatawellLinks();
-        themedNotice("Datawell linked to Mission + Probe.");
+        themedNotice("Datawell linked to Templates.");
       }
 
       function removeMissionProbeDatawellLink(id) {
@@ -3585,6 +3854,22 @@
         ].join("\n\n");
       }
 
+      function uniqueDatawellNamesFromIds(ids = []) {
+        return [...new Set(getLinkedDatawellRows(ids).map((row) => String(row?.title || "").trim()).filter(Boolean))];
+      }
+
+      function missionDatawellSummaryForPath(path = "") {
+        const missionIds = getMissionLinkedDatawellIds(path);
+        const workflowIds = getWorkflowLinkedDatawellIds();
+        const preferredIds = missionIds.length ? missionIds : workflowIds;
+        const names = uniqueDatawellNamesFromIds(preferredIds);
+        return {
+          present: names.length ? "YES" : "NO",
+          names: names.join(", "),
+          relation: missionIds.length ? "Linked to this mission" : (workflowIds.length ? "Part of the active template workflow" : ""),
+        };
+      }
+
       function normalizeDatawellEntry(row, index = 0) {
         const nowIso = new Date().toISOString();
         const item = row && typeof row === "object" ? row : {};
@@ -3605,6 +3890,162 @@
         };
       }
 
+      function isMissionBriefAutoDatawell(row) {
+        const sourceType = String(row?.sourceType || "").trim().toLowerCase();
+        const tags = String(row?.tags || "").trim().toLowerCase();
+        return sourceType === "mission brief" && tags.includes("auto-linked");
+      }
+
+      function normalizeDatawellMatchKey(value) {
+        const raw = String(value || "").trim();
+        if (!raw) return "";
+        return raw
+          .normalize("NFKD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .toLowerCase()
+          .replace(/[^a-z0-9\s]/g, " ")
+          .replace(/\s+/g, " ")
+          .trim();
+      }
+
+      function splitMissionDatawellNames(raw) {
+        const placeholders = new Set([
+          "created by me",
+          "linked datawell name",
+          "n a",
+          "n/a",
+          "na",
+          "none",
+          "no",
+        ]);
+        const seen = new Set();
+        return String(raw || "")
+          .split(/[\n,;|]+/)
+          .map((part) => stripMissionTextMarkup(part))
+          .map((part) => String(part || "").trim())
+          .filter(Boolean)
+          .filter((part) => {
+            const key = normalizeDatawellMatchKey(part);
+            if (!key || placeholders.has(key) || seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          });
+      }
+
+      function appendMissionDatawellNote(existingNotes, addition) {
+        const left = String(existingNotes || "").trim();
+        const right = String(addition || "").trim();
+        if (!right) return left;
+        if (!left) return right;
+        return left.includes(right) ? left : `${left} | ${right}`;
+      }
+
+      function upsertDatawellFromMissionBrief(name, relation, meta = {}, profile = null) {
+        const title = String(name || "").trim();
+        if (!title) return { id: "", created: false, updated: false };
+        const matchKey = normalizeDatawellMatchKey(title);
+        const fieldMap = profile?.fieldMap || {};
+        const summary = String(profile?.summary || "").trim();
+        const community = firstMissionValue(
+          fieldMap["Target"],
+          fieldMap["Target audience"],
+          fieldMap["Audience"],
+          fieldMap["Who/what is being targeted"]
+        );
+        const painpoints = firstMissionValue(
+          fieldMap["Pain point"],
+          fieldMap["Painpoints"],
+          fieldMap["Problem"],
+          fieldMap["Need"]
+        );
+        const relationNote = [meta?.operation ? `Operation: ${meta.operation}` : "", meta?.name ? `Mission: ${meta.name}` : "", relation ? `Relation: ${relation}` : ""]
+          .filter(Boolean)
+          .join(" | ");
+        const existingIndex = allDatawells.findIndex((row) => normalizeDatawellMatchKey(row?.title || "") === matchKey);
+        if (existingIndex >= 0) {
+          const existing = normalizeDatawellEntry(allDatawells[existingIndex], existingIndex);
+          let changed = false;
+          if (!existing.sourceType) {
+            existing.sourceType = "Mission Brief";
+            changed = true;
+          }
+          if (!existing.description && summary) {
+            existing.description = summary;
+            changed = true;
+          }
+          if (!existing.community && community) {
+            existing.community = community;
+            changed = true;
+          }
+          if (!existing.painpoints && painpoints) {
+            existing.painpoints = painpoints;
+            changed = true;
+          }
+          const nextNotes = appendMissionDatawellNote(existing.notes, relationNote);
+          if (nextNotes !== existing.notes) {
+            existing.notes = nextNotes;
+            changed = true;
+          }
+          if (changed) {
+            existing.updatedAt = new Date().toISOString();
+            allDatawells[existingIndex] = normalizeDatawellEntry(existing, existingIndex);
+          }
+          return { id: existing.id, created: false, updated: changed };
+        }
+        const created = normalizeDatawellEntry({
+          title,
+          sourceType: "Mission Brief",
+          description: summary,
+          community,
+          painpoints,
+          notes: relationNote,
+          tags: "mission-brief,auto-linked",
+        }, allDatawells.length);
+        allDatawells.unshift(created);
+        return { id: created.id, created: true, updated: true };
+      }
+
+      function syncMissionBriefDatawells(missionPath, content, options = {}) {
+        const path = String(missionPath || "").trim();
+        const briefText = String(content || "").trim();
+        if (!path || !briefText) return { linkedIds: [], created: 0, updated: 0, cleared: false };
+        const meta = missionMetaFromPath(path);
+        const profile = buildMissionProfileData(briefText, "brief", meta);
+        const fieldMap = profile?.fieldMap || {};
+        const presentRaw = firstMissionValue(fieldMap["Datawell Present"]);
+        const relation = firstMissionValue(fieldMap["Datawell Relation"]);
+        const names = splitMissionDatawellNames(firstMissionValue(fieldMap["Datawell Name"]));
+        const explicitNo = /^(no|none|n\/a|na)$/i.test(String(presentRaw || "").trim()) && !names.length;
+        if (explicitNo) {
+          const hadIds = getMissionLinkedDatawellIds(path);
+          if (hadIds.length) {
+            setMissionLinkedDatawellIds(path, []);
+            saveMissionDatawellLinks(true);
+            return { linkedIds: [], created: 0, updated: 0, cleared: true };
+          }
+          return { linkedIds: [], created: 0, updated: 0, cleared: false };
+        }
+        if (!names.length) return { linkedIds: getMissionLinkedDatawellIds(path), created: 0, updated: 0, cleared: false };
+        let createdCount = 0;
+        let updatedCount = 0;
+        const linkedIds = [];
+        names.forEach((name) => {
+          const result = upsertDatawellFromMissionBrief(name, relation, meta, profile);
+          if (result.id) linkedIds.push(result.id);
+          if (result.created) createdCount += 1;
+          else if (result.updated) updatedCount += 1;
+        });
+        if (createdCount || updatedCount) saveDatawells(true);
+        const uniqueIds = [...new Set(linkedIds)];
+        const previousIds = getMissionLinkedDatawellIds(path);
+        const linksChanged = uniqueIds.length !== previousIds.length || uniqueIds.some((id, index) => id !== previousIds[index]);
+        if (linksChanged) {
+          setMissionLinkedDatawellIds(path, uniqueIds);
+          saveMissionDatawellLinks(true);
+        }
+        return { linkedIds: uniqueIds, created: createdCount, updated: updatedCount, cleared: false };
+      }
+
       function loadDatawells() {
         try {
           const raw = localStorage.getItem(datawellsStorageKey());
@@ -3622,7 +4063,6 @@
         pruneMissionDatawellLinks();
         localStorage.setItem(datawellsStorageKey(), JSON.stringify(allDatawells));
         if (currentView === "datawells") renderDatawells();
-        if (currentView === "mission-probe") renderMissionProbeDatawellLinks();
         if (currentView === "settings") renderSyncCenter();
         if (currentView === "global-search") renderGlobalSearch();
         if (!silent) recordSyncCenterEvent("datawells_saved", { message: `${allDatawells.length} source(s) stored.` });
@@ -3756,6 +4196,7 @@
             <div class="datawell-head">
               <div class="datawell-title-wrap">
                 <div class="hvi-summary-name">${escapeHtmlAttr(row.title || "Untitled Datawell")}</div>
+                ${isMissionBriefAutoDatawell(row) ? `<div class="datawell-auto-badge">AUTO-CREATED FROM MISSION BRIEF</div>` : ""}
                 <div class="datawell-source-line">
                   <span class="datawell-type">${escapeHtmlAttr(row.sourceType || "Source")}</span>
                   ${row.platform ? `<span class="datawell-sep">•</span><span>${escapeHtmlAttr(row.platform)}</span>` : ""}
@@ -4465,33 +4906,116 @@
         return out;
       }
 
+      async function buildMissionBriefPromptText(mode = "primary") {
+        const brief = await readTextForPack(`/${TEMPLATE_DOC_PATHS.brief}`, "mission-probe-brief-content");
+        const reentry = String(mode || "").toLowerCase() === "reentry";
+        return [
+          reentry ? "# Mission Brief Prompt // Re-entry" : "# Mission Brief Prompt",
+          "",
+          reentry
+            ? "Use this prompt after Datawell Discovery. Rewrite the brief using validated findings only, then preserve the brief as the clean source of mission truth."
+            : "Use this prompt first. Establish mission truth before deeper probing, research expansion, or posting work.",
+          "",
+          "## AI Instructions",
+          "",
+          reentry
+            ? "- Carry over only confirmed findings from Datawell Discovery."
+            : "- Fill the brief first before switching to other templates.",
+          reentry
+            ? "- Add validated sources, entities, relationships, constraints, and next moves."
+            : "- Capture objective, target, pain point, leverage, desired move, constraints, timing, and success condition.",
+          reentry
+            ? "- Remove speculation and keep the brief clean."
+            : "- Ask only the minimum questions needed to complete the brief.",
+          reentry
+            ? "- Treat the updated brief as the new mission truth before moving to Probe Skill."
+            : "- Keep raw reasoning outside the brief.",
+          "",
+          "## Actual Template",
+          "",
+          brief || "Mission briefing is empty.",
+        ].join("\n");
+      }
+
+      async function buildDatawellDiscoveryPromptText() {
+        const datawell = await readTextForPack(`/${TEMPLATE_DOC_PATHS.datawell}`, "mission-probe-datawell-prompt-content");
+        return [
+          "# Datawell Discovery Prompt",
+          "",
+          "Use this when the mission needs source discovery, community mapping, ecosystem indexing, lead generation, competitor mapping, or research expansion.",
+          "",
+          "## AI Instructions",
+          "",
+          "- Use the Mission Brief as the source of context.",
+          "- Map where the relevant ecosystem gathers and which sources expose adjacent entities.",
+          "- Prefer primary sources, high-signal aggregators, and relationship-rich entry points.",
+          "- Distinguish assumptions from verified findings.",
+          "- Return usable source paths, pivots, and risks that can be written back into the Mission Brief.",
+          "",
+          "## Actual Template",
+          "",
+          datawell || "Datawell discovery template is empty.",
+        ].join("\n");
+      }
+
+      async function buildProbeSkillPromptText() {
+        const probe = await readTextForPack(`/${TEMPLATE_DOC_PATHS.probe}`, "mission-probe-skill-content");
+        return [
+          "# Probe Skill Prompt",
+          "",
+          "Use this after the Mission Brief is grounded. It is the diagnostic layer for exposing blockers, leverage, pressure points, incentives, execution gaps, and next questions.",
+          "",
+          "## AI Instructions",
+          "",
+          "- Read the current Mission Brief before using Probe Skill.",
+          "- Identify what is missing, weak, risky, misaligned, or unvalidated.",
+          "- Ask only the focused questions needed to sharpen the mission.",
+          "- Keep probe reasoning separate from the clean Mission Brief until answers are validated.",
+          "- End with a short probe plan and the next questions that matter most.",
+          "",
+          "## Actual Template",
+          "",
+          probe || "Probe skill is empty.",
+        ].join("\n");
+      }
+
       async function copyProbeSkill() {
-        const el = document.getElementById("probe-skill-content");
-        if (!el) return;
-        const text = (el.innerText || el.textContent || "").trim();
+        const text = await buildProbeSkillPromptText();
         if (!text) {
           themedNotice("Probe Skill content is empty.");
           return;
         }
         try {
-          const result = await copyTextWithFallback(text, "PROBE SKILL");
-          themedNotice(result === "manual" ? "Clipboard blocked. Manual copy view opened." : "Probe Skill copied.");
+          const result = await copyTextWithFallback(text, "PROBE SKILL PROMPT");
+          themedNotice(result === "manual" ? "Clipboard blocked. Manual copy view opened." : "Probe Skill prompt copied.");
+        } catch (e) {
+          themedNotice("Copy failed: " + e.message);
+        }
+      }
+
+      async function copyDatawellDiscoveryPrompt() {
+        const text = await buildDatawellDiscoveryPromptText();
+        if (!text) {
+          themedNotice("Datawell discovery prompt is empty.");
+          return;
+        }
+        try {
+          const result = await copyTextWithFallback(text, "DATA WELL DISCOVERY PROMPT");
+          themedNotice(result === "manual" ? "Clipboard blocked. Manual copy view opened." : "Datawell discovery prompt copied.");
         } catch (e) {
           themedNotice("Copy failed: " + e.message);
         }
       }
 
       async function copyMissionBriefing() {
-        const el = document.getElementById("mission-briefing-content");
-        if (!el) return;
-        const text = (el.innerText || el.textContent || "").trim();
+        const text = await buildMissionBriefPromptText("primary");
         if (!text) {
           themedNotice("Mission Briefing content is empty.");
           return;
         }
         try {
-          const result = await copyTextWithFallback(text, "MISSION BRIEFING");
-          themedNotice(result === "manual" ? "Clipboard blocked. Manual copy view opened." : "Mission Briefing copied.");
+          const result = await copyTextWithFallback(text, "MISSION BRIEF PROMPT");
+          themedNotice(result === "manual" ? "Clipboard blocked. Manual copy view opened." : "Mission Brief prompt copied.");
         } catch (e) {
           themedNotice("Copy failed: " + e.message);
         }
@@ -4507,7 +5031,7 @@
         const inline = document.getElementById("mission-briefing-content");
         if (!overlay || !header || !sub || !content) return;
         header.textContent = "// MISSION BRIEFING";
-        sub.textContent = "MissionBriefing.md";
+        sub.textContent = TEMPLATE_DOC_PATHS.brief;
         content.className = "doc-body mission-brief-doc-body";
         overlay.classList.add("active", "briefing-mode");
         overlay.setAttribute("aria-hidden", "false");
@@ -4516,7 +5040,7 @@
         let html = String(inline?.innerHTML || "").trim();
         if (!html || /Loading Mission Briefing/i.test(String(inline?.textContent || ""))) {
           try {
-            const res = await fetch("/MissionBriefing.md", { cache: "no-store" });
+            const res = await fetch(`/${TEMPLATE_DOC_PATHS.brief}`, { cache: "no-store" });
             if (!res.ok) throw new Error("Failed to load MissionBriefing.md");
             const markdown = await res.text();
             html = renderManualMarkdown(markdown);
@@ -4539,6 +5063,12 @@
         const value = String(text || "");
         if (!value.trim()) throw new Error("Nothing to copy.");
         try {
+          if (await desktopServerCopyText(value)) {
+            return "copied";
+          }
+          if (await desktopCopyText(value)) {
+            return "copied";
+          }
           if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
             await navigator.clipboard.writeText(value);
             return "copied";
@@ -4578,47 +5108,40 @@
         }
       }
 
-      async function buildMissionProbePackText() {
-        const instruction = await readTextForPack("/MissionProbeWorkflow.md", "mission-probe-guide-content");
-        const brief = await readTextForPack("/MissionBriefing.md", "mission-probe-brief-content");
-        const probe = await readTextForPack("/ProbeSkill.md", "mission-probe-skill-content");
-        const intro = String(document.getElementById("mission-probe-intro")?.innerText || document.getElementById("mission-probe-intro")?.textContent || "").trim();
-        const tutorial = String(document.getElementById("mission-probe-tutorial-content")?.innerText || document.getElementById("mission-probe-tutorial-content")?.textContent || "").trim();
-        const linkedDatawells = buildDatawellPackSection(getWorkflowLinkedDatawellIds(), "LINKED DATAWELLS / INDEXING CHAIN");
+      function buildPostingTemplatePackText() {
+        const board = getPostingTemplateState();
+        const rows = Array.isArray(board?.items) ? board.items : [];
         return [
-          "AI WORKSPACE // MISSION + PROBE",
+          board?.title || "Posting Template",
+          board?.subtitle || "",
           "",
-          "[MISSION + PROBE OVERVIEW]",
-          intro || "Mission + Probe overview missing.",
+          board?.pinnedTitle || "Pinned Note",
+          board?.pinnedNote || "",
           "",
-          "[HOW TO USE]",
-          tutorial || "Tutorial content missing.",
-          "",
-          "[AI BOT INSTRUCTION]",
-          instruction || "AI bot instruction content missing.",
-          "",
-          linkedDatawells,
-          "",
-          "[MISSION BRIEF]",
-          brief || "Mission briefing is empty.",
-          "",
-          "[PROBE SKILL]",
-          probe || "Probe skill is empty.",
-        ].join("\n");
+          ...rows.map((item, index) => [
+            `Stage ${index + 1}: ${item?.title || `Stage ${index + 1}`}`,
+            String(item?.subtext || "").trim(),
+          ].filter(Boolean).join("\n")),
+        ].filter(Boolean).join("\n\n");
+      }
+
+      async function buildMissionProbePackText() {
+        const workflow = await readTextForPack(`/${TEMPLATE_DOC_PATHS.workflow}`, "mission-probe-guide-content");
+        return workflow || "Mission + Probe workflow is empty.";
       }
 
       async function buildMissionBriefingText() {
-        return readTextForPack("/MissionBriefing.md", "mission-briefing-content");
+        return readTextForPack(`/${TEMPLATE_DOC_PATHS.brief}`, "mission-briefing-content");
       }
 
       async function saveMissionProbePackToFile() {
         try {
           const text = await buildMissionProbePackText();
-          const name = `mission-probe-ai-pack-${new Date().toISOString().replace(/[:.]/g, "-")}.txt`;
-          saveTextFile(name, text);
+          const name = `full-mission-probe-${new Date().toISOString().replace(/[:.]/g, "-")}.md`;
+          await saveTextFile(name, text);
           recordSyncCenterEvent("file_saved", { message: name });
           if (currentView === "settings") renderSyncCenter();
-          themedNotice("AI pack file saved.");
+          themedNotice("Full Mission + Probe file saved.");
         } catch (e) {
           themedNotice("Save failed: " + (e?.message || "Unknown error"));
         }
@@ -4627,21 +5150,33 @@
       async function shareMissionProbePackFile() {
         try {
           const text = await buildMissionProbePackText();
-          const name = `mission-probe-ai-pack-${new Date().toISOString().replace(/[:.]/g, "-")}.txt`;
-          const shared = await shareTextFile("Mission + Probe AI Pack", name, text);
+          const name = `full-mission-probe-${new Date().toISOString().replace(/[:.]/g, "-")}.md`;
+          const shared = await shareTextFile("Full Mission + Probe", name, text);
           recordSyncCenterEvent(shared ? "file_shared" : "file_saved", { message: name });
           if (currentView === "settings") renderSyncCenter();
-          themedNotice(shared ? "AI pack shared." : "Share unavailable. AI pack file saved.");
+          themedNotice(shared ? "Full Mission + Probe shared." : "Share unavailable. Full Mission + Probe file saved.");
         } catch (e) {
           themedNotice("Share failed: " + (e?.message || "Unknown error"));
         }
+      }
+
+      async function runMissionProbePackPrimaryAction() {
+        if (hasDesktopBridge()) {
+          await copyMissionProbePack();
+          return;
+        }
+        if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+          await copyMissionProbePack();
+          return;
+        }
+        await shareMissionProbePackFile();
       }
 
       async function saveMissionBriefingToFile() {
         try {
           const text = await buildMissionBriefingText();
           const name = `mission-briefing-${new Date().toISOString().replace(/[:.]/g, "-")}.md`;
-          saveTextFile(name, text);
+          await saveTextFile(name, text);
           recordSyncCenterEvent("file_saved", { message: name });
           if (currentView === "settings") renderSyncCenter();
           themedNotice("Mission briefing file saved.");
@@ -4666,12 +5201,12 @@
       async function copyMissionProbePack() {
         const combined = await buildMissionProbePackText();
         if (!combined.trim()) {
-          themedNotice("Mission + Probe pack is empty.");
+          themedNotice("Full Mission + Probe pack is empty.");
           return;
         }
         try {
-          const result = await copyTextWithFallback(combined, "MISSION + PROBE AI PACK");
-          themedNotice(result === "manual" ? "Clipboard blocked. Manual copy view opened." : "Mission + Probe AI pack copied.");
+          const result = await copyTextWithFallback(combined, "FULL MISSION + PROBE");
+          themedNotice(result === "manual" ? "Clipboard blocked. Manual copy view opened." : "Full Mission + Probe copied.");
         } catch (e) {
           themedNotice("Copy failed: " + e.message);
         }
@@ -4679,15 +5214,15 @@
 
       async function copyMissionProbeTutorial() {
         try {
-          const res = await fetch("/MissionProbeWorkflow.md", { cache: "no-store" });
+          const res = await fetch(`/${TEMPLATE_DOC_PATHS.workflow}`, { cache: "no-store" });
           if (!res.ok) throw new Error("Failed to load MissionProbeWorkflow.md");
           const text = (await res.text()).trim();
           if (!text) {
-            themedNotice("Mission + Probe tutorial is empty.");
+            themedNotice("Template workflow is empty.");
             return;
           }
-          const result = await copyTextWithFallback(text, "MISSION + PROBE TUTORIAL");
-          themedNotice(result === "manual" ? "Clipboard blocked. Manual copy view opened." : "Mission + Probe tutorial copied.");
+          const result = await copyTextWithFallback(text, "TEMPLATE WORKFLOW");
+          themedNotice(result === "manual" ? "Clipboard blocked. Manual copy view opened." : "Template workflow copied.");
         } catch (e) {
           themedNotice("Copy failed: " + e.message);
         }
@@ -7440,37 +7975,7 @@
         return "Timeline reference of mission styles in order, moving from discovery and probing into trust, production, sales, and clear calls to action.";
       }
 
-      function buildMissionStarterTemplateData() {
-        return {
-          core: [
-            { label: "Framework", value: "Formula or pathway for general missions." },
-            { label: "Mission Starter", value: "Engagement / Probing" },
-            { label: "What do I want?", value: "(My pain points)" },
-            { label: "What do they need?", value: "(Their pain points)" },
-            { label: "Formula", value: "Fate + PCP + Macro / Micro" },
-            { label: "Permission", value: "Present" },
-            { label: "Perspective Shift", value: "Maintain the same context, but change the perspective so permission shifts from seek to present." },
-            { label: "Macro Shift", value: "Change from micro (treatment for 1000) to macro (1 treatment presented to 1000)." },
-            { label: "Goal", value: "" },
-            { label: "Byproduct", value: "" },
-          ],
-          examples: [
-            [
-              { label: "Need", value: "I need sales from DMs." },
-              { label: "Fate (Probe)", value: "Treatment" },
-              { label: "Issue", value: "I can't make 1000 treatments and hit up 1000 at the same time." },
-              { label: "PCP [Fix]", value: "Make 1 universal treatment and pitch to everyone." },
-            ],
-            [
-              { label: "Issue", value: "I can't recommend people to book with me." },
-              { label: "PCP [Fix]", value: "Don't tell them to book me, introduce myself and let them decide to book me." },
-              { label: "[Follow up]", value: "" },
-            ],
-          ],
-        };
-      }
-
-      function buildMissionStarterTemplateBlock() {
+      function buildMissionStarterTemplateLegacyBlock() {
         return [
           "Framework: Formula or pathway for general missions.",
           "Mission Starter: Engagement / Probing",
@@ -7494,53 +7999,74 @@
         ].join("\n");
       }
 
+      function buildPostingTemplatePinnedNoteText() {
+        return [
+          "Formula or pathway for general missions.",
+          "",
+          "Engagement / Probing",
+          "What do I want? (My pain points)",
+          "What do they need? (Their pain points)",
+          "",
+          "Fate + PCP + Macro / Micro",
+          "Permission: Present",
+          "Perspective Shift: Maintain the same context, but change the perspective so permission shifts from seek to present.",
+          "Macro Shift: Change from micro (treatment for 1000) to macro (1 treatment presented to 1000).",
+          "",
+          "Goal:",
+          "Byproduct:",
+          "",
+          "Example",
+          "Need: I need sales from DMs.",
+          "Fate (Probe): Treatment",
+          "Issue: I can't make 1000 treatments and hit up 1000 at the same time.",
+          "PCP [Fix]: Make 1 universal treatment and pitch to everyone.",
+          "Issue: I can't recommend people to book with me.",
+          "PCP [Fix]: Don't tell them to book me, introduce myself and let them decide to book me.",
+          "[Follow up]",
+        ].join("\n");
+      }
+
       function normalizePostingTemplateSubtitle(text, fallback = "") {
         const source = String(text || "").replace(/\r\n/g, "\n").trim();
         const fallbackText = String(fallback || buildPostingTemplateReferenceText()).trim() || buildPostingTemplateReferenceText();
         if (!source) return fallbackText;
-        const starterBlock = buildMissionStarterTemplateBlock().trim();
+        const starterBlock = buildMissionStarterTemplateLegacyBlock().trim();
         if (!source.startsWith(starterBlock)) return source;
         const remainder = source.slice(starterBlock.length).trim();
         if (remainder) return remainder;
         return fallbackText;
       }
 
-      function buildPostingTemplateMissionStarterHtml() {
-        const data = buildMissionStarterTemplateData();
-        const coreHtml = data.core.map((row) => `
-          <div class="posting-template-mission-starter-row">
-            <div class="posting-template-mission-starter-label">${escapeHtmlAttr(row.label)}</div>
-            <div class="posting-template-mission-starter-value">${escapeHtmlAttr(row.value || " ")}</div>
-          </div>
-        `).join("");
-        const exampleHtml = data.examples.map((group, index) => `
-          <div class="posting-template-mission-starter-example-card">
-            <div class="posting-template-mission-starter-example-title">EXAMPLE ${index + 1}</div>
-            <div class="posting-template-mission-starter-example-rows">
-              ${group.map((row) => `
-                <div class="posting-template-mission-starter-row">
-                  <div class="posting-template-mission-starter-label">${escapeHtmlAttr(row.label)}</div>
-                  <div class="posting-template-mission-starter-value">${escapeHtmlAttr(row.value || " ")}</div>
-                </div>
-              `).join("")}
-            </div>
-          </div>
-        `).join("");
+      function extractPostingTemplatePinnedNote(rawPostingTemplate = {}, rawSubtitle = "") {
+        const explicit = String(rawPostingTemplate?.pinnedNote || "").replace(/\r\n/g, "\n").trim();
+        if (explicit) return explicit;
+        const source = String(rawSubtitle || "").replace(/\r\n/g, "\n").trim();
+        const legacyBlock = buildMissionStarterTemplateLegacyBlock().trim();
+        if (source.startsWith(legacyBlock)) {
+          return buildPostingTemplatePinnedNoteText();
+        }
+        return buildPostingTemplatePinnedNoteText();
+      }
+
+      function buildPostingTemplatePinnedNoteHtml(board) {
+        const noteTitle = String(board?.pinnedTitle || "Pinned Note");
+        const noteText = String(board?.pinnedNote || "");
         return `
           <article class="posting-template-item posting-template-mission-starter-item">
             <div class="posting-template-item-head">
               <span class="posting-template-order">00</span>
               <span class="posting-template-handle">::</span>
-              <span class="posting-template-step">PINNED MISSION STARTER</span>
+              <span class="posting-template-step">PINNED NOTE</span>
             </div>
             <div class="posting-template-mission-starter-body">
-              <div class="posting-template-mission-starter-group">
-                ${coreHtml}
-              </div>
-              <div class="posting-template-mission-starter-divider"></div>
-              <div class="posting-template-mission-starter-example-shell">
-                ${exampleHtml}
-              </div>
+              <input class="posting-template-title-input"
+                     type="text"
+                     value="${escapeHtmlAttr(noteTitle)}"
+                     placeholder="Pinned note title..."
+                     oninput="updatePostingTemplateBoardField('pinnedTitle', this.value)" />
+              <textarea class="posting-template-subtext-input posting-template-pinned-note-input"
+                        placeholder="Pinned template note..."
+                        oninput="updatePostingTemplateBoardField('pinnedNote', this.value)">${escapeHtmlAttr(noteText)}</textarea>
             </div>
           </article>
         `;
@@ -7550,6 +8076,8 @@
         return {
           title: "Mission Prioritization for Sales Engagement",
           subtitle: buildPostingTemplateReferenceText(),
+          pinnedTitle: "General Mission Pathway",
+          pinnedNote: buildPostingTemplatePinnedNoteText(),
           items: [
             {
               id: `pt_${seedTs}_1`,
@@ -7853,6 +8381,8 @@
             String(rawPostingTemplate?.subtitle || ""),
             String(basePostingTemplate.subtitle || "")
           ),
+          pinnedTitle: String(rawPostingTemplate?.pinnedTitle || basePostingTemplate.pinnedTitle || "Pinned Note"),
+          pinnedNote: extractPostingTemplatePinnedNote(rawPostingTemplate, String(rawPostingTemplate?.subtitle || "")),
           items: rawPostingItems.map((item, i) => ({
             id: String(item?.id || `pt_fix_${Date.now()}_${i}`),
             title: String(item?.title || `Stage ${i + 1}`),
@@ -10315,6 +10845,12 @@
           routineData.postingTemplate = buildDefaultPostingTemplateState();
         }
         if (!Array.isArray(routineData.postingTemplate.items)) routineData.postingTemplate.items = [];
+        if (!String(routineData.postingTemplate.pinnedTitle || "").trim()) {
+          routineData.postingTemplate.pinnedTitle = "Pinned Note";
+        }
+        if (!String(routineData.postingTemplate.pinnedNote || "").trim()) {
+          routineData.postingTemplate.pinnedNote = buildPostingTemplatePinnedNoteText();
+        }
         return routineData.postingTemplate;
       }
 
@@ -10328,7 +10864,7 @@
         if (subtitleEl && subtitleEl.value !== String(board.subtitle || "")) subtitleEl.value = String(board.subtitle || "");
         const rows = Array.isArray(board.items) ? board.items : [];
         listEl.innerHTML = [
-          buildPostingTemplateMissionStarterHtml(),
+          buildPostingTemplatePinnedNoteHtml(board),
           rows.map((item, index) => `
           <article class="posting-template-item"
                    draggable="true"
@@ -10357,13 +10893,15 @@
           </article>
         `).join("") || `<div class="posting-template-empty">No posting stages yet. Add one to start the timeline.</div>`
         ].join("");
+        if (currentView === "mission-probe") renderMissionProbePackPreview();
       }
 
       function updatePostingTemplateBoardField(field, value) {
         const board = getPostingTemplateState();
-        if (field !== "title" && field !== "subtitle") return;
+        if (!["title", "subtitle", "pinnedTitle", "pinnedNote"].includes(field)) return;
         board[field] = String(value || "");
         saveRoutineData();
+        if (currentView === "mission-probe") renderMissionProbePackPreview();
       }
 
       function updatePostingTemplateItemField(id, field, value) {
@@ -10373,6 +10911,7 @@
         if (!row) return;
         row[field] = String(value || "");
         saveRoutineData();
+        if (currentView === "mission-probe") renderMissionProbePackPreview();
       }
 
       function addPostingTemplateItem() {
@@ -12031,7 +12570,7 @@
       function runOfflineBash(code) {
         const startedAt = Date.now();
         const env = { PWD: "/omni", USER: "omni", SHELL: "/bin/bash" };
-        const files = ["OperationDir", "assets", "data", "ManagementApp.html", "MissionBriefing.md", "ProbeSkill.md", "OfficialProbeManuel.md"];
+        const files = ["OperationDir", "OperationDir/Templates", "assets", "data", "ManagementApp.html", "MissionBriefing.md", "ProbeSkill.md", "OfficialProbeManuel.md"];
         const stdout = [];
         const stderr = [];
         const lines = String(code || "").split(/\r?\n/);
@@ -12973,6 +13512,10 @@
         const normalized = normalizeMissionProfileSections(text);
         const sections = normalized.sections;
         const fieldMap = collectMissionFieldMap(sections);
+        const datawellSummary = missionDatawellSummaryForPath(meta?.path || "");
+        if (!fieldMap["Datawell Present"] && datawellSummary.present) fieldMap["Datawell Present"] = datawellSummary.present;
+        if (!fieldMap["Datawell Name"] && datawellSummary.names) fieldMap["Datawell Name"] = datawellSummary.names;
+        if (!fieldMap["Datawell Relation"] && datawellSummary.relation) fieldMap["Datawell Relation"] = datawellSummary.relation;
         const isDebrief = String(kind || "").toLowerCase() === "debrief";
         const summary = isDebrief
           ? firstMissionValue(
@@ -13051,6 +13594,9 @@
               { key: "Status", value: status },
               { key: "Objective", value: firstMissionValue(fieldMap["Objective"], fieldMap["Primary goal"], fieldMap["Today’s goal"], summary) },
               { key: "Target", value: target },
+              { key: "Datawell Present", value: fieldMap["Datawell Present"] },
+              { key: "Datawell Name", value: fieldMap["Datawell Name"] },
+              { key: "Datawell Relation", value: fieldMap["Datawell Relation"] },
               { key: "Platform", value: platform },
               { key: "Metric", value: metric },
               { key: "Next Move", value: nextMove },
@@ -13230,7 +13776,7 @@
             </div>
             <div class="settings-actions">
               <button class="confirm-btn" type="button" onclick="openSelectedMissionCommandEditor()">OPEN MISSION</button>
-              <button class="confirm-btn" type="button" onclick="switchView('mission-probe')">OPEN MISSION + PROBE</button>
+              <button class="confirm-btn" type="button" onclick="switchView('templates')">OPEN TEMPLATES</button>
               <button class="confirm-btn" type="button" onclick="switchView('mission-log')">OPEN MISSION LOG</button>
             </div>
           </div>
@@ -13478,6 +14024,11 @@
           return;
         }
         if (row.payload?.view) {
+          if (row.payload.view === "posting-template") {
+            switchView("templates");
+            focusMissionProbeSection("posting");
+            return;
+          }
           switchView(row.payload.view);
           return;
         }
@@ -13498,10 +14049,23 @@
         const missionPath = getBriefSelectedMissionPath();
         const mission = allMissions.find((item) => String(item?.path || "") === String(missionPath || ""));
         host.innerHTML = buildMissionProfileHtml(editor.value || "", "brief", {
+          path: String(mission?.path || missionPath || "").trim(),
           operation: String(mission?.operation || "").trim(),
           name: String(mission?.name || "").trim(),
           status: String(mission?.status || "").trim(),
         });
+      }
+
+      function scheduleBriefStudioDatawellSync(delayMs = 80) {
+        if (briefStudioDatawellSyncTimer) clearTimeout(briefStudioDatawellSyncTimer);
+        briefStudioDatawellSyncTimer = setTimeout(() => {
+          briefStudioDatawellSyncTimer = 0;
+          const missionPath = String(getBriefSelectedMissionPath() || "").trim();
+          const editor = document.getElementById("brief-content");
+          if (!missionPath || !editor) return;
+          syncMissionBriefDatawells(missionPath, editor.value || "", { silent: true });
+          renderBriefProfilePreview();
+        }, Math.max(0, Number(delayMs || 0)));
       }
 
       function onBriefEditorInput() {
@@ -13510,6 +14074,10 @@
         briefVariables = extractBriefVariables(editor.value || "");
         renderBriefVariables();
         renderBriefProfilePreview();
+      }
+
+      function onBriefEditorPaste() {
+        scheduleBriefStudioDatawellSync(60);
       }
 
       function renderBriefVariables() {
@@ -13648,6 +14216,7 @@
           fieldMap["Proxy metric"],
           existing.Result_Quantitative
         );
+        const datawellSummary = missionDatawellSummaryForPath(missionPath);
         const notes = missionBlackbookMetaNotes(meta, firstMissionValue(buildMissionBlackbookNotes(profile), existing.Notes));
         return {
           Probe_ID: probeId,
@@ -13660,6 +14229,9 @@
           Hypothesis: hypothesis,
           Platform: platform,
           Result_Quantitative: resultMetric,
+          Datawell_Present: firstMissionValue(fieldMap["Datawell Present"], existing.Datawell_Present, datawellSummary.present),
+          Datawell_Name: firstMissionValue(fieldMap["Datawell Name"], existing.Datawell_Name, datawellSummary.names),
+          Datawell_Relation: firstMissionValue(fieldMap["Datawell Relation"], existing.Datawell_Relation, datawellSummary.relation),
           Notes: notes,
         };
       }
@@ -13765,6 +14337,7 @@
             const err = await res.json().catch(() => ({ error: "Failed to save brief phase." }));
             throw new Error(err.error || "Failed to save brief phase.");
           }
+          syncMissionBriefDatawells(missionPath, editor.value || "", { silent: true });
           await syncBlackbookFromMissionBrief(missionPath, editor.value, { status: "IN_PROGRESS" });
           await loadBriefForSelectedMission();
           await fetchData();
@@ -13874,6 +14447,7 @@
             const err = await briefRes.json().catch(() => ({ error: "Mission created, brief save failed." }));
             msgEl.innerHTML = `<span style="color:var(--warning-yellow);">MISSION CREATED. BRIEF WARNING: ${escapeHtmlAttr(err.error || "BRIEF SAVE FAILED.")}</span>`;
           } else {
+                syncMissionBriefDatawells(missionPath, briefContent, { silent: true });
                 try {
                   await syncBlackbookFromMissionBrief(missionPath, briefContent, {
                     status: "IN_PROGRESS",
@@ -14224,6 +14798,9 @@
           Operation: row.querySelector(".bb-operation")?.value || "",
           Mission: row.querySelector(".bb-mission")?.value || "",
           Status: row.querySelector(".bb-status")?.value || "PENDING",
+          Datawell_Present: existing.Datawell_Present || "",
+          Datawell_Name: existing.Datawell_Name || "",
+          Datawell_Relation: existing.Datawell_Relation || "",
           Description: row.querySelector(".bb-description")?.value || "",
           Hypothesis: row.querySelector(".bb-hypothesis")?.value || existing.Hypothesis || "",
           Platform: row.querySelector(".bb-platform")?.value || existing.Platform || "",
@@ -14262,6 +14839,9 @@
             Operation: row.querySelector(".bb-operation")?.value || "",
             Mission: row.querySelector(".bb-mission")?.value || "",
             Status: row.querySelector(".bb-status")?.value || "PENDING",
+            Datawell_Present: existing.Datawell_Present || "",
+            Datawell_Name: existing.Datawell_Name || "",
+            Datawell_Relation: existing.Datawell_Relation || "",
             Description: row.querySelector(".bb-description")?.value || "",
             Hypothesis: row.querySelector(".bb-hypothesis")?.value || existing.Hypothesis || "",
             Platform: row.querySelector(".bb-platform")?.value || existing.Platform || "",
@@ -14294,6 +14874,8 @@
         const numberEl = document.getElementById("new-hvi-number");
         const categoryEl = document.getElementById("new-hvi-category");
         const parametersEl = document.getElementById("new-hvi-parameters");
+        const datawellNameEl = document.getElementById("new-hvi-datawell-name");
+        const datawellRelationEl = document.getElementById("new-hvi-datawell-relation");
         const photoUrlEl = document.getElementById("new-hvi-photo-url");
         const photoFileEl = document.getElementById("new-hvi-photo-file");
         const handle = (handleEl?.value || "").trim();
@@ -14303,11 +14885,16 @@
         }
         const now = new Date();
         const createdAt = now.toISOString();
+        const datawellName = String(datawellNameEl?.value || "").trim();
+        const datawellRelation = String(datawellRelationEl?.value || "").trim();
         const fields = {
           Status: (statusEl?.value || "").trim() || "N/A",
           Number: (numberEl?.value || "").trim() || "N/A",
           Category: (categoryEl?.value || "").trim() || "General",
           Parameters: (parametersEl?.value || "").trim() || "",
+          "Datawell Present": datawellName || datawellRelation ? "YES" : "NO",
+          "Datawell Name": datawellName,
+          "Datawell Relation": datawellRelation,
           "Created At": createdAt,
           Date: createdAt.slice(0, 10),
           Time: createdAt.slice(11, 16),
@@ -14341,6 +14928,8 @@
           if (numberEl) numberEl.value = "";
           if (categoryEl) categoryEl.value = "";
           if (parametersEl) parametersEl.value = "";
+          if (datawellNameEl) datawellNameEl.value = "";
+          if (datawellRelationEl) datawellRelationEl.value = "";
           if (photoUrlEl) photoUrlEl.value = "";
           if (photoFileEl) photoFileEl.value = "";
           closeAllAddPopups();
@@ -14421,6 +15010,19 @@
         if (missionPopupSection === "brief") missionEditorBriefContent = content;
         else missionEditorDebriefContent = content;
         return content;
+      }
+
+      function scheduleMissionIntelDatawellSync(delayMs = 80) {
+        if (missionIntelDatawellSyncTimer) clearTimeout(missionIntelDatawellSyncTimer);
+        missionIntelDatawellSyncTimer = setTimeout(() => {
+          missionIntelDatawellSyncTimer = 0;
+          if (missionPopupSection !== "brief") return;
+          const textEl = document.getElementById("intel-mission-content");
+          const missionPath = String(missionEditorPath || "").trim();
+          if (!textEl || !missionPath) return;
+          syncMissionBriefDatawells(missionPath, textEl.value || "", { silent: true });
+          renderMissionIntelPreview();
+        }, Math.max(0, Number(delayMs || 0)));
       }
 
       function renderMissionIntelPreview() {
@@ -14541,6 +15143,7 @@
         const textEl = document.getElementById("intel-mission-content");
         if (textEl) {
           textEl.addEventListener("input", () => renderMissionIntelPreview());
+          textEl.addEventListener("paste", () => scheduleMissionIntelDatawellSync(60));
           requestAnimationFrame(() => {
             if (body) body.scrollTop = 0;
             try {
@@ -14715,6 +15318,7 @@
             throw new Error(err.error || "Failed to save file.");
           }
           if (missionEditorMode === "mission" && missionEditorSection === "brief") {
+            syncMissionBriefDatawells(missionEditorPath, content, { silent: true });
             await syncBlackbookFromMissionBrief(missionEditorPath, content, { status: "IN_PROGRESS" });
           }
           await fetchData();
@@ -14864,7 +15468,8 @@
           data = data.filter((p) => {
             const blob = [
               p.Probe_ID, p.Date, p.Time, p.Operation, p.Mission, p.Status,
-              p.Description, p.Hypothesis, p.Platform, p.Result_Quantitative, p.Notes
+              p.Description, p.Hypothesis, p.Platform, p.Result_Quantitative, p.Notes,
+              p.Datawell_Present, p.Datawell_Name, p.Datawell_Relation
             ].join(" ").toLowerCase();
             return blob.includes(blackbookSearchQuery);
           });
@@ -15468,6 +16073,78 @@
         if (!plansEqual(before, plan)) pushMissionPlanUndo(opDay, before);
         saveMissionPlan(opDay, plan);
         renderOperationFocus();
+      }
+
+      function closeAllMatrixDropdowns() {
+        document.querySelectorAll(".matrix-dropdown.is-open").forEach((dropdown) => {
+          dropdown.classList.remove("is-open");
+          const trigger = dropdown.querySelector(".matrix-dropdown-trigger");
+          if (trigger) trigger.setAttribute("aria-expanded", "false");
+        });
+      }
+
+      function toggleMatrixDropdown(trigger, event) {
+        if (event) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+        const dropdown = trigger?.closest(".matrix-dropdown");
+        if (!dropdown) return;
+        const shouldOpen = !dropdown.classList.contains("is-open");
+        closeAllMatrixDropdowns();
+        if (!shouldOpen) return;
+        dropdown.classList.add("is-open");
+        trigger.setAttribute("aria-expanded", "true");
+      }
+
+      function selectMatrixDropdownOption(optionButton, event) {
+        if (event) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+        const dropdown = optionButton?.closest(".matrix-dropdown");
+        if (!dropdown) return;
+        dropdown.classList.remove("is-open");
+        const trigger = dropdown.querySelector(".matrix-dropdown-trigger");
+        if (trigger) trigger.setAttribute("aria-expanded", "false");
+      }
+
+      function buildMatrixDropdown(options = {}) {
+        const placeholder = String(options.placeholder || "-- Select --");
+        const selectedValue = String(options.selectedValue || "");
+        const rows = Array.isArray(options.rows) ? options.rows : [];
+        const variant = String(options.variant || "").trim().toLowerCase();
+        const selectedRow = rows.find((row) => String(row?.value || "") === selectedValue);
+        const activeLabel = selectedRow?.label || placeholder;
+        const dropdownClass = variant === "recovery" ? " recovery-select" : "";
+        const optionRows = [{ value: "", label: placeholder, placeholder: true }].concat(rows);
+        return `
+          <div class="matrix-dropdown${dropdownClass}">
+            <button
+              class="matrix-dropdown-trigger ${selectedRow ? "" : "is-placeholder"}"
+              type="button"
+              aria-expanded="false"
+              onclick="toggleMatrixDropdown(this, event)"
+            >
+              <span class="matrix-dropdown-value">${escapeHtmlAttr(activeLabel)}</span>
+              <span class="matrix-dropdown-caret" aria-hidden="true"></span>
+            </button>
+            <div class="matrix-dropdown-menu">
+              ${optionRows.map((row) => {
+                const value = String(row?.value || "");
+                const isActive = value === selectedValue;
+                const onSelectJs = typeof options.onSelectJs === "function" ? options.onSelectJs(value) : "";
+                return `
+                  <button
+                    class="matrix-dropdown-option ${isActive ? "is-active" : ""} ${row?.placeholder ? "is-placeholder" : ""}"
+                    type="button"
+                    onclick="selectMatrixDropdownOption(this, event); ${onSelectJs}"
+                  >${escapeHtmlAttr(row?.label || placeholder)}</button>
+                `;
+              }).join("")}
+            </div>
+          </div>
+        `;
       }
 
       function escapeHtmlAttr(s) {
@@ -16269,40 +16946,41 @@
               const selectedMission = allMissions.find((m) => m.path === selectedMissionPath);
               if (selectedMission) selectedOperation = selectedMission.operation || "";
             }
-            const operationOptionsHtml = [`<option value="">-- Select Operation --</option>`]
-              .concat(operationOptions.map((op) =>
-                `<option value="${escapeHtmlAttr(op)}" ${op === selectedOperation ? "selected" : ""}>${escapeHtmlAttr(op)}</option>`
-              ))
-              .join("");
             const filteredMissions = allMissions
               .filter((m) => !selectedOperation || m.operation === selectedOperation)
               .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
-            const missionOptionsHtml = [`<option value="">-- Select Mission --</option>`]
-              .concat(filteredMissions.map((m) =>
-                `<option value="${escapeHtmlAttr(m.path)}" ${m.path === selectedMissionPath ? "selected" : ""}>${escapeHtmlAttr(m.name || "Untitled")}</option>`
-              ))
-              .join("");
-            const recoveryOptionsHtml = [
-              `<option value="">-- Select Recovery Task --</option>`,
-              `<option value="EAT" ${selectedRecoveryTask === "EAT" ? "selected" : ""}>EAT</option>`,
-              `<option value="READ" ${selectedRecoveryTask === "READ" ? "selected" : ""}>READ</option>`,
-              `<option value="EXERCISE" ${selectedRecoveryTask === "EXERCISE" ? "selected" : ""}>EXERCISE</option>`,
-              `<option value="CHECKLIST" ${selectedRecoveryTask === "CHECKLIST" ? "selected" : ""}>CHECKLIST</option>`,
-            ].join("");
+            const operationDropdownHtml = buildMatrixDropdown({
+              placeholder: "-- Select Operation --",
+              selectedValue: selectedOperation,
+              rows: operationOptions.map((op) => ({ value: op, label: op })),
+              onSelectJs: (value) => `setMissionPlanOperation('${escapeJsString(opDay)}', ${qNum}, ${sNum}, '${escapeJsString(value)}')`,
+            });
+            const missionDropdownHtml = buildMatrixDropdown({
+              placeholder: "-- Select Mission --",
+              selectedValue: selectedMissionPath,
+              rows: filteredMissions.map((m) => ({ value: m.path || "", label: m.name || "Untitled" })),
+              onSelectJs: (value) => `setMissionPlanMission('${escapeJsString(opDay)}', ${qNum}, ${sNum}, '${escapeJsString(value)}')`,
+            });
+            const recoveryDropdownHtml = buildMatrixDropdown({
+              placeholder: "-- Select Recovery Task --",
+              selectedValue: selectedRecoveryTask,
+              variant: "recovery",
+              rows: [
+                { value: "EAT", label: "EAT" },
+                { value: "READ", label: "READ" },
+                { value: "EXERCISE", label: "EXERCISE" },
+                { value: "CHECKLIST", label: "CHECKLIST" },
+              ],
+              onSelectJs: (value) => `setRecoveryTask('${escapeJsString(opDay)}', ${qNum}, ${sNum}, '${escapeJsString(value)}')`,
+            });
             const inner = def.kind === "mission" ? `
               <div class="slot-label">Operation</div>
-              <select class="matrix-select" onchange="setMissionPlanOperation('${opDay}', ${qNum}, ${sNum}, this.value)">
-                ${operationOptionsHtml}
-              </select>
+              ${operationDropdownHtml}
               <div class="slot-label">Mission</div>
-              <select class="matrix-select" onchange="setMissionPlanMission('${opDay}', ${qNum}, ${sNum}, this.value)">
-                ${missionOptionsHtml}
-              </select>
+              ${missionDropdownHtml}
             ` : `
               <div class="slot-label" style="color: var(--warning-yellow);">Recovery Task</div>
-              <select class="matrix-select recovery-select" onchange="setRecoveryTask('${opDay}', ${qNum}, ${sNum}, this.value)">
-                ${recoveryOptionsHtml}
-              </select>
+              ${recoveryDropdownHtml}
             `;
             return `
               <div class="quarter-slot ${def.tint}">
@@ -16681,6 +17359,7 @@
         }
         document.addEventListener("keydown", (e) => {
           if (e.key === "Escape") {
+            closeAllMatrixDropdowns();
             const confirmOverlay = document.getElementById("confirm-overlay");
             const promptOverlay = document.getElementById("prompt-overlay");
             const noticeOverlay = document.getElementById("notice-overlay");
@@ -16699,6 +17378,10 @@
             if (exv && exv.classList.contains("active")) requestCloseExerciseViewer();
             closeAllAddPopups();
           }
+        });
+        document.addEventListener("click", (e) => {
+          if (e.target instanceof Element && e.target.closest(".matrix-dropdown")) return;
+          closeAllMatrixDropdowns();
         });
         document.addEventListener("keydown", onAppUndoRedoShortcut);
         fetchData();

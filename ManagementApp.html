@@ -45,17 +45,16 @@
       <button class="nav-btn" onclick="switchView('routines')">[02] ROUTINES</button>
       <button class="nav-btn" onclick="switchView('gym-planner')">[03] GYM PLANNER</button>
       <button class="nav-btn" id="nav-ops" onclick="switchView('operations')">[04] OPERATIONS</button>
-      <button class="nav-btn nav-yellow" onclick="switchView('mission-probe')">[05] MISSION + PROBE</button>
-      <button class="nav-btn nav-yellow" onclick="switchView('posting-template')">[06] POSTING TEMPLATE</button>
-      <button class="nav-btn nav-yellow" onclick="switchView('datawells')">[07] DATAWELLS</button>
-      <button class="nav-btn nav-yellow" onclick="switchView('hvi-intel')">[08] HVI TARGETS</button>
-      <button class="nav-btn nav-red" onclick="switchView('checklist')">[09] CHECKLIST & REMINDERS</button>
-      <button class="nav-btn nav-red" onclick="switchView('journal')">[10] JOURNAL</button>
-      <button class="nav-btn nav-red" onclick="switchView('blueprints')">[11] ORACLE</button>
-      <button class="nav-btn nav-red" onclick="switchView('books')">[12] BOOKS</button>
-      <button class="nav-btn nav-gray" onclick="switchView('swissknife')">[13] SWISSKNIFE</button>
-      <button class="nav-btn nav-gray" onclick="switchView('terminal-lab')">[14] STUDY TERMINAL</button>
-      <button class="nav-btn nav-gray" onclick="switchView('settings')">[15] SETTINGS</button>
+      <button class="nav-btn nav-yellow" onclick="switchView('templates')">[05] TEMPLATES</button>
+      <button class="nav-btn nav-yellow" onclick="switchView('datawells')">[06] DATAWELLS</button>
+      <button class="nav-btn nav-yellow" onclick="switchView('hvi-intel')">[07] HVI TARGETS</button>
+      <button class="nav-btn nav-red" onclick="switchView('checklist')">[08] CHECKLIST & REMINDERS</button>
+      <button class="nav-btn nav-red" onclick="switchView('journal')">[09] JOURNAL</button>
+      <button class="nav-btn nav-red" onclick="switchView('blueprints')">[10] ORACLE</button>
+      <button class="nav-btn nav-red" onclick="switchView('books')">[11] BOOKS</button>
+      <button class="nav-btn nav-gray" onclick="switchView('swissknife')">[12] SWISSKNIFE</button>
+      <button class="nav-btn nav-gray" onclick="switchView('terminal-lab')">[13] STUDY TERMINAL</button>
+      <button class="nav-btn nav-gray" onclick="switchView('settings')">[14] SETTINGS</button>
       <div id="nav-hover-desc" class="nav-hover-desc">Hover and hold a button to load description.</div>
     </aside>
 
@@ -664,6 +663,14 @@ for i in range(3):
             <input class="search-input" id="new-hvi-parameters" type="text" placeholder="Comma separated parameters..." />
           </div>
           <div class="form-group">
+            <label for="new-hvi-datawell-name">Datawell Name</label>
+            <input class="search-input" id="new-hvi-datawell-name" type="text" placeholder="Connected / owned / linked Datawell..." />
+          </div>
+          <div class="form-group">
+            <label for="new-hvi-datawell-relation">Datawell Relation</label>
+            <input class="search-input" id="new-hvi-datawell-relation" type="text" placeholder="Connected to / part of / have / sourced from..." />
+          </div>
+          <div class="form-group">
             <label for="new-hvi-photo-url">Photo URL (optional)</label>
             <input class="search-input" id="new-hvi-photo-url" type="text" placeholder="https://...image.jpg" />
           </div>
@@ -706,7 +713,7 @@ for i in range(3):
         </div>
         <div class="brief-grid">
           <div class="brief-main">
-            <textarea id="brief-content" class="brief-editor" placeholder="Paste mission brief here..." oninput="onBriefEditorInput()"></textarea>
+            <textarea id="brief-content" class="brief-editor" placeholder="Paste mission brief here..." oninput="onBriefEditorInput()" onpaste="onBriefEditorPaste()"></textarea>
             <div class="brief-main-actions">
               <button class="submit-btn" type="button" onclick="parseBriefVariablesFromEditor()">AUTO FILL PROFILE</button>
               <button class="submit-btn" type="button" onclick="createNextBriefPhase()">NEXT PHASE (CLONE + COPY)</button>
@@ -731,7 +738,7 @@ for i in range(3):
       <!-- PROBE SKILL VIEW -->
       <div id="view-probe-skill" class="view-panel">
         <h2>// PROBE SKILL</h2>
-        <p>Source: <code>ProbeSkill.md</code></p>
+        <p>Source: <code>OperationDir/Templates/ProbeSkill.md</code></p>
         <button class="submit-btn" type="button" onclick="copyProbeSkill()" style="margin-bottom: 10px;">COPY</button>
         <div class="manual-view">
           <div id="probe-skill-content">Loading Probe Skill...</div>
@@ -741,88 +748,159 @@ for i in range(3):
       <!-- PROBE MANUEL VIEW -->
       <div id="view-probe-manual" class="view-panel">
         <h2>// OFFICIAL PROBE MANUEL</h2>
-        <p>Source: <code>OfficialProbeManuel.md</code></p>
+        <p>Source: <code>OperationDir/Templates/OfficialProbeManuel.md</code></p>
         <div class="manual-view">
           <div id="probe-manual-content">Loading Probe Manuel...</div>
         </div>
       </div>
 
       <div id="view-mission-probe" class="view-panel">
-        <h2>// MISSION + PROBE WORKFLOW</h2>
-        <p id="mission-probe-intro">Combined AI workspace. Mission Brief defines the mission. Probe Skill sharpens it and fills the gaps.</p>
-        <div class="mission-probe-actions">
-          <button class="submit-btn" type="button" onclick="focusMissionProbeSection('manual')">PROBE MANUEL</button>
-          <button class="submit-btn" type="button" onclick="saveMissionProbePackToFile()">SAVE AI PACK FILE</button>
-          <button class="submit-btn" type="button" onclick="shareMissionProbePackFile()">SHARE AI PACK</button>
-          <button class="submit-btn" type="button" onclick="focusMissionProbeSection('brief')">MISSION BRIEF</button>
-          <button class="submit-btn" type="button" onclick="focusMissionProbeSection('skill')">PROBE SKILL</button>
-          <button class="submit-btn" type="button" onclick="openDocEditor('MissionBriefing.md','// MISSION BRIEFING EDITOR','mission-probe-brief-content')">EDIT BRIEF</button>
-          <button class="confirm-btn" type="button" onclick="openMissionBriefingViewer()">FULL BRIEF VIEW</button>
+        <h2>// TEMPLATES</h2>
+        <div class="templates-launch-grid">
+          <button class="template-launch-card" type="button" data-template-nav="workflow" onclick="focusMissionProbeSection('workflow')">
+            <span class="template-launch-title">FULL MISSION + PROBE</span>
+            <span class="template-launch-desc">Combined AI bot instruction, workflow logic, and mission-probe operating context.</span>
+          </button>
+          <button class="template-launch-card" type="button" data-template-nav="brief" onclick="focusMissionProbeSection('brief')">
+            <span class="template-launch-title">MISSION BRIEF</span>
+            <span class="template-launch-desc">Primary mission template with Datawell context.</span>
+          </button>
+          <button class="template-launch-card" type="button" data-template-nav="skill" onclick="focusMissionProbeSection('skill')">
+            <span class="template-launch-title">PROBE SKILL</span>
+            <span class="template-launch-desc">Pressure points, leverage, and next questions.</span>
+          </button>
+          <button class="template-launch-card" type="button" data-template-nav="manual" onclick="focusMissionProbeSection('manual')">
+            <span class="template-launch-title">PROBE MANUEL</span>
+            <span class="template-launch-desc">Long-form official reference manual.</span>
+          </button>
+          <button class="template-launch-card" type="button" data-template-nav="datawell" onclick="focusMissionProbeSection('datawell')">
+            <span class="template-launch-title">DATAWELL DISCOVERY</span>
+            <span class="template-launch-desc">Research prompt for source ecosystems.</span>
+          </button>
+          <button class="template-launch-card" type="button" data-template-nav="posting" onclick="focusMissionProbeSection('posting')">
+            <span class="template-launch-title">POSTING TEMPLATE</span>
+            <span class="template-launch-desc">Pinned pathway note and timeline stages.</span>
+          </button>
         </div>
-        <div class="mission-probe-tutorial">
-          <div class="mission-probe-guide-head">
-            <strong>// HOW TO USE</strong>
-            <span class="routine-ex-note">Mission Brief first. Probe Skill second. Then write only confirmed answers back into the brief.</span>
-          </div>
-          <div id="mission-probe-tutorial-content" class="mission-probe-tutorial-body">
-            <ol>
-              <li>Write the mission first.</li>
-              <li>Use Probe Skill to find missing pressure points, blockers, leverage, and next questions.</li>
-              <li>Update the Mission Brief with confirmed answers only.</li>
-              <li>Keep raw probe thinking separate from the clean brief.</li>
-              <li>Use SHARE AI PACK when you want the AI to read the workflow, the current brief, and the probe framework together.</li>
-            </ol>
-          </div>
-        </div>
-        <div class="mission-probe-guide">
-          <div class="mission-probe-guide-head">
-            <strong>// AI BOT INSTRUCTION</strong>
-            <span class="routine-ex-note">Use this across life, systems, institutions, and cybernetics. The bot should question missing mission details and write a cleaner brief back.</span>
-          </div>
-          <div id="mission-probe-guide-content" class="manual-view mission-probe-guide-body">Loading Mission + Probe workflow...</div>
-        </div>
-        <div class="mission-probe-datawell-board">
-          <div class="mission-probe-guide-head">
-            <strong>// LINKED DATAWELLS / INDEXING CHAIN</strong>
-            <span id="mission-probe-datawell-count" class="routine-ex-note">0 linked</span>
-          </div>
-          <div class="mission-probe-datawell-body">
-            <div class="linked-datawell-add-row">
-              <select id="mission-probe-datawell-select" class="search-input">
-                <option value="">Select Datawell source...</option>
-              </select>
-              <button class="submit-btn" type="button" onclick="addMissionProbeDatawellLink()">LINK SOURCE</button>
-              <button class="confirm-btn" type="button" onclick="switchView('datawells')">OPEN DATAWELLS</button>
-            </div>
-            <div id="mission-probe-datawell-list"></div>
-          </div>
-        </div>
-        <div class="mission-probe-grid">
-          <section id="mission-probe-brief-card" class="mission-probe-card">
+        <p id="mission-probe-intro">Unified template workspace. Use Full Mission + Probe to copy the full AI-ready pack in the correct advised order, then work inside the individual templates when needed.</p>
+        <div class="templates-summary-grid">
+          <section class="templates-summary-card">
             <div class="mission-probe-card-head">
+              <strong>// TEMPLATE CONTROL</strong>
+              <span class="routine-ex-note">Use this as the command deck. Pick one section, work it fully, then move to the next.</span>
+            </div>
+            <div class="templates-summary-body">
+              <div class="mission-probe-tutorial templates-summary-tutorial">
+                <div class="mission-probe-guide-head">
+                  <strong>// HOW TO USE</strong>
+                  <span class="routine-ex-note">Build and maintain templates here first, then use them in live missions.</span>
+                </div>
+                <div id="mission-probe-tutorial-content" class="mission-probe-tutorial-body">
+                  <ol>
+                    <li>Keep the Mission Brief template current and structured.</li>
+                    <li>Use Probe Skill and Probe Manuel to sharpen missing pressure points, blockers, leverage, and next questions.</li>
+                    <li>Keep Datawell Discovery here so research prompts sit beside the brief and probe docs.</li>
+                    <li>Edit the Posting Template directly on screen and keep the stages in operational order.</li>
+                    <li>Use COPY FULL MISSION + PROBE when you want the AI to move through the included templates in the correct order without extra explanation from you.</li>
+                  </ol>
+                </div>
+              </div>
+              <div class="mission-probe-actions" style="margin-bottom:0;">
+                <button class="submit-btn" type="button" onclick="runMissionProbePackPrimaryAction()">COPY FULL MISSION + PROBE</button>
+                <button class="submit-btn" type="button" onclick="openDocEditor('OperationDir/Templates/MissionBriefing.md','// MISSION BRIEFING EDITOR','mission-probe-brief-content')">EDIT BRIEF</button>
+                <button class="confirm-btn" type="button" onclick="openMissionBriefingViewer()">FULL BRIEF VIEW</button>
+              </div>
+            </div>
+          </section>
+        </div>
+        <div class="templates-detail-shell">
+          <section id="mission-probe-workflow-card" class="mission-probe-card template-detail-card" data-template-section="workflow">
+            <div class="mission-probe-card-head">
+              <button class="back-btn template-back-top-btn" type="button" onclick="scrollTemplatesTop()">< BACK TO TOP</button>
+              <strong>// FULL MISSION + PROBE</strong>
+              <span class="routine-ex-note">Single copyable AI handoff text. This combines the templates in the advised order, with embedded instructions so you do not need to explain the flow manually.</span>
+            </div>
+            <div class="mission-probe-actions templates-detail-actions">
+              <button class="submit-btn" type="button" onclick="copyMissionProbePack()">COPY FULL MISSION + PROBE</button>
+              <button class="confirm-btn" type="button" onclick="openDocEditor('OperationDir/Templates/MissionProbeWorkflow.md','// AI BOT INSTRUCTION EDITOR','mission-probe-guide-content')">EDIT AI BOT INSTRUCTION</button>
+            </div>
+            <div class="mission-probe-card-body">
+              <textarea id="mission-probe-guide-content" class="template-pack-textarea" readonly>Loading Full Mission + Probe...</textarea>
+            </div>
+          </section>
+          <section id="mission-probe-brief-card" class="mission-probe-card template-detail-card" data-template-section="brief">
+            <div class="mission-probe-card-head">
+              <button class="back-btn template-back-top-btn" type="button" onclick="scrollTemplatesTop()">< BACK TO TOP</button>
               <strong>// MISSION BRIEF</strong>
-              <span class="routine-ex-note">Stable mission truth. Update this with confirmed answers only.</span>
+              <span class="routine-ex-note">Primary mission template. Includes Datawell presence and the Datawell name you created or linked.</span>
+            </div>
+            <div class="mission-probe-actions templates-detail-actions">
+              <button class="submit-btn" type="button" onclick="copyMissionBriefing()">COPY BRIEF</button>
+              <button class="confirm-btn" type="button" onclick="openDocEditor('OperationDir/Templates/MissionBriefing.md','// MISSION BRIEFING EDITOR','mission-probe-brief-content')">EDIT TEMPLATE</button>
+              <button class="confirm-btn" type="button" onclick="openMissionBriefingViewer()">FULL BRIEF VIEW</button>
             </div>
             <div class="manual-view mission-brief-view mission-probe-card-body">
               <div id="mission-probe-brief-content">Loading Mission Briefing...</div>
             </div>
           </section>
-          <section id="mission-probe-skill-card" class="mission-probe-card">
+          <section id="mission-probe-skill-card" class="mission-probe-card template-detail-card" data-template-section="skill">
             <div class="mission-probe-card-head">
+              <button class="back-btn template-back-top-btn" type="button" onclick="scrollTemplatesTop()">< BACK TO TOP</button>
               <strong>// PROBE SKILL</strong>
               <span class="routine-ex-note">Use this to identify pain points, leverage, execution gaps, and next questions across human and systemic domains.</span>
+            </div>
+            <div class="mission-probe-actions templates-detail-actions">
+              <button class="submit-btn" type="button" onclick="copyProbeSkill()">COPY PROBE SKILL</button>
+              <button class="confirm-btn" type="button" onclick="openDocEditor('OperationDir/Templates/ProbeSkill.md','// PROBE SKILL EDITOR','mission-probe-skill-content')">EDIT TEMPLATE</button>
             </div>
             <div class="manual-view mission-probe-card-body">
               <div id="mission-probe-skill-content">Loading Probe Skill...</div>
             </div>
           </section>
-          <section id="mission-probe-manual-card" class="mission-probe-card">
+          <section id="mission-probe-manual-card" class="mission-probe-card template-detail-card" data-template-section="manual">
             <div class="mission-probe-card-head">
+              <button class="back-btn template-back-top-btn" type="button" onclick="scrollTemplatesTop()">< BACK TO TOP</button>
               <strong>// PROBE MANUEL</strong>
               <span class="routine-ex-note">Official reference manual for the probe system, kept inside the workflow page.</span>
             </div>
+            <div class="mission-probe-actions templates-detail-actions">
+              <button class="confirm-btn" type="button" onclick="openDocEditor('OperationDir/Templates/OfficialProbeManuel.md','// PROBE MANUEL EDITOR','mission-probe-manual-content')">EDIT TEMPLATE</button>
+            </div>
             <div class="manual-view mission-probe-card-body">
               <div id="mission-probe-manual-content">Loading Probe Manuel...</div>
+            </div>
+          </section>
+          <section id="mission-probe-datawell-card" class="mission-probe-card template-detail-card" data-template-section="datawell">
+            <div class="mission-probe-card-head">
+              <button class="back-btn template-back-top-btn" type="button" onclick="scrollTemplatesTop()">< BACK TO TOP</button>
+              <strong>// DATAWELL DISCOVERY</strong>
+              <span class="routine-ex-note">Prompt template for finding source ecosystems, indexing hubs, and relationship-rich entry points.</span>
+            </div>
+            <div class="mission-probe-actions templates-detail-actions">
+              <button class="submit-btn" type="button" onclick="copyDatawellDiscoveryPrompt()">COPY TEMPLATE</button>
+              <button class="confirm-btn" type="button" onclick="openDocEditor('OperationDir/Templates/DatawellDiscovery.md','// DATAWELL DISCOVERY TEMPLATE','mission-probe-datawell-prompt-content')">EDIT TEMPLATE</button>
+            </div>
+            <div class="manual-view mission-probe-card-body">
+              <div id="mission-probe-datawell-prompt-content">Loading Datawell discovery template...</div>
+            </div>
+          </section>
+          <section id="mission-probe-posting-card" class="mission-probe-card template-detail-card" data-template-section="posting">
+            <div class="mission-probe-card-head">
+              <button class="back-btn template-back-top-btn" type="button" onclick="scrollTemplatesTop()">< BACK TO TOP</button>
+              <strong>// POSTING TEMPLATE</strong>
+              <span class="routine-ex-note">Edit the pinned note, title, subtext, and stage order directly on screen.</span>
+            </div>
+            <div class="posting-template-shell mission-probe-card-body">
+              <div class="posting-template-summary">
+                <div class="posting-template-label">// TEMPLATE TITLE</div>
+                <input id="posting-template-board-title" class="posting-template-board-title" type="text" placeholder="Posting template title..." oninput="updatePostingTemplateBoardField('title', this.value)" />
+                <div class="posting-template-label">// TEMPLATE SUBTEXT</div>
+                <textarea id="posting-template-board-subtitle" class="posting-template-board-subtitle" placeholder="Overall description..." oninput="updatePostingTemplateBoardField('subtitle', this.value)"></textarea>
+                <div class="mission-probe-actions" style="margin-bottom:0;">
+                  <button class="submit-btn" type="button" onclick="addPostingTemplateItem()">ADD STAGE</button>
+                </div>
+              </div>
+              <div id="posting-template-list" class="posting-template-list"></div>
             </div>
           </section>
         </div>
@@ -831,12 +909,12 @@ for i in range(3):
       <div id="view-mission-briefing" class="view-panel">
         <button class="back-btn" type="button" onclick="goBackView('dashboard')">< BACK</button>
         <h2>// MISSION BRIEFING</h2>
-        <p>Source: <code>MissionBriefing.md</code></p>
+        <p>Source: <code>OperationDir/Templates/MissionBriefing.md</code></p>
         <div class="mission-brief-actions">
           <button class="submit-btn" type="button" onclick="copyMissionBriefing()">COPY</button>
           <button class="submit-btn" type="button" onclick="saveMissionBriefingToFile()">SAVE FILE</button>
           <button class="submit-btn" type="button" onclick="shareMissionBriefingFile()">SHARE FILE</button>
-          <button class="submit-btn" type="button" onclick="openDocEditor('MissionBriefing.md','// MISSION BRIEFING EDITOR','mission-briefing-content')">EDIT</button>
+          <button class="submit-btn" type="button" onclick="openDocEditor('OperationDir/Templates/MissionBriefing.md','// MISSION BRIEFING EDITOR','mission-briefing-content')">EDIT</button>
           <button class="confirm-btn" type="button" onclick="openMissionBriefingViewer()">FULL VIEW</button>
         </div>
         <div class="mission-brief-shell">
@@ -852,19 +930,11 @@ for i in range(3):
 
       <div id="view-posting-template" class="view-panel">
         <button class="back-btn" type="button" onclick="goBackView('dashboard')">< BACK</button>
-        <h2>// POSTING TEMPLATE</h2>
-        <p>Timeline reference of mission styles in order. Edit the yellow title fields and green subtext directly, then drag or move stages to reorder them.</p>
-        <div class="posting-template-shell">
-          <div class="posting-template-summary">
-            <div class="posting-template-label">// TEMPLATE TITLE</div>
-            <input id="posting-template-board-title" class="posting-template-board-title" type="text" placeholder="Posting template title..." oninput="updatePostingTemplateBoardField('title', this.value)" />
-            <div class="posting-template-label">// TEMPLATE SUBTEXT</div>
-            <textarea id="posting-template-board-subtitle" class="posting-template-board-subtitle" placeholder="Overall description..." oninput="updatePostingTemplateBoardField('subtitle', this.value)"></textarea>
-            <div class="mission-probe-actions" style="margin-bottom:0;">
-              <button class="submit-btn" type="button" onclick="addPostingTemplateItem()">ADD STAGE</button>
-            </div>
-          </div>
-          <div id="posting-template-list" class="posting-template-list"></div>
+        <h2>// TEMPLATES</h2>
+        <p>Posting Template now lives inside the Templates workspace with Mission Brief, Probe, and Datawell discovery.</p>
+        <div class="mission-probe-actions">
+          <button class="submit-btn" type="button" onclick="switchView('templates')">OPEN TEMPLATES</button>
+          <button class="confirm-btn" type="button" onclick="focusMissionProbeSection('posting')">OPEN POSTING TEMPLATE SECTION</button>
         </div>
       </div>
 

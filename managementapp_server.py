@@ -30,7 +30,16 @@ BLACKBOOK_MD_FILE = WORKSPACE / "OperationDir" / "BLACK_BOOK.md"
 BLACKBOOK_JSON_FILE = WORKSPACE / "blackbook_entries.json"
 HVI_INDEX_FILE = WORKSPACE / "OperationDir" / "HVI_INDEX.md"
 MANUEL_DIR = WORKSPACE / "OperationDir" / "Manuel"
-EDITABLE_DOC_FILES = {"MissionBriefing.md", "MissionDebrief.md"}
+TEMPLATES_DIR = WORKSPACE / "OperationDir" / "Templates"
+EDITABLE_DOC_FILES = {
+    "MissionBriefing.md": WORKSPACE / "MissionBriefing.md",
+    "MissionDebrief.md": WORKSPACE / "MissionDebrief.md",
+    "OperationDir/Templates/MissionProbeWorkflow.md": TEMPLATES_DIR / "MissionProbeWorkflow.md",
+    "OperationDir/Templates/MissionBriefing.md": TEMPLATES_DIR / "MissionBriefing.md",
+    "OperationDir/Templates/ProbeSkill.md": TEMPLATES_DIR / "ProbeSkill.md",
+    "OperationDir/Templates/OfficialProbeManuel.md": TEMPLATES_DIR / "OfficialProbeManuel.md",
+    "OperationDir/Templates/DatawellDiscovery.md": TEMPLATES_DIR / "DatawellDiscovery.md",
+}
 SWISSKNIFE_SESSIONS_FILE = WORKSPACE / "swissknife_sessions.json"
 SANDBOX_LAB_DIR = WORKSPACE / "SandboxLab"
 SWISSKNIFE_VM_BASE = "/home/samuelapata/SwissknifeSessions"
@@ -708,6 +717,28 @@ def import_backup_payload_to_workspace(payload):
     }
 
 
+def export_workspace_backup_payload():
+    return {
+        "meta": {
+            "app": "OMNI",
+            "version": "backup-v2",
+            "exported_at": datetime.now(timezone.utc).isoformat(),
+            "origin": "mac-live-server",
+        },
+        "snapshot": {
+            "operations": load_operations(),
+            "missions": load_missions(),
+            "blackbook": load_blackbook(),
+            "hvi": load_hvi(),
+            "blueprints": load_blueprints(),
+            "books": load_books(),
+            "swissknife_sessions": swissknife_list_sessions(),
+        },
+        "sync_queue": [],
+        "local_storage": {},
+    }
+
+
 def _json_response(handler: SimpleHTTPRequestHandler, payload, status=200):
     body = json.dumps(payload, ensure_ascii=True).encode("utf-8")
     handler.send_response(status)
@@ -716,6 +747,24 @@ def _json_response(handler: SimpleHTTPRequestHandler, payload, status=200):
     handler.send_header("Content-Length", str(len(body)))
     handler.end_headers()
     handler.wfile.write(body)
+
+
+def copy_text_to_clipboard(text: str):
+    try:
+        from AppKit import NSPasteboard, NSPasteboardTypeString
+
+        pasteboard = NSPasteboard.generalPasteboard()
+        pasteboard.clearContents()
+        ok = bool(pasteboard.setString_forType_(str(text or ""), NSPasteboardTypeString))
+        if ok:
+            return {"ok": True}
+    except Exception:
+        pass
+    try:
+        subprocess.run(["pbcopy"], input=str(text or "").encode("utf-8"), check=True)
+        return {"ok": True}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
 
 
 def _cleanup_rate_buckets(now_ts: float):
@@ -1616,34 +1665,39 @@ def delete_hvi(handle: str) -> bool:
 
 
 def _validate_doc_file(name: str):
-    name = Path(name or "").name
-    if name not in EDITABLE_DOC_FILES:
+    key = str(name or "").replace("\\", "/").lstrip("/").strip()
+    if key not in EDITABLE_DOC_FILES:
         return None
-    p = (WORKSPACE / name).resolve()
+    p = EDITABLE_DOC_FILES[key].resolve()
     try:
         ws = WORKSPACE.resolve()
     except Exception:
         return None
     if not str(p).startswith(str(ws)):
         return None
-    return p
+    return key, p
 
 
 def get_doc_content(name: str):
-    p = _validate_doc_file(name)
-    if not p:
+    result = _validate_doc_file(name)
+    if not result:
         return None
+    key, p = result
     if not p.exists():
+        p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text("", encoding="utf-8")
-    return {"file": p.name, "path": str(p), "content": p.read_text(encoding="utf-8", errors="ignore")}
+    rel_path = str(p.relative_to(WORKSPACE)) if str(p).startswith(str(WORKSPACE.resolve())) else key
+    return {"file": key, "path": rel_path, "content": p.read_text(encoding="utf-8", errors="ignore")}
 
 
 def save_doc_content(name: str, content: str) -> bool:
-    p = _validate_doc_file(name)
-    if not p:
+    result = _validate_doc_file(name)
+    if not result:
         return False
+    _, p = result
     if not isinstance(content, str):
         content = ""
+    p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(content, encoding="utf-8")
     return True
 
@@ -2208,6 +2262,8 @@ class Handler(SimpleHTTPRequestHandler):
             return _json_response(self, swissknife_list_sessions())
         if path == "/api/dev/version":
             return _json_response(self, load_dev_build_meta())
+        if path == "/api/backup/export":
+            return _json_response(self, export_workspace_backup_payload(), 200)
         if path == "/api/mission/brief":
             mission_path = (query.get("mission_path", [""])[0] or "").strip()
             payload = get_mission_brief_payload(mission_path)
@@ -2246,6 +2302,12 @@ class Handler(SimpleHTTPRequestHandler):
         if not self._enforce_request_guard("POST", path):
             return
         body = self._read_json_body()
+
+        if path == "/api/system/clipboard/copy":
+            if not self._is_loopback_client():
+                return self._forbidden("Loopback access only")
+            payload = copy_text_to_clipboard(body.get("text", ""))
+            return _json_response(self, payload, 200 if payload.get("ok") else 500)
 
         if path == "/api/iphone/live/on":
             if not self._is_loopback_client():
@@ -2389,6 +2451,9 @@ class Handler(SimpleHTTPRequestHandler):
                 "Hypothesis": body.get("Hypothesis", ""),
                 "Platform": body.get("Platform", ""),
                 "Result_Quantitative": body.get("Result_Quantitative", ""),
+                "Datawell_Present": body.get("Datawell_Present", ""),
+                "Datawell_Name": body.get("Datawell_Name", ""),
+                "Datawell_Relation": body.get("Datawell_Relation", ""),
                 "Notes": body.get("Notes", ""),
             })
             return _json_response(self, {"ok": True, "Probe_ID": probe_id}, 200)

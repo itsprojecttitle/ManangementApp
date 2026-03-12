@@ -26,7 +26,7 @@ Highlight one specific action they take in [FOCUS AREA: promo, visuals,
 consistency, distribution, etc.].
 
 Frame urgency: show the cost of delay and the narrow window to act.
-End with a low-friction engagement question: “[SHORT NEXT-STEP QUESTION]”.
+End with a low-friction engagement question: "[SHORT NEXT-STEP QUESTION]".
 Tone: [TONE]
 
 Format: [PLATFORM + FORMAT]

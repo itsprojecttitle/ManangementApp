@@ -6,6 +6,7 @@ from pathlib import Path
 
 import webview
 
+from desktop_bridge import OmniDesktopBridge
 from omni_runtime import APP_NAME, ensure_runtime_root
 
 os.environ.setdefault("OMNI_RUNTIME_VARIANT", "omni")
@@ -42,11 +43,12 @@ def main():
     server, port = create_server(mod)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
+    bridge = OmniDesktopBridge()
 
     time.sleep(0.2)
     url = f"http://127.0.0.1:{port}/ManagementApp.html?v=20260311-classic-2"
 
-    webview.create_window(APP_NAME, url, width=1440, height=900, min_size=(1200, 780))
+    webview.create_window(APP_NAME, url, width=1440, height=900, min_size=(1200, 780), js_api=bridge)
 
     def shutdown():
         try:
