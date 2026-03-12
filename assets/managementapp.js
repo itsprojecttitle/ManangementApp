@@ -99,7 +99,29 @@
       let selectedSwissknifeSession = "";
       let reminderCalendarSelectedDate = "";
       let reminderCalendarMonthCursor = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+      let viewSortModes = {};
       const REMINDER_MAX_PRIOR_ALERTS = 3;
+      const OMNI_VIEW_SORTS_KEY = "omniViewSorts:v1";
+      const OMNI_VIEW_SORT_DEFAULTS = {
+        checklist: "manual",
+        routines: "manual",
+        missions: "manual",
+        operations: "manual",
+        blackbook: "manual",
+        hvi: "manual",
+        datawells: "date",
+        journal: "date",
+        reminders: "date",
+        blueprints: "manual",
+        books: "progress",
+        swissknife: "manual",
+      };
+      const OMNI_VIEW_SORT_OPTIONS = [
+        { value: "manual", label: "MANUAL" },
+        { value: "date", label: "DATE" },
+        { value: "alphabetical", label: "A-Z" },
+        { value: "progress", label: "PROGRESS" },
+      ];
       let notificationSettings = {
         enabled: true,
         quarter: true,
@@ -348,21 +370,16 @@
       }
 
       function initTerminalAppTitle() {
-        if (window.OMNI_DRAFT_MODE || appTitleTerminalTimer) return;
+        if (window.OMNI_DRAFT_MODE) return;
         const titleEl = document.getElementById("app-title");
         if (!titleEl) return;
+        if (appTitleTerminalTimer) {
+          window.clearInterval(appTitleTerminalTimer);
+          appTitleTerminalTimer = 0;
+        }
         const baseTitle = String(titleEl.dataset.baseTitle || titleEl.textContent || "PROJECTTITLE").trim().toUpperCase();
         titleEl.dataset.baseTitle = baseTitle;
-        const frames = ["|", "/", "-", "\\"];
-        let frameIndex = 0;
-        const render = () => {
-          const left = frames[frameIndex % frames.length];
-          const right = frames[(frameIndex + 2) % frames.length];
-          titleEl.textContent = `[${left}] ${baseTitle} [${right}]`;
-          frameIndex += 1;
-        };
-        render();
-        appTitleTerminalTimer = window.setInterval(render, 140);
+        titleEl.textContent = baseTitle;
       }
 
       function showLockOverlay() {
@@ -1830,8 +1847,8 @@
         }
         if (macIphoneLiveBusy) return;
         const confirmText = target === "live"
-          ? "Prepare the iPhone build for LIVE mode and start the Mac LAN server now? You will still need to press Run in Xcode on the phone build."
-          : "Restore the iPhone build to BUNDLED/OFFLINE mode now, stop the Mac LAN server, and sync iOS again?";
+          ? "Connect the iPhone to the Mac now? This will prepare the live build, start the Mac LAN server, and you will still need to press Run in Xcode on the phone build."
+          : "Disconnect the iPhone from the Mac live server now? This will restore bundled/offline mode, stop the managed Mac LAN server, and sync iOS again.";
         if (!(await themedConfirm(confirmText))) return;
 
         macIphoneLiveBusy = true;
@@ -1853,14 +1870,14 @@
             target === "live" ? "iphone_live_enabled_from_mac" : "iphone_live_disabled_from_mac",
             {
               message: target === "live"
-                ? "Mac prepared iPhone live mode."
+                ? "Mac prepared iPhone live connection."
                 : "Mac restored iPhone bundled mode.",
             },
           );
           themedNotice(
             target === "live"
-              ? "Mac prepared iPhone LIVE mode. Press Run in Xcode on the iPhone build."
-              : "Mac restored the iPhone BUNDLED mode. Press Run in Xcode again for the offline build.",
+              ? "Mac prepared the iPhone live connection. Press Run in Xcode on the iPhone build."
+              : "Mac restored the iPhone bundled mode. Press Run in Xcode again for the offline build.",
           );
         } catch (e) {
           themedNotice(`iPhone mode change failed: ${e?.message || "Unknown error"}`);
@@ -1886,12 +1903,12 @@
           return;
         }
         const confirmText = target === "bundled"
-          ? "Switch this phone to bundled/offline mode now? Save any open editor changes first."
-          : "Switch this phone back to live Mac mode now? The Mac server must be reachable.";
+          ? "Disconnect this phone from the Mac live server now? It will switch back to bundled/offline mode."
+          : "Connect this phone to the Mac live server now? The Mac server must be reachable.";
         if (!(await themedConfirm(confirmText))) return;
         try {
           recordSyncCenterEvent(target === "bundled" ? "runtime_switch_bundled" : "runtime_switch_live", {
-            message: target === "bundled" ? "Switching phone to bundled mode." : "Switching phone to live mode.",
+            message: target === "bundled" ? "Disconnecting phone from Mac live mode." : "Connecting phone to Mac live mode.",
           });
           if (target === "bundled") {
             await plugin.switchToBundled();
@@ -1941,8 +1958,8 @@
                   <div class="mission-highlight-card"><span class="mission-highlight-key">Last Change</span><span class="mission-highlight-value">${escapeHtmlAttr(macIphoneLiveState?.lastChangedAt ? formatLocalDateTime(macIphoneLiveState.lastChangedAt) : "No change logged")}</span></div>
                 </div>
                 <div class="settings-actions">
-                  <button class="confirm-btn" type="button" onclick="toggleMacIphoneLiveMode('live')" ${macIphoneLiveBusy ? "disabled" : ""}>TURN IPHONE LIVE ON</button>
-                  <button class="confirm-btn" type="button" onclick="toggleMacIphoneLiveMode('bundled')" ${macIphoneLiveBusy ? "disabled" : ""}>TURN IPHONE LIVE OFF</button>
+                  <button class="confirm-btn" type="button" onclick="toggleMacIphoneLiveMode('live')" ${macIphoneLiveBusy ? "disabled" : ""}>CONNECT IPHONE</button>
+                  <button class="confirm-btn" type="button" onclick="toggleMacIphoneLiveMode('bundled')" ${macIphoneLiveBusy ? "disabled" : ""}>DISCONNECT IPHONE</button>
                   <button class="confirm-btn" type="button" onclick="refreshMacIphoneLiveState(true)" ${macIphoneLiveBusy ? "disabled" : ""}>REFRESH LIVE STATUS</button>
                 </div>
                 <div class="routine-ex-note">${escapeHtmlAttr(macIphoneSummaryLabel())}</div>
@@ -1954,8 +1971,8 @@
         const runtimeActions = runtimeModeState?.remoteCapable
           ? `
               <div class="settings-actions">
-                <button class="confirm-btn" type="button" onclick="switchOmniRuntimeMode('bundled')">USE BUNDLED MODE</button>
-                <button class="confirm-btn" type="button" onclick="switchOmniRuntimeMode('live')">USE LIVE MODE</button>
+                <button class="confirm-btn" type="button" onclick="switchOmniRuntimeMode('bundled')">DISCONNECT</button>
+                <button class="confirm-btn" type="button" onclick="switchOmniRuntimeMode('live')">CONNECT</button>
               </div>
             `
           : (isNativeRuntime()
@@ -2341,12 +2358,9 @@
       }
 
       function openBlackbookPopup(probeId, rowIndex = -1) {
-        let item = null;
-        if (Number.isInteger(rowIndex) && rowIndex >= 0 && rowIndex < allBlackbook.length) {
+        let item = allBlackbook.find((p) => String(p.Probe_ID || "") === String(probeId || ""));
+        if (!item && Number.isInteger(rowIndex) && rowIndex >= 0 && rowIndex < allBlackbook.length) {
           item = allBlackbook[rowIndex];
-        }
-        if (!item) {
-          item = allBlackbook.find((p) => String(p.Probe_ID || "") === String(probeId || ""));
         }
         if (!item) return;
         const overlay = document.getElementById("intel-overlay");
@@ -2926,6 +2940,312 @@
         renderBooks();
       }
 
+      function defaultViewSortMode(pageKey) {
+        const key = String(pageKey || "").trim();
+        return OMNI_VIEW_SORT_DEFAULTS[key] || "manual";
+      }
+
+      function normalizeViewSortMode(mode, pageKey = "") {
+        const clean = String(mode || "").trim().toLowerCase();
+        if (OMNI_VIEW_SORT_OPTIONS.some((row) => row.value === clean)) return clean;
+        return defaultViewSortMode(pageKey);
+      }
+
+      function normalizeViewSortState(data) {
+        const input = data && typeof data === "object" ? data : {};
+        const out = {};
+        Object.entries(input).forEach(([key, value]) => {
+          const cleanKey = String(key || "").trim();
+          if (!cleanKey) return;
+          out[cleanKey] = normalizeViewSortMode(value, cleanKey);
+        });
+        return out;
+      }
+
+      function loadViewSortModes() {
+        try {
+          const raw = localStorage.getItem(OMNI_VIEW_SORTS_KEY);
+          const parsed = raw ? JSON.parse(raw) : {};
+          viewSortModes = normalizeViewSortState(parsed);
+        } catch (e) {
+          viewSortModes = {};
+        }
+      }
+
+      function saveViewSortModes() {
+        localStorage.setItem(OMNI_VIEW_SORTS_KEY, JSON.stringify(normalizeViewSortState(viewSortModes)));
+      }
+
+      function getViewSortMode(pageKey) {
+        const key = String(pageKey || "").trim();
+        return normalizeViewSortMode(viewSortModes[key], key);
+      }
+
+      function rerenderSortablePage(pageKey) {
+        const key = String(pageKey || "").trim();
+        if (!key) return;
+        if (key === "checklist") {
+          renderChecklist();
+          return;
+        }
+        if (key === "routines") {
+          renderRoutines();
+          return;
+        }
+        if (key === "journal") {
+          renderJournal();
+          return;
+        }
+        if (key === "reminders") {
+          renderReminderList();
+          return;
+        }
+        if (key === "missions") {
+          renderMissions();
+          return;
+        }
+        if (key === "operations") {
+          renderOperations();
+          return;
+        }
+        if (key === "blackbook") {
+          renderBlackbook();
+          return;
+        }
+        if (key === "hvi") {
+          renderHvi();
+          return;
+        }
+        if (key === "datawells") {
+          renderDatawells();
+          return;
+        }
+        if (key === "blueprints") {
+          renderBlueprints();
+          return;
+        }
+        if (key === "books") {
+          renderBooks();
+          return;
+        }
+        if (key === "swissknife") {
+          renderSwissknife();
+        }
+      }
+
+      function setViewSortMode(pageKey, mode) {
+        const key = String(pageKey || "").trim();
+        if (!key) return;
+        viewSortModes[key] = normalizeViewSortMode(mode, key);
+        saveViewSortModes();
+        rerenderSortablePage(key);
+      }
+
+      function compareSortText(a, b) {
+        return String(a || "").localeCompare(String(b || ""), undefined, {
+          numeric: true,
+          sensitivity: "base",
+        });
+      }
+
+      function compareSortNumbers(a, b, direction = "desc") {
+        const left = Number.isFinite(Number(a)) ? Number(a) : Number.NEGATIVE_INFINITY;
+        const right = Number.isFinite(Number(b)) ? Number(b) : Number.NEGATIVE_INFINITY;
+        if (left === right) return 0;
+        return direction === "asc" ? left - right : right - left;
+      }
+
+      function inferTimestampFromId(rawId) {
+        const match = String(rawId || "").match(/(?:^|_)(\d{13})(?:_|$)/);
+        const ms = Number(match?.[1] || 0);
+        return Number.isFinite(ms) && ms > 0 ? ms : 0;
+      }
+
+      function toSortDateMs(value, fallbackId = "") {
+        const raw = String(value || "").trim();
+        if (raw) {
+          const parsed = new Date(raw.replace(/^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2})$/, "$1T$2:00"));
+          if (!Number.isNaN(parsed.getTime())) return parsed.getTime();
+        }
+        return inferTimestampFromId(fallbackId);
+      }
+
+      function sortCollectionForView(rows, pageKey, resolver, options = {}) {
+        const list = Array.isArray(rows) ? rows.slice() : [];
+        const mode = getViewSortMode(pageKey);
+        if (mode === "manual") return list;
+        const dateDirection = options.dateDirection === "asc" ? "asc" : "desc";
+        const progressDirection = options.progressDirection === "asc" ? "asc" : "desc";
+        return list
+          .map((row, index) => {
+            const meta = resolver(row, index) || {};
+            return {
+              row,
+              index,
+              label: String(meta.label || "").trim(),
+              date: Number.isFinite(Number(meta.date)) ? Number(meta.date) : Number.NEGATIVE_INFINITY,
+              progress: Number.isFinite(Number(meta.progress)) ? Number(meta.progress) : Number.NEGATIVE_INFINITY,
+            };
+          })
+          .sort((a, b) => {
+            const alphaCmp = compareSortText(a.label, b.label);
+            const dateCmp = compareSortNumbers(a.date, b.date, dateDirection);
+            const progressCmp = compareSortNumbers(a.progress, b.progress, progressDirection);
+            if (mode === "alphabetical") return alphaCmp || dateCmp || progressCmp || a.index - b.index;
+            if (mode === "progress") return progressCmp || dateCmp || alphaCmp || a.index - b.index;
+            return dateCmp || progressCmp || alphaCmp || a.index - b.index;
+          })
+          .map((entry) => entry.row);
+      }
+
+      function buildViewSortBarHtml(pageKey, label = "SORT / FILTER") {
+        const current = getViewSortMode(pageKey);
+        return `
+          <div class="omni-filter-bar">
+            <div class="omni-filter-title">${escapeHtmlAttr(label)}</div>
+            <div class="omni-filter-actions">
+              ${OMNI_VIEW_SORT_OPTIONS.map((row) => `
+                <button
+                  class="confirm-btn routine-mini-btn omni-filter-btn ${current === row.value ? "is-active" : ""}"
+                  type="button"
+                  onclick="setViewSortMode('${escapeHtmlAttr(pageKey)}', '${row.value}')"
+                >${escapeHtmlAttr(row.label)}</button>
+              `).join("")}
+            </div>
+          </div>
+        `;
+      }
+
+      function ensureViewSortBar(slotId, pageKey, anchor, options = {}) {
+        const target = typeof anchor === "string" ? document.querySelector(anchor) : anchor;
+        if (!target || !target.parentNode) return;
+        let slot = document.getElementById(slotId);
+        if (!slot) {
+          slot = document.createElement("div");
+          slot.id = slotId;
+        }
+        slot.className = "omni-filter-slot";
+        slot.innerHTML = buildViewSortBarHtml(pageKey, options.label || "SORT / FILTER");
+        if (options.position === "after") {
+          target.parentNode.insertBefore(slot, target.nextSibling);
+          return;
+        }
+        target.parentNode.insertBefore(slot, target);
+      }
+
+      function missionStatusProgressScore(status) {
+        const clean = String(status || "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+        if (clean === "complete" || clean === "completed") return 4;
+        if (clean === "in_progress") return 3;
+        if (clean === "pending") return 2;
+        if (clean === "blocked") return 1;
+        return 0;
+      }
+
+      function blackbookStatusProgressScore(status) {
+        return missionStatusProgressScore(status);
+      }
+
+      function checklistProgressScore(item) {
+        return item?.done ? 1 : 0;
+      }
+
+      function routineTaskProgressScore(item) {
+        const checks = Array.isArray(item?.descChecks) ? item.descChecks : [];
+        const total = 1 + checks.length;
+        const done = (item?.done ? 1 : 0) + checks.filter((row) => !!row?.done).length;
+        return total ? done / total : 0;
+      }
+
+      function missionsForOperation(operationName) {
+        const target = String(operationName || "").trim();
+        if (!target) return [];
+        return (Array.isArray(allMissions) ? allMissions : []).filter((item) => {
+          const op = String(item?.operation || "").trim();
+          return op === target || op.startsWith(`${target}/`);
+        });
+      }
+
+      function operationProgressScore(operationName) {
+        const rows = missionsForOperation(operationName);
+        if (!rows.length) return 0;
+        const total = rows.length;
+        const sum = rows.reduce((acc, item) => acc + missionStatusProgressScore(item?.status), 0);
+        return (sum / total) + (total / 1000);
+      }
+
+      function operationDateMs(operationName) {
+        const rows = missionsForOperation(operationName);
+        return rows.reduce((latest, item) => {
+          const next = toSortDateMs(item?.created_at || item?.date || "", item?.path || item?.mission_id || "");
+          return next > latest ? next : latest;
+        }, 0);
+      }
+
+      function blackbookDateMs(item) {
+        const full = `${String(item?.Date || "").trim()} ${String(item?.Time || "").trim()}`.trim();
+        return toSortDateMs(full || item?.Date || "", item?.Probe_ID || item?.Mission || "");
+      }
+
+      function hviProgressScore(item) {
+        const fields = item?.fields && typeof item.fields === "object" ? item.fields : {};
+        const fieldValues = Object.values(fields).filter((value) => String(value || "").trim() && String(value || "").trim().toUpperCase() !== "N/A");
+        const extras = [
+          item?.handle,
+          item?.status,
+          item?.number,
+          ...(Array.isArray(item?.emails) ? item.emails : []),
+          ...(Array.isArray(item?.leads) ? item.leads : []),
+          ...(Array.isArray(item?.photos) ? item.photos : []),
+        ].filter((value) => String(value || "").trim() && String(value || "").trim().toUpperCase() !== "N/A");
+        const customStats = item?.customStats && typeof item.customStats === "object"
+          ? Object.values(item.customStats).filter((value) => String(value || "").trim() && String(value || "").trim().toUpperCase() !== "N/A")
+          : [];
+        return fieldValues.length + extras.length + customStats.length;
+      }
+
+      function datawellProgressScore(item) {
+        return [
+          item?.title,
+          item?.sourceType,
+          item?.platform,
+          item?.link,
+          item?.description,
+          item?.community,
+          item?.painpoints,
+          item?.entryPoints,
+          item?.notes,
+          item?.tags,
+        ].filter((value) => String(value || "").trim()).length;
+      }
+
+      function journalProgressScore(item) {
+        return [
+          item?.title,
+          item?.desc,
+          item?.photo,
+          item?.link,
+        ].filter((value) => String(value || "").trim()).length;
+      }
+
+      function reminderProgressScore(item) {
+        const whenMs = toSortDateMs(item?.when || "", item?.id || item?.title || "");
+        return whenMs ? (Date.now() - whenMs) : Number.NEGATIVE_INFINITY;
+      }
+
+      function bookLearningRank(item) {
+        const text = `${item?.title || ""} ${item?.file || ""}`.toLowerCase();
+        if (/basics|hands-on introduction|kali-linux-revealed|introduction|guide/.test(text)) return 1;
+        if (/web application hacker|tangled web|owasp|xss|sql injection|csrf|file upload|ssrf|web security testing/.test(text)) return 2;
+        if (/bug bounty|hackerone|top 100 bugs|vulnerabilities|cheat sheet/.test(text)) return 3;
+        if (/wireshark|wifi|wireless|shodan|network/.test(text)) return 4;
+        if (/linux.*privilege|windows.*privilege|post-exploitation/.test(text)) return 5;
+        if (/api|aws|azure|cloud/.test(text)) return 6;
+        if (/android|mobile application/.test(text)) return 7;
+        if (/black hat|gray hat|violent python|metasploit|red team|operator handbook/.test(text)) return 8;
+        return 9;
+      }
+
       function setBlackbookSearch(sourceEl = null) {
         const mainEl = document.getElementById("blackbook-search-input");
         const opsEl = document.getElementById("blackbook-search-input-ops");
@@ -3394,6 +3714,7 @@
       function renderDatawells() {
         const container = document.getElementById("datawells-container");
         if (!container) return;
+        ensureViewSortBar("datawells-sort-slot", "datawells", container);
         let rows = Array.isArray(allDatawells) ? allDatawells.slice() : [];
         const typeSelect = document.getElementById("datawells-filter-type");
         if (typeSelect) {
@@ -3420,7 +3741,15 @@
         if (datawellFilterType) {
           rows = rows.filter((row) => String(row?.sourceType || "").trim().toLowerCase() === datawellFilterType);
         }
-        rows.sort((a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime());
+        rows = sortCollectionForView(
+          rows,
+          "datawells",
+          (row) => ({
+            label: String(row?.title || ""),
+            date: toSortDateMs(row?.updatedAt || row?.createdAt || "", row?.id || ""),
+            progress: datawellProgressScore(row),
+          })
+        );
         container.innerHTML = rows.map((row) => `
           <div class="hvi-card datawell-card" ondblclick="openDatawellPopup('${escapeJsString(row.id)}')" title="Double-click to open source profile">
             <button class="x-btn hvi-row-delete" onclick="event.stopPropagation(); deleteDatawell('${escapeJsString(row.id)}')" title="Delete Datawell">X</button>
@@ -3831,6 +4160,7 @@
       function renderBlueprints() {
         const grid = document.getElementById("blueprint-grid");
         if (!grid) return;
+        ensureViewSortBar("blueprints-sort-slot", "blueprints", grid);
         let items = blueprintCatalog.slice();
         if (blueprintSearchQuery) {
           items = items.filter((b) => {
@@ -3838,6 +4168,15 @@
             return blob.includes(blueprintSearchQuery);
           });
         }
+        items = sortCollectionForView(
+          items,
+          "blueprints",
+          (item) => ({
+            label: String(item?.title || item?.file || ""),
+            date: toSortDateMs(item?.modifiedAt || "", item?.file || item?.title || ""),
+            progress: 0,
+          })
+        );
         grid.innerHTML = items.map((b) => `
           <div class="op-card" onclick="openBlueprintCard('${escapeHtmlAttr(b.file)}','${escapeHtmlAttr(b.title)}','${escapeHtmlAttr(b.sourcePath)}','md',0,'','${escapeHtmlAttr(b.file)}')">
             <span class="op-icon">${blueprintIconFor(b.file || b.title)}</span>
@@ -3851,30 +4190,24 @@
         const grid = document.getElementById("book-grid");
         if (!grid) return;
         grid.classList.add("book-split");
+        ensureViewSortBar("books-sort-slot", "books", grid);
         let items = booksCatalog.slice();
-        const learningRank = (b) => {
-          const t = `${b.title || ""} ${b.file || ""}`.toLowerCase();
-          if (/basics|hands-on introduction|kali-linux-revealed|introduction|guide/.test(t)) return 1;
-          if (/web application hacker|tangled web|owasp|xss|sql injection|csrf|file upload|ssrf|web security testing/.test(t)) return 2;
-          if (/bug bounty|hackerone|top 100 bugs|vulnerabilities|cheat sheet/.test(t)) return 3;
-          if (/wireshark|wifi|wireless|shodan|network/.test(t)) return 4;
-          if (/linux.*privilege|windows.*privilege|post-exploitation/.test(t)) return 5;
-          if (/api|aws|azure|cloud/.test(t)) return 6;
-          if (/android|mobile application/.test(t)) return 7;
-          if (/black hat|gray hat|violent python|metasploit|red team|operator handbook/.test(t)) return 8;
-          return 9;
-        };
-        items.sort((a, b) => {
-          const r = learningRank(a) - learningRank(b);
-          if (r !== 0) return r;
-          return String(a.title || "").localeCompare(String(b.title || ""));
-        });
         if (bookSearchQuery) {
           items = items.filter((b) => {
             const blob = `${b.title} ${b.file} ${b.sourcePath}`.toLowerCase();
             return blob.includes(bookSearchQuery);
           });
         }
+        items = sortCollectionForView(
+          items,
+          "books",
+          (item) => ({
+            label: String(item?.title || item?.file || ""),
+            date: toSortDateMs(item?.modifiedAt || "", item?.file || item?.title || ""),
+            progress: 100 - bookLearningRank(item),
+          }),
+          { progressDirection: "desc" }
+        );
         const sectionType = (b) => {
           const blob = `${b.path || ""} ${b.title || ""}`.toLowerCase();
           if (blob.includes("social hacking") || blob.includes("social")) return "social";
@@ -3890,7 +4223,7 @@
                 <div class="book-card" onclick="openBlueprintCard('${escapeJsString(b.path || b.file)}','${escapeJsString(b.title)}','${escapeJsString(b.sourcePath)}','${escapeJsString(b.type || "")}',${Number.isFinite(Number(b.size)) ? Number(b.size) : 0},'${escapeJsString(b.modifiedAt || "")}','${escapeJsString(b.path || b.file)}')" title="${escapeHtmlAttr(b.path || b.file)}">
                   <span class="op-icon">${(b.type || "").toLowerCase() === "pdf" ? "📕" : ((b.type || "").toLowerCase() === "epub" ? "📗" : "📚")}</span>
                   <div class="book-title">${escapeHtmlAttr(b.title).toUpperCase()}</div>
-                  <div class="book-meta">TRACK ${learningRank(b)}${b.bundled === false ? " · CATALOG" : ""}</div>
+                  <div class="book-meta">TRACK ${bookLearningRank(b)}${b.bundled === false ? " · CATALOG" : ""}</div>
                   <div class="book-path">${escapeHtmlAttr(b.path || b.file)}</div>
                 </div>
               `).join("") || "<p>No books in this section.</p>"}
@@ -3906,7 +4239,16 @@
         const sel = document.getElementById("swissknife-session-select");
         const list = document.getElementById("swissknife-session-list");
         if (!sel || !list) return;
-        const sessions = Array.isArray(swissknifeSessions) ? swissknifeSessions : [];
+        ensureViewSortBar("swissknife-sort-slot", "swissknife", list);
+        const sessions = sortCollectionForView(
+          Array.isArray(swissknifeSessions) ? swissknifeSessions : [],
+          "swissknife",
+          (item) => ({
+            label: String(item?.label || item?.id || ""),
+            date: toSortDateMs(item?.created_at || "", item?.id || item?.label || ""),
+            progress: Array.isArray(item?.downloads) ? item.downloads.length : 0,
+          })
+        );
         if (!selectedSwissknifeSession && sessions.length) {
           selectedSwissknifeSession = String(sessions[0].id || "");
         }
@@ -4473,11 +4815,28 @@
         };
       }
 
+      function hasBoxingReferenceContext(exercise = {}) {
+        const section = normalizeGymSectionName(exercise?.section || "");
+        const combined = [
+          section,
+          normalizeGymCatalogText(exercise?.name),
+          normalizeGymCatalogText(exercise?.referenceQuery),
+          normalizeGymCatalogText(exercise?.photoReference),
+          normalizeGymCatalogText(exercise?.photoHint),
+          normalizeGymCatalogText(exercise?.source),
+        ].join(" ").toLowerCase();
+        if (sectionToTop(section) === "COMBAT") return true;
+        return /\bboxing\b|\bshadow\b|\bbag work\b|\bbag\b|\bring\b|\bfootwork\b|\bspar\b|\bsparring\b|\bfeint\b|\bcounter\b|\bsouthpaw\b|\borthodox\b|\bslip\b|\bparry\b|\bpivot\b|\bguard\b|\bjab\b|\bcross\b|\bhook\b|\buppercut\b|\blead hand\b|\blead foot\b/.test(combined);
+      }
+
       function gymReferenceTopKeywords(exercise = {}) {
         const top = sectionToTop(normalizeGymSectionName(exercise?.section));
-        if (top === "COMBAT") return ["boxing", "drill", "technique"];
+        if (top === "COMBAT" || hasBoxingReferenceContext(exercise)) return ["boxing", "drill", "technique"];
         if (top === "CARDIO") return ["running", "exercise", "workout"];
-        if (top === "WARMUP") return ["warm up", "mobility", "exercise"];
+        if (top === "WARMUP") {
+          if (hasBoxingReferenceContext(exercise)) return ["boxing", "warm up", "drill"];
+          return ["warm up", "mobility", "exercise"];
+        }
         return ["exercise", "form", "technique"];
       }
 
@@ -4493,6 +4852,13 @@
         if (!base) return "";
         const section = normalizeGymSectionName(exercise?.section || "");
         const lowered = base.toLowerCase();
+        const combinedLower = [
+          base,
+          section,
+          normalizeGymCatalogText(exercise?.name),
+          normalizeGymCatalogText(exercise?.source),
+        ].join(" ").toLowerCase();
+        const boxingContext = hasBoxingReferenceContext(exercise);
         const tokens = [];
         const addToken = (value) => {
           const clean = normalizeGymCatalogText(value);
@@ -4502,12 +4868,15 @@
         };
 
         addToken(base);
-        if (section && !lowered.includes(section.toLowerCase())) addToken(section);
+        if (section && !combinedLower.includes(section.toLowerCase())) addToken(section);
         gymReferenceTopKeywords(exercise).forEach((token) => {
-          if (!lowered.includes(token.toLowerCase())) addToken(token);
+          if (!combinedLower.includes(token.toLowerCase())) addToken(token);
         });
-        if (/(lead hand|jab|cross|hook|uppercut|slip|parry|pivot|shadow|bag|spar|ring)/i.test(base) && !/boxing/i.test(lowered)) {
+        if (boxingContext && !/\bboxing\b/.test(combinedLower)) {
           addToken("boxing");
+        }
+        if (boxingContext && !/\b(drill|technique)\b/.test(combinedLower)) {
+          addToken(sectionToTop(section) === "WARMUP" ? "warm up drill" : "drill");
         }
         if (/(stretch|mobility|cars|rotation|rocker|switch)/i.test(base) && !/mobility|stretch/i.test(lowered)) {
           addToken("mobility");
@@ -5366,6 +5735,42 @@
               targetSeconds: 300,
               restSeconds: 0,
             }),
+            gymSeedExercise("Cardio", "VO2 Max 4x4 Run", "Classic four-minute repeats at hard sustainable effort to drive VO2 max without guessing the session.", {
+              targets: "VO2 max, pacing, aerobic power",
+              referenceQuery: "4x4 running intervals vo2 max workout",
+              source: coreSource,
+              sessionMode: "time",
+              targetSets: 4,
+              targetSeconds: 240,
+              restSeconds: 180,
+            }),
+            gymSeedExercise("Cardio", "Assault Bike VO2 Intervals", "Hard bike pushes with full recovery windows so power stays high across every round.", {
+              targets: "VO2 max, leg drive, repeat power",
+              referenceQuery: "assault bike vo2 max intervals workout",
+              source: gymSource,
+              sessionMode: "time",
+              targetSets: 8,
+              targetSeconds: 40,
+              restSeconds: 80,
+            }),
+            gymSeedExercise("Cardio", "Row Erg VO2 Repeats", "Longer hard row pieces that force breathing rate up while keeping technique clean.", {
+              targets: "VO2 max, full-body engine, breathing control",
+              referenceQuery: "rowing erg vo2 max intervals workout",
+              source: gymSource,
+              sessionMode: "time",
+              targetSets: 5,
+              targetSeconds: 180,
+              restSeconds: 120,
+            }),
+            gymSeedExercise("Cardio", "Treadmill Incline VO2 Climb", "Short uphill treadmill efforts to raise oxygen demand without sprinting flat-out.", {
+              targets: "VO2 max, uphill running strength, posture",
+              referenceQuery: "treadmill incline vo2 max intervals workout",
+              source: gymSource,
+              sessionMode: "time",
+              targetSets: 6,
+              targetSeconds: 90,
+              restSeconds: 90,
+            }),
           ],
           "Running": [
             gymSeedExercise("Running", "Aerobic Base Run", "Steady longer run for real stamina and repeatable recovery between hard efforts.", {
@@ -5421,6 +5826,42 @@
               targetSets: 8,
               targetSeconds: 12,
               restSeconds: 60,
+            }),
+            gymSeedExercise("Running", "Track 400m VO2 Repeats", "Track repeats at controlled hard pace to build race-level oxygen uptake and pacing discipline.", {
+              targets: "VO2 max, race pace, leg turnover",
+              referenceQuery: "400m running intervals vo2 max workout",
+              source: coreSource,
+              sessionMode: "time",
+              targetSets: 8,
+              targetSeconds: 90,
+              restSeconds: 75,
+            }),
+            gymSeedExercise("Running", "3-Min VO2 Repeats", "Three-minute work bouts that sit right in the classic VO2 window for hard running sessions.", {
+              targets: "VO2 max, threshold carryover, recovery under load",
+              referenceQuery: "3 minute vo2 max running intervals workout",
+              source: coreSource,
+              sessionMode: "time",
+              targetSets: 5,
+              targetSeconds: 180,
+              restSeconds: 120,
+            }),
+            gymSeedExercise("Running", "Mile-Pace 200m Float Repeats", "Alternating faster 200s with controlled float recoveries to keep oxygen demand high for the full set.", {
+              targets: "VO2 max, pace changes, aerobic power",
+              referenceQuery: "200m float running intervals vo2 workout",
+              source: coreSource,
+              sessionMode: "time",
+              targetSets: 10,
+              targetSeconds: 45,
+              restSeconds: 30,
+            }),
+            gymSeedExercise("Running", "5K Pace 1K Repeats", "Longer repeats at strong 5K effort to build sustainable VO2 work and discipline under fatigue.", {
+              targets: "VO2 max, 5K pace, aerobic strength",
+              referenceQuery: "1k running repeats 5k pace workout",
+              source: coreSource,
+              sessionMode: "time",
+              targetSets: 4,
+              targetSeconds: 240,
+              restSeconds: 120,
             }),
           ],
           "Boxing": [
@@ -6396,6 +6837,326 @@
         };
       }
 
+      function buildStrengthVolumeGymCatalogSeed() {
+        const strengthSource = "Expanded strength volume archive";
+        const trunkSource = "Expanded trunk volume archive";
+        const structuralSource = "Expanded structural volume archive";
+        const powerSource = "Expanded power volume archive";
+        // Tuple format keeps the bulk seed compact:
+        // [name, desc, targets, referenceQuery, sets, reps, seconds, rest, sessionMode]
+        const seedMany = (section, source, rows) => rows.map(([
+          name,
+          desc,
+          targets,
+          referenceQuery,
+          sets = 0,
+          reps = 0,
+          seconds = 0,
+          rest = 0,
+          sessionMode = "",
+        ]) => gymSeedExercise(section, name, desc, {
+          targets,
+          referenceQuery: referenceQuery || name,
+          source,
+          sessionMode,
+          targetSets: sets,
+          targetReps: reps,
+          targetSeconds: seconds,
+          restSeconds: rest,
+        }));
+        return {
+          catalog: {
+            "Chest": seedMany("Chest", strengthSource, [
+              ["Incline Dumbbell Fly", "Upper-chest fly with a deep stretch and controlled finish.", "Upper chest, pec stretch, front delts", "incline dumbbell fly exercise", 3, 12, 0, 60],
+              ["Flat Dumbbell Fly", "Flat fly pattern focused on pec length and squeeze.", "Chest, pec stretch, front delts", "flat dumbbell fly exercise", 3, 12, 0, 60],
+              ["Cable Fly Low-to-High", "Cable fly path that drives from low hands to upper-chest finish.", "Upper chest, chest fibers, front delts", "low to high cable fly exercise", 3, 15, 0, 45],
+              ["Cable Fly Midline", "Standard cable fly for chest tension through the middle range.", "Chest, pecs, anterior delts", "standing cable fly exercise", 3, 12, 0, 45],
+              ["Cable Fly High-to-Low", "Downward cable fly to bias the lower chest and chest finish.", "Lower chest, pecs, front delts", "high to low cable fly exercise", 3, 12, 0, 45],
+              ["Machine Chest Press", "Stable machine press for hard chest volume without balancing the load.", "Chest, triceps, front delts", "machine chest press exercise", 4, 10, 0, 75],
+              ["Incline Machine Chest Press", "Upper-chest machine press with a fixed path and clean tempo.", "Upper chest, triceps, front delts", "incline machine chest press exercise", 4, 10, 0, 75],
+              ["Decline Bench Press", "Decline barbell press for lower-chest drive and heavy pressing volume.", "Lower chest, triceps, front delts", "decline bench press exercise", 4, 8, 0, 90],
+              ["Decline Dumbbell Press", "Decline dumbbell press to load the chest through a freer path.", "Lower chest, triceps, stabilizers", "decline dumbbell press exercise", 3, 10, 0, 75],
+              ["Floor Press", "Shorter-range press that builds lockout strength and shoulder control.", "Chest, triceps, lockout strength", "floor press exercise", 4, 8, 0, 90],
+              ["Spoto Press", "Bench variation hovering off the chest for strict control and tension.", "Chest, triceps, pressing control", "spoto press exercise", 4, 6, 0, 105],
+              ["Feet-Elevated Push-Up", "Push-up variation that shifts more load into the upper chest.", "Upper chest, triceps, anterior core", "feet elevated push up exercise", 3, 15, 0, 45],
+              ["Deficit Push-Up", "Hands-elevated push-up allowing more depth and pec stretch.", "Chest, triceps, serratus anterior", "deficit push up exercise", 3, 12, 0, 45],
+              ["Ring Push-Up", "Unstable push-up for chest drive and shoulder-friendly pressing depth.", "Chest, triceps, shoulder stability", "ring push up exercise", 3, 10, 0, 60],
+              ["Weighted Push-Up", "Loaded push-up for chest strength without needing a bench.", "Chest, triceps, anterior core", "weighted push up exercise", 4, 8, 0, 75],
+              ["Dumbbell Squeeze Press", "Press dumbbells together to keep constant pec tension.", "Chest, inner chest, triceps", "dumbbell squeeze press exercise", 3, 12, 0, 60],
+              ["Hex Press", "Neutral-grip press with dumbbells pinned together for pec tension.", "Chest, inner chest, triceps", "hex press dumbbell exercise", 3, 12, 0, 60],
+              ["Single-Arm Cable Chest Press", "Unilateral cable press forcing chest drive and anti-rotation control.", "Chest, triceps, anti-rotation core", "single arm cable chest press exercise", 3, 10, 0, 45],
+            ]),
+            "Back": seedMany("Back", strengthSource, [
+              ["Pull-Up", "Bodyweight vertical pull for lats, scapular strength, and arm drive.", "Lats, biceps, lower traps", "pull up exercise", 4, 6, 0, 90],
+              ["Chin-Up", "Supinated vertical pull to build lats and stronger elbow flexion.", "Lats, biceps, upper back", "chin up exercise", 4, 6, 0, 90],
+              ["Neutral-Grip Pull-Up", "Shoulder-friendly pull-up variation with clean scapular depression.", "Lats, biceps, scapular depressors", "neutral grip pull up exercise", 4, 6, 0, 90],
+              ["Wide-Grip Lat Pulldown", "Wide pulldown for lats and upper-back width without swinging.", "Lats, teres major, upper back", "wide grip lat pulldown exercise", 4, 10, 0, 75],
+              ["Close-Grip Lat Pulldown", "Closer pulldown path for lower-lat drive and elbow travel.", "Lats, biceps, lower traps", "close grip lat pulldown exercise", 4, 10, 0, 75],
+              ["Single-Arm Lat Pulldown", "One-arm pulldown to clean up side-to-side pulling mechanics.", "Lats, biceps, scapular control", "single arm lat pulldown exercise", 3, 10, 0, 60],
+              ["Bent-Over Barbell Row", "Heavy hinge row for big mid-back and lat loading.", "Lats, rhomboids, spinal erectors", "bent over barbell row exercise", 4, 8, 0, 90],
+              ["Pendlay Row", "Dead-stop row from the floor for crisp power and back tension.", "Mid back, lats, posterior chain", "pendlay row exercise", 4, 6, 0, 90],
+              ["T-Bar Row", "Chest-free rowing variation for thick mid-back loading.", "Mid back, lats, rhomboids", "t bar row exercise", 4, 10, 0, 75],
+              ["Seal Row", "Bench-supported barbell row removing lower-back cheating.", "Mid back, rhomboids, rear delts", "seal row exercise", 4, 8, 0, 75],
+              ["Meadows Row", "Landmine row angled to hit lower lats and upper-back tie-in.", "Lats, rear delts, obliques", "meadows row exercise", 3, 10, 0, 60],
+              ["Single-Arm Dumbbell Row", "Supported unilateral row for lats and scapular rhythm.", "Lats, rhomboids, biceps", "single arm dumbbell row exercise", 3, 12, 0, 60],
+              ["Single-Arm Cable Row", "Cable row that keeps constant tension through the pull.", "Lats, rhomboids, anti-rotation core", "single arm cable row exercise", 3, 12, 0, 45],
+              ["Seated Cable Row", "Seated row for controlled mid-back volume and posture.", "Mid back, lats, biceps", "seated cable row exercise", 4, 10, 0, 60],
+              ["Close-Grip Seated Cable Row", "Closer row path for lower-lat and elbow-drive focus.", "Lats, mid back, biceps", "close grip seated cable row exercise", 4, 10, 0, 60],
+              ["Wide-Grip Seated Cable Row", "Wide row path that biases upper back and rear delts.", "Upper back, rhomboids, rear delts", "wide grip seated cable row exercise", 4, 12, 0, 60],
+              ["Inverted Row", "Bodyweight row to build back strength and trunk alignment.", "Mid back, biceps, posterior chain", "inverted row exercise", 3, 12, 0, 45],
+              ["Rack Pull", "Short-range pull for traps, spinal erectors, and heavy lockout work.", "Traps, spinal erectors, glutes", "rack pull exercise", 4, 6, 0, 105],
+              ["Dumbbell Pullover", "Shoulder extension movement for lats and ribcage control.", "Lats, serratus anterior, chest", "dumbbell pullover exercise", 3, 12, 0, 60],
+              ["Machine Pullover", "Stable lat isolation drill with less elbow and balance demand.", "Lats, teres major, trunk", "machine pullover exercise", 3, 12, 0, 60],
+              ["Iso-Lateral High Row", "Machine high row for upper-back thickness and lat tie-in.", "Upper back, lats, rear delts", "iso lateral high row exercise", 4, 10, 0, 75],
+              ["Neutral-Grip Machine Row", "Machine row using a neutral handle for balanced back loading.", "Lats, rhomboids, biceps", "neutral grip machine row exercise", 4, 10, 0, 75],
+              ["Wide-Grip Machine Row", "Wider machine row to drive upper-back retraction.", "Upper back, rhomboids, rear delts", "wide grip machine row exercise", 4, 10, 0, 75],
+              ["Reverse Pec Deck", "Rear-shoulder and scapular retraction machine drill.", "Rear delts, rhomboids, mid traps", "reverse pec deck exercise", 3, 15, 0, 45],
+              ["Chest-Supported T-Bar Row", "T-bar row with chest support for strict pulling mechanics.", "Mid back, lats, rhomboids", "chest supported t bar row exercise", 4, 10, 0, 75],
+              ["Prone Rear Delt Row", "Elbows-out row to hit rear delts and upper back together.", "Rear delts, upper back, rhomboids", "prone rear delt row exercise", 3, 12, 0, 45],
+              ["Dead Hang Scapular Hold", "Hang and hold packed shoulders to build decompression and control.", "Scapular depressors, grip, lats", "dead hang scapular hold exercise", 3, 0, 20, 30, "time"],
+              ["Trap-3 Raise", "Low-angle raise to build lower-trap support and shoulder mechanics.", "Lower traps, scapular stability, rear delts", "trap 3 raise exercise", 3, 12, 0, 30],
+              ["Band Lat Prayer Pulldown", "Straight-arm band pulldown with full lat shortening.", "Lats, serratus anterior, trunk", "band lat prayer pulldown exercise", 3, 15, 0, 30],
+              ["Straight-Arm Rope Pulldown", "Rope pulldown keeping elbows straight for lat isolation.", "Lats, teres major, lower traps", "straight arm rope pulldown exercise", 3, 12, 0, 45],
+            ]),
+            "Shoulders": seedMany("Shoulders", structuralSource, [
+              ["Arnold Press", "Rotating press that moves through a fuller shoulder range.", "Front delts, medial delts, triceps", "arnold press exercise", 4, 8, 0, 75],
+              ["Seated Dumbbell Shoulder Press", "Seated overhead press for strict shoulder loading.", "Front delts, medial delts, triceps", "seated dumbbell shoulder press exercise", 4, 10, 0, 75],
+              ["Standing Barbell Overhead Press", "Classic vertical press for full-body overhead strength.", "Shoulders, triceps, upper back", "standing barbell overhead press exercise", 4, 6, 0, 90],
+              ["Push Press", "Leg-assisted overhead drive to build power through the shoulders.", "Shoulders, triceps, leg drive", "push press exercise", 4, 5, 0, 90],
+              ["Machine Shoulder Press", "Stable machine press for repeat shoulder volume.", "Front delts, triceps, upper chest", "machine shoulder press exercise", 4, 10, 0, 75],
+              ["Smith Machine Overhead Press", "Guided overhead press for stable shoulder loading.", "Shoulders, triceps, upper chest", "smith machine overhead press exercise", 4, 8, 0, 75],
+              ["Tall-Kneeling Single-Arm Press", "One-arm press from tall kneeling to lock ribs down.", "Shoulders, obliques, triceps", "tall kneeling single arm press exercise", 3, 8, 0, 45],
+              ["Landmine Thruster", "Angled press-and-stand pattern for shoulders and athletic drive.", "Shoulders, upper chest, legs", "landmine thruster exercise", 3, 8, 0, 60],
+              ["Lean-Away Cable Lateral Raise", "Cable lateral raise with a longer line of tension.", "Medial delts, shoulder control", "lean away cable lateral raise exercise", 3, 12, 0, 45],
+              ["Machine Lateral Raise", "Machine side raise for clean delt isolation.", "Medial delts, supraspinatus", "machine lateral raise exercise", 3, 15, 0, 45],
+              ["Seated Lateral Raise", "Seated dumbbell raise removing most lower-body cheating.", "Medial delts, supraspinatus", "seated lateral raise exercise", 3, 15, 0, 45],
+              ["Partial Lateral Raise", "Short-range side raise for extra side-delt volume near the top.", "Medial delts, top-range control", "partial lateral raise exercise", 3, 20, 0, 30],
+              ["1.5 Rep Lateral Raise", "Long-tension raise using a half rep before lowering.", "Medial delts, shoulder endurance", "one and a half rep lateral raise exercise", 3, 10, 0, 45],
+              ["Incline Bench Lateral Raise", "Incline-supported side raise keeping momentum out.", "Medial delts, shoulder isolation", "incline bench lateral raise exercise", 3, 12, 0, 45],
+              ["Cable Y Raise", "Cable Y-path raise for lower traps and upward rotation.", "Lower traps, shoulders, serratus anterior", "cable y raise exercise", 3, 12, 0, 45],
+              ["Plate Front Raise", "Straight front raise with a plate for anterior-delt endurance.", "Front delts, upper chest", "plate front raise exercise", 3, 12, 0, 45],
+              ["Alternating Dumbbell Front Raise", "Alternating front raise to keep shoulders controlled and even.", "Front delts, shoulder control", "alternating dumbbell front raise exercise", 3, 12, 0, 45],
+              ["Rear Delt Cable Fly", "Cable rear-delt fly keeping constant tension across the arc.", "Rear delts, upper back", "rear delt cable fly exercise", 3, 15, 0, 45],
+              ["Reverse Pec Deck Shoulder Fly", "Machine rear-delt fly for upper-back and shoulder balance.", "Rear delts, rhomboids, mid traps", "reverse pec deck rear delt fly exercise", 3, 15, 0, 45],
+              ["Bent-Over Rear Delt Raise", "Free-weight rear-delt raise with strict torso position.", "Rear delts, scapular stabilizers", "bent over rear delt raise exercise", 3, 15, 0, 45],
+              ["Chest-Supported Rear Delt Raise", "Incline-supported rear-delt raise with less lower-back load.", "Rear delts, upper back", "chest supported rear delt raise exercise", 3, 12, 0, 45],
+              ["Rear Delt Row", "Elbows-out row that blends upper-back and rear-delt work.", "Rear delts, rhomboids, upper traps", "rear delt row exercise", 3, 12, 0, 45],
+              ["Prone T Raise", "Prone T raise to clean up mid-trap and rear-delt support.", "Mid traps, rear delts, scapular control", "prone t raise exercise", 3, 12, 0, 30],
+              ["Prone W Raise", "Prone W raise for cuff strength and better shoulder positioning.", "Rotator cuff, lower traps, rear delts", "prone w raise exercise", 3, 10, 0, 30],
+              ["Wall Slide Lift-Off", "Wall slide plus lift-off for upward rotation and control.", "Serratus anterior, lower traps, shoulders", "wall slide lift off exercise", 3, 10, 0, 30],
+              ["Pike Push-Up", "Bodyweight vertical pressing pattern for front delts and triceps.", "Shoulders, triceps, upper chest", "pike push up exercise", 3, 10, 0, 45],
+              ["Handstand Shoulder Tap", "Wall-supported tap drill to challenge stacked shoulders.", "Shoulders, triceps, anti-rotation core", "handstand shoulder tap exercise", 3, 8, 0, 45],
+              ["Landmine Arc Press", "Arcing landmine press that trains shoulder control and reach.", "Shoulders, serratus anterior, upper chest", "landmine arc press exercise", 3, 10, 0, 45],
+              ["Bradford Press", "Barbell press path moving front-to-back for shoulder endurance.", "Shoulders, triceps, upper back", "bradford press exercise", 3, 8, 0, 60],
+              ["Lu Raise", "Long-range raise combining front and side-delt motion.", "Medial delts, front delts, control", "lu raise exercise", 3, 12, 0, 45],
+              ["Scarecrow Raise", "External-rotation raise to build cuff control and upper-back support.", "Rotator cuff, rear delts, shoulders", "scarecrow raise exercise", 3, 12, 0, 30],
+              ["Kettlebell Strict Press", "Strict kettlebell press forcing clean shoulder stacking.", "Shoulders, triceps, grip", "kettlebell strict press exercise", 3, 8, 0, 60],
+              ["Single-Arm Cable Press Around", "Cable press sweeping across the body for serratus and front delt.", "Front delts, serratus anterior, upper chest", "single arm cable press around exercise", 3, 12, 0, 45],
+              ["Cable Front Raise", "Cable front raise for constant tension through the front delt.", "Front delts, shoulder endurance", "cable front raise exercise", 3, 12, 0, 45],
+              ["External Rotation Cable Pressout", "Pressout combining cuff stability with anterior reach.", "Rotator cuff, serratus anterior, shoulders", "external rotation cable pressout exercise", 3, 10, 0, 30],
+              ["Overhead Plate Hold", "Simple isometric hold to teach stacked shoulders under load.", "Shoulders, upper back, trunk", "overhead plate hold exercise", 3, 0, 25, 30, "time"],
+            ]),
+            "Legs": seedMany("Legs", strengthSource, [
+              ["Romanian Deadlift", "Hip hinge for hamstrings, glutes, and posterior-chain tension.", "Hamstrings, glutes, spinal erectors", "romanian deadlift exercise", 4, 8, 0, 90],
+              ["Trap Bar Deadlift", "Deadlift variation with cleaner leverage for powerful leg drive.", "Quads, glutes, posterior chain", "trap bar deadlift exercise", 4, 5, 0, 105],
+              ["Sumo Deadlift", "Wide-pull deadlift biasing adductors and glute drive.", "Adductors, glutes, posterior chain", "sumo deadlift exercise", 4, 5, 0, 105],
+              ["Conventional Deadlift", "Full-range pull for posterior-chain strength and bracing.", "Hamstrings, glutes, spinal erectors", "conventional deadlift exercise", 4, 5, 0, 105],
+              ["Leg Press", "Stable lower-body press for heavy quad and glute volume.", "Quads, glutes, adductors", "leg press exercise", 4, 10, 0, 75],
+              ["Hack Squat", "Machine squat keeping the torso upright and quads loaded.", "Quads, glutes, adductors", "hack squat exercise", 4, 8, 0, 75],
+              ["Heels-Elevated Goblet Squat", "Goblet squat with heel lift for quad bias and posture.", "Quads, glutes, ankles", "heels elevated goblet squat exercise", 3, 12, 0, 60],
+              ["Zercher Squat", "Front-loaded squat challenging trunk and leg strength together.", "Quads, glutes, upper back", "zercher squat exercise", 4, 6, 0, 90],
+              ["Paused Front Squat", "Front squat with a pause to build position and leg drive.", "Quads, upper back, trunk", "paused front squat exercise", 4, 5, 0, 90],
+              ["Box Squat", "Sit-back squat variation teaching tension and clean drive off the box.", "Glutes, hamstrings, quads", "box squat exercise", 4, 6, 0, 90],
+              ["Walking Lunge", "Traveling lunge for unilateral legs, balance, and hip control.", "Quads, glutes, adductors", "walking lunge exercise", 3, 12, 0, 60],
+              ["Reverse Lunge", "Back-stepping lunge that is friendlier on the knees than some forward patterns.", "Quads, glutes, adductors", "reverse lunge exercise", 3, 10, 0, 60],
+              ["Lateral Lunge", "Frontal-plane lunge for adductors, glutes, and side-to-side control.", "Adductors, glute med, quads", "lateral lunge exercise", 3, 8, 0, 60],
+              ["Step-Up", "Simple single-leg builder for quads, glutes, and hip drive.", "Quads, glutes, hip flexors", "step up exercise", 3, 10, 0, 60],
+              ["Front-Foot Elevated Split Squat", "Split squat with more knee travel and quad loading.", "Quads, glutes, adductors", "front foot elevated split squat exercise", 3, 10, 0, 60],
+              ["Deficit Reverse Lunge", "Reverse lunge from a slight step for deeper range and control.", "Quads, glutes, adductors", "deficit reverse lunge exercise", 3, 8, 0, 60],
+              ["Cyclist Squat", "Narrow, heel-elevated squat aimed at strict quad loading.", "Quads, VMO, trunk", "cyclist squat exercise", 3, 12, 0, 60],
+              ["Hatfield Squat", "Supported squat allowing hard leg loading with balance help.", "Quads, glutes, trunk", "hatfield squat exercise", 4, 8, 0, 75],
+              ["Leg Extension", "Machine quad isolation for knee extension strength and volume.", "Quads, VMO", "leg extension exercise", 3, 15, 0, 45],
+              ["Seated Leg Curl", "Hamstring curl with a clear peak contraction.", "Hamstrings, knee flexors", "seated leg curl exercise", 3, 12, 0, 45],
+              ["Lying Leg Curl", "Prone hamstring curl for posterior-chain knee flexion strength.", "Hamstrings, calves", "lying leg curl exercise", 3, 12, 0, 45],
+              ["Nordic Curl", "Bodyweight hamstring builder with big eccentric demand.", "Hamstrings, glutes, knee flexors", "nordic curl exercise", 3, 6, 0, 75],
+              ["Good Morning", "Hip hinge pattern building hamstrings, glutes, and back endurance.", "Hamstrings, glutes, spinal erectors", "good morning exercise", 3, 8, 0, 75],
+              ["Glute Ham Raise", "Posterior-chain bodyweight curl and hip extension movement.", "Hamstrings, glutes, calves", "glute ham raise exercise", 3, 8, 0, 75],
+              ["Cable Pull Through", "Cable hinge teaching hip snap and glute lockout.", "Glutes, hamstrings, posterior chain", "cable pull through exercise", 3, 12, 0, 45],
+              ["Standing Calf Raise", "Straight-leg calf raise for gastrocnemius strength.", "Calves, ankles", "standing calf raise exercise", 4, 15, 0, 30],
+              ["Seated Calf Raise", "Bent-knee calf raise biasing the soleus.", "Soleus, calves, ankles", "seated calf raise exercise", 4, 15, 0, 30],
+              ["Single-Leg Calf Raise", "Unilateral calf raise to clean up left-right ankle strength.", "Calves, ankles, foot stability", "single leg calf raise exercise", 3, 12, 0, 30],
+              ["Sled Push", "Heavy push for legs, trunk, and repeat power without big eccentric damage.", "Quads, glutes, conditioning", "sled push exercise", 6, 0, 20, 40, "time"],
+              ["Forward Sled Drag", "Marching drag to load legs and build durable conditioning.", "Quads, glutes, trunk", "forward sled drag exercise", 5, 0, 25, 40, "time"],
+              ["Kettlebell Swing", "Hinge-power drill building hip snap and posterior-chain speed.", "Glutes, hamstrings, trunk", "kettlebell swing exercise", 4, 15, 0, 45],
+              ["Pistol Squat to Box", "Supported single-leg squat to a box for control and strength.", "Quads, glutes, balance", "pistol squat to box exercise", 3, 6, 0, 60],
+              ["Adductor Machine", "Machine adductor work for groin strength and wider stance support.", "Adductors, groin, hips", "adductor machine exercise", 3, 15, 0, 45],
+              ["Hip Abduction Machine", "Machine abduction for side-glute strength and knee tracking.", "Glute med, glute min, hips", "hip abduction machine exercise", 3, 15, 0, 45],
+              ["Hamstring Slide Curl", "Slider curl teaching hamstrings to bridge and flex together.", "Hamstrings, glutes, posterior chain", "hamstring slide curl exercise", 3, 10, 0, 45],
+              ["Lateral Step-Up", "Step-up variation to build frontal-plane leg control.", "Glute med, quads, adductors", "lateral step up exercise", 3, 8, 0, 45],
+            ]),
+            "Core/Abs": seedMany("Core/Abs", trunkSource, [
+              ["High Plank", "Simple straight-arm plank reinforcing full-body tension.", "Anterior core, serratus anterior, shoulders", "high plank exercise", 3, 0, 40, 30, "time"],
+              ["RKC Plank", "Hard-style plank using max tension rather than long duration.", "Anterior core, glutes, lats", "rkc plank exercise", 4, 0, 20, 30, "time"],
+              ["Long-Lever Plank", "Plank with elbows farther forward to increase trunk demand.", "Anterior core, serratus anterior, lats", "long lever plank exercise", 3, 0, 20, 30, "time"],
+              ["Copenhagen Plank", "Side-plank hold loading the adductors and obliques together.", "Adductors, obliques, trunk", "copenhagen plank exercise", 3, 0, 20, 30, "time"],
+              ["Side Plank Reach Through", "Side plank variation adding thoracic rotation and control.", "Obliques, shoulders, thoracic rotation", "side plank reach through exercise", 3, 8, 0, 30],
+              ["Side Plank Hip Dip", "Lateral-core pattern controlling the trunk through hip motion.", "Obliques, quadratus lumborum, glute med", "side plank hip dip exercise", 3, 10, 0, 30],
+              ["Hollow Rock", "Rocking hollow position teaching trunk stiffness under movement.", "Anterior core, hip flexors, trunk tension", "hollow rock exercise", 3, 12, 0, 30],
+              ["V-Up", "Fast trunk-flexion drill linking upper and lower abs.", "Rectus abdominis, hip flexors", "v up exercise", 3, 12, 0, 30],
+              ["Toe Touch Crunch", "Crunch variation targeting upper-ab shortening.", "Upper abs, trunk flexion", "toe touch crunch exercise", 3, 15, 0, 30],
+              ["Weighted Sit-Up", "Loaded sit-up for stronger trunk flexion and ab endurance.", "Abs, hip flexors", "weighted sit up exercise", 3, 12, 0, 45],
+              ["Decline Sit-Up", "Long-range sit-up challenging abs through more extension.", "Abs, hip flexors", "decline sit up exercise", 3, 10, 0, 45],
+              ["Bicycle Crunch", "Cross-body crunch pattern for obliques and trunk coordination.", "Obliques, abs, coordination", "bicycle crunch exercise", 3, 20, 0, 20],
+              ["Russian Twist", "Rotational ab drill emphasizing controlled trunk turns.", "Obliques, abs, rotational control", "russian twist exercise", 3, 20, 0, 30],
+              ["Medicine Ball Slam", "Explosive trunk flexion and power through the midline.", "Abs, lats, power", "medicine ball slam exercise", 4, 10, 0, 45],
+              ["Rotational Medicine Ball Slam", "Rotational slam for obliques and explosive trunk sequencing.", "Obliques, lats, rotational power", "rotational medicine ball slam exercise", 4, 8, 0, 45],
+              ["Landmine Rotation", "Controlled rotational strength pattern through hips and trunk.", "Obliques, hips, trunk rotation", "landmine rotation exercise", 3, 10, 0, 45],
+              ["Cable Pallof Hold", "Anti-rotation hold forcing ribs and hips to stay square.", "Obliques, transverse abdominis, trunk", "cable pallof hold exercise", 3, 0, 20, 30, "time"],
+              ["Half-Kneeling Pallof Press", "Half-kneeling anti-rotation press with hip control built in.", "Obliques, glutes, trunk", "half kneeling pallof press exercise", 3, 10, 0, 30],
+              ["Tall-Kneeling Pallof Press", "Tall-kneeling anti-rotation press removing leg compensation.", "Obliques, abs, glutes", "tall kneeling pallof press exercise", 3, 10, 0, 30],
+              ["Stir the Pot", "Swiss-ball plank circles demanding constant trunk correction.", "Anterior core, obliques, shoulders", "stir the pot exercise", 3, 12, 0, 30],
+              ["Body Saw", "Forearm plank sliding drill for anti-extension strength.", "Anterior core, lats, serratus anterior", "body saw exercise", 3, 12, 0, 30],
+              ["TRX Fallout", "Suspension anti-extension drill with a long lever.", "Anterior core, lats, shoulders", "trx fallout exercise", 3, 10, 0, 45],
+              ["Swiss Ball Rollout", "Rollout variation building abs while sparing the wrists.", "Anterior core, lats, serratus anterior", "swiss ball rollout exercise", 3, 12, 0, 45],
+              ["Swiss Ball Stir the Pot", "More dynamic ball variation of anti-extension trunk work.", "Abs, obliques, shoulders", "swiss ball stir the pot exercise", 3, 12, 0, 30],
+              ["Hanging Leg Raise", "Hang and lift straight legs for hard lower-ab work.", "Lower abs, hip flexors, grip", "hanging leg raise exercise", 3, 10, 0, 45],
+              ["Toes-to-Bar", "Advanced hanging compression lift for abs and hip flexors.", "Lower abs, hip flexors, grip", "toes to bar exercise", 3, 8, 0, 60],
+              ["Garhammer Raise", "Bent-knee hanging raise focusing on lower-ab pelvic tuck.", "Lower abs, hip flexors", "garhammer raise exercise", 3, 10, 0, 45],
+              ["Dragon Flag Negative", "Advanced eccentric trunk drill emphasizing full-body tension.", "Abs, lats, trunk stiffness", "dragon flag negative exercise", 3, 5, 0, 60],
+              ["Cross-Body Mountain Climber", "Diagonal knee-drive pattern linking obliques to conditioning.", "Obliques, abs, hip flexors", "cross body mountain climber exercise", 4, 0, 20, 20, "time"],
+              ["Slider Body Saw", "Slider-based rollout and return using forearm support.", "Anterior core, lats, shoulders", "slider body saw exercise", 3, 10, 0, 30],
+              ["Dead Bug Band Pulldown", "Dead bug with a band pull forcing ribs down harder.", "Abs, lats, cross-body control", "dead bug band pulldown exercise", 3, 8, 0, 30],
+              ["Dead Bug Iso Hold", "Paused dead bug teaching position ownership and breath control.", "Deep core, abs, hip stability", "dead bug iso hold exercise", 3, 0, 20, 20, "time"],
+              ["Kneeling Ab Wheel Rollout", "Rollout from kneeling for aggressive anti-extension work.", "Anterior core, lats, shoulders", "kneeling ab wheel rollout exercise", 3, 10, 0, 45],
+              ["Swiss Ball Jackknife", "Ball-tuck drill linking abs, hip flexors, and shoulder stability.", "Abs, hip flexors, shoulders", "swiss ball jackknife exercise", 3, 12, 0, 30],
+              ["Cable Reverse Crunch", "Cable-loaded pelvic tuck to challenge the lower abs.", "Lower abs, hip flexors", "cable reverse crunch exercise", 3, 12, 0, 45],
+              ["Suitcase Carry March", "Marching carry building anti-lean control one step at a time.", "Obliques, hip flexors, posture", "suitcase carry march exercise", 3, 0, 30, 30, "time"],
+              ["Overhead Carry March", "March under overhead load for ribs-down trunk control.", "Abs, obliques, shoulder stability", "overhead carry march exercise", 3, 0, 25, 30, "time"],
+              ["Turkish Get-Up", "Full-body get-up teaching trunk control through multiple positions.", "Abs, shoulders, hips", "turkish get up exercise", 3, 5, 0, 45],
+              ["Windshield Wiper", "Hanging or floor rotation drill for oblique strength.", "Obliques, lower abs, hip control", "windshield wiper exercise", 3, 8, 0, 45],
+              ["Weighted Side Bend", "Loaded side bend building controlled lateral trunk strength.", "Obliques, quadratus lumborum", "weighted side bend exercise", 3, 12, 0, 30],
+              ["Bird Dog Row", "Cross-body row demanding spinal control and anti-rotation.", "Deep core, lats, glutes", "bird dog row exercise", 3, 8, 0, 30],
+              ["Forward Bear Crawl", "Forward crawl keeping hips low and trunk braced.", "Abs, shoulders, hip coordination", "forward bear crawl exercise", 3, 0, 20, 30, "time"],
+              ["Backward Bear Crawl", "Backward crawl challenging shoulder and trunk control.", "Abs, shoulders, coordination", "backward bear crawl exercise", 3, 0, 20, 30, "time"],
+              ["Hollow-to-Tuck Rock", "Switch between tucked and extended hollow positions smoothly.", "Abs, hip flexors, trunk control", "hollow to tuck rock exercise", 3, 10, 0, 30],
+              ["L-Sit Hold", "Compression hold training lower abs and hip flexors together.", "Lower abs, hip flexors, shoulder support", "l sit hold exercise", 3, 0, 15, 30, "time"],
+              ["V-Sit Hold", "Harder compression hold demanding stronger hip flexor range.", "Lower abs, hip flexors, compression", "v sit hold exercise", 3, 0, 12, 30, "time"],
+              ["Reverse Plank", "Posterior-chain plank opening the front line while bracing.", "Glutes, spinal erectors, shoulders", "reverse plank exercise", 3, 0, 25, 30, "time"],
+              ["Superman Rock", "Dynamic trunk-extension drill for posterior-chain endurance.", "Low back, glutes, posterior chain", "superman rock exercise", 3, 15, 0, 30],
+              ["Back Extension Hold", "Static back-extension hold for posterior-core endurance.", "Spinal erectors, glutes, hamstrings", "back extension hold exercise", 3, 0, 20, 30, "time"],
+              ["Plank Pull-Through", "Drag weight side to side while resisting trunk rotation.", "Abs, obliques, shoulders", "plank pull through exercise", 3, 10, 0, 30],
+              ["Medicine Ball Side Toss", "Explosive rotational toss for obliques and trunk speed.", "Obliques, hips, rotational power", "medicine ball side toss exercise", 4, 8, 0, 45],
+            ]),
+            "Neck": seedMany("Neck", structuralSource, [
+              ["Supine Chin Nod Hold", "Small nod hold training deep-neck control without jutting the chin.", "Deep neck flexors, posture", "supine chin nod hold exercise", 3, 0, 15, 20, "time"],
+              ["Seated Chin Retraction Hold", "Seated retraction hold teaching stacked head position.", "Deep neck flexors, posture", "seated chin retraction hold exercise", 3, 0, 15, 20, "time"],
+              ["Quadruped Chin Tuck", "Hands-and-knees chin tuck with gravity adding a little demand.", "Deep neck flexors, scapular posture", "quadruped chin tuck exercise", 3, 10, 0, 20],
+              ["Neck Harness Flexion", "Harness flexion for stronger front-neck endurance.", "Neck flexors, cervical strength", "neck harness flexion exercise", 3, 12, 0, 25],
+              ["Neck Harness Extension", "Harness extension building the back of the neck under load.", "Neck extensors, posture", "neck harness extension exercise", 3, 12, 0, 25],
+              ["Neck Harness Lateral Flexion", "Harness side bend strengthening the lateral neck.", "Lateral neck stabilizers, posture", "neck harness lateral flexion exercise", 3, 12, 0, 25],
+              ["Band Neck Flexion", "Band-resisted nod and brace for front-neck strength.", "Neck flexors, head stability", "band neck flexion exercise", 3, 12, 0, 20],
+              ["Band Neck Extension", "Band-resisted extension for resilient head position.", "Neck extensors, posture", "band neck extension exercise", 3, 12, 0, 20],
+              ["Band Lateral Neck Flexion", "Band side-resistance pattern for lateral neck control.", "Lateral neck stabilizers, posture", "band lateral neck flexion exercise", 3, 12, 0, 20],
+              ["Towel Neck Flexion", "Manual towel-resisted flexion with gradual pressure.", "Neck flexors, manual strength", "towel neck flexion exercise", 3, 10, 0, 20],
+              ["Towel Neck Extension", "Towel-resisted extension done slowly and under control.", "Neck extensors, manual strength", "towel neck extension exercise", 3, 10, 0, 20],
+              ["Towel Lateral Neck Flexion", "Towel-resisted side bend for balanced neck strength.", "Lateral neck stabilizers, manual strength", "towel lateral neck flexion exercise", 3, 10, 0, 20],
+              ["Wall Head Press Front", "Press the forehead into the wall without shrugging.", "Neck flexors, posture", "front neck wall press exercise", 3, 0, 15, 20, "time"],
+              ["Wall Head Press Back", "Press the back of the head into the wall to build extension isometric strength.", "Neck extensors, posture", "back neck wall press exercise", 3, 0, 15, 20, "time"],
+              ["Wall Head Press Left", "Left-side wall press for lateral neck strength.", "Lateral neck stabilizers, posture", "left side neck wall press exercise", 3, 0, 12, 20, "time"],
+              ["Wall Head Press Right", "Right-side wall press for lateral neck strength.", "Lateral neck stabilizers, posture", "right side neck wall press exercise", 3, 0, 12, 20, "time"],
+              ["Wall Head Press Left Diagonal", "Diagonal wall press strengthening the left-front chain.", "Neck flexors, rotators, posture", "left diagonal neck wall press exercise", 3, 0, 12, 20, "time"],
+              ["Wall Head Press Right Diagonal", "Diagonal wall press strengthening the right-front chain.", "Neck flexors, rotators, posture", "right diagonal neck wall press exercise", 3, 0, 12, 20, "time"],
+              ["Seated Rotation Isometric Left", "Resist left rotation gently without moving the shoulders.", "Neck rotators, cervical control", "left rotation neck isometric exercise", 3, 0, 12, 20, "time"],
+              ["Seated Rotation Isometric Right", "Resist right rotation gently without moving the shoulders.", "Neck rotators, cervical control", "right rotation neck isometric exercise", 3, 0, 12, 20, "time"],
+              ["Prone Chin Tuck Hold", "Face-down tuck hold building neck support with no shrugging.", "Deep neck flexors, posture", "prone chin tuck hold exercise", 3, 0, 12, 20, "time"],
+              ["Supine Head Lift Reps", "Lift the head slightly from the floor and lower under control.", "Deep neck flexors, posture", "supine head lift exercise", 3, 10, 0, 20],
+              ["Quadruped Neck CARs", "Controlled neck circles done slowly through pain-free range.", "Neck mobility, cervical control", "quadruped neck cars exercise", 2, 5, 0, 15],
+              ["Controlled Yes/No Series", "Slow nod and turn sequence to build easy cervical control.", "Neck mobility, control", "controlled yes no neck exercise", 2, 8, 0, 15],
+              ["Scap-Set Chin Tuck", "Chin tuck paired with shoulder-blade set for stacked posture.", "Deep neck flexors, upper-back posture", "scap set chin tuck exercise", 3, 10, 0, 20],
+              ["Resistance Band Chin Tuck", "Band-assisted retraction drill challenging the front of the neck.", "Deep neck flexors, posture", "resistance band chin tuck exercise", 3, 12, 0, 20],
+              ["Half-Kneeling Head Stability Hold", "Half-kneeling hold keeping the head still while the body stays tall.", "Neck stabilizers, posture, balance", "half kneeling head stability hold exercise", 3, 0, 20, 20, "time"],
+            ]),
+            "Stability/Fundamentals": seedMany("Stability/Fundamentals", structuralSource, [
+              ["Front Rack Carry", "Carry in the front rack to load posture and trunk brace.", "Core, upper back, grip", "front rack carry exercise", 3, 0, 30, 45, "time"],
+              ["Overhead Carry", "Walk under overhead load with ribs down and arm stacked.", "Shoulder stability, obliques, posture", "overhead carry exercise", 3, 0, 25, 45, "time"],
+              ["Waiter Carry", "Single-arm overhead carry building shoulder and trunk control.", "Shoulder stability, obliques, posture", "waiter carry exercise", 3, 0, 25, 45, "time"],
+              ["Bottom-Up Kettlebell Carry", "Unstable carry forcing grip irradiation and stacked alignment.", "Grip, shoulders, obliques", "bottom up kettlebell carry exercise", 3, 0, 20, 45, "time"],
+              ["Bear Crawl", "Foundational crawl teaching shoulder-hip connection under motion.", "Core, shoulders, coordination", "bear crawl exercise", 3, 0, 20, 30, "time"],
+              ["Forward Sled March", "Slow sled march building legs, posture, and gait strength.", "Quads, glutes, trunk", "forward sled march exercise", 4, 0, 20, 40, "time"],
+              ["Backward Sled Walk", "Backward sled pattern for knees, posture, and stable steps.", "Quads, calves, trunk", "backward sled walk exercise", 4, 0, 20, 40, "time"],
+              ["Single-Arm Rack Carry", "One-arm rack carry exposing anti-lean and anti-rotation weakness.", "Obliques, upper back, grip", "single arm rack carry exercise", 3, 0, 25, 45, "time"],
+              ["Cross-Body Carry", "Offset carry forcing the trunk to stay organized under asymmetry.", "Obliques, hips, posture", "cross body carry exercise", 3, 0, 25, 45, "time"],
+              ["Dead Hang", "Simple hang for shoulder decompression, grip, and position ownership.", "Grip, shoulders, lats", "dead hang exercise", 3, 0, 25, 30, "time"],
+              ["Active Hang", "Hang with shoulders packed to build overhead control.", "Scapular depressors, grip, shoulders", "active hang exercise", 3, 0, 20, 30, "time"],
+              ["Turkish Get-Up to Tall Sit", "Partial get-up drilling trunk organization and shoulder control.", "Core, shoulders, hips", "turkish get up to tall sit exercise", 3, 5, 0, 45],
+              ["Half Get-Up", "Shorter get-up sequence emphasizing roll, elbow, and hand positions.", "Core, shoulders, hips", "half get up exercise", 3, 5, 0, 45],
+              ["Tall-Kneeling Pallof Hold", "Tall-kneeling anti-rotation hold with no lower-body compensation.", "Obliques, glutes, posture", "tall kneeling pallof hold exercise", 3, 0, 20, 30, "time"],
+              ["Single-Leg Balance Reach", "Reach pattern on one leg building foot and hip integrity.", "Foot stability, glute med, balance", "single leg balance reach exercise", 3, 8, 0, 30],
+              ["Single-Leg RDL Reach", "Balance hinge with a reach to challenge foot and hip control.", "Hamstrings, glutes, balance", "single leg rdl reach exercise", 3, 8, 0, 30],
+              ["Copenhagen Hold", "Static adductor hold linking the groin to lateral trunk control.", "Adductors, obliques, trunk", "copenhagen hold exercise", 3, 0, 20, 30, "time"],
+              ["Split-Stance Cable Hold", "Offset cable hold to own posture in a fight-ready base.", "Obliques, glutes, posture", "split stance cable hold exercise", 3, 0, 20, 30, "time"],
+              ["Offset Front Rack March", "Marching in an offset rack position for total-body organization.", "Obliques, hips, upper back", "offset front rack march exercise", 3, 0, 25, 30, "time"],
+              ["Wall Press Dead Bug", "Dead bug with a wall press increasing anterior-core demand.", "Abs, hip flexors, serratus anterior", "wall press dead bug exercise", 3, 8, 0, 30],
+              ["Tall-Kneeling Anti-Rotation Press", "Press from tall kneeling without letting the trunk drift.", "Obliques, abs, glutes", "tall kneeling anti rotation press exercise", 3, 10, 0, 30],
+            ]),
+            "Hip Flexors": seedMany("Hip Flexors", structuralSource, [
+              ["Hanging Knee Raise", "Hang and drive the knees high without swinging.", "Hip flexors, lower abs, grip", "hanging knee raise exercise strict", 3, 12, 0, 45],
+              ["Hanging Straight-Leg Raise", "Stricter hanging raise demanding more compression strength.", "Hip flexors, lower abs, grip", "hanging straight leg raise exercise", 3, 8, 0, 45],
+              ["Captain's Chair Knee Raise", "Supported knee raise letting the hips work hard with less grip demand.", "Hip flexors, lower abs", "captains chair knee raise exercise", 3, 12, 0, 45],
+              ["Captain's Chair Straight-Leg Raise", "Supported straight-leg raise for harder front-side compression.", "Hip flexors, lower abs", "captains chair straight leg raise exercise", 3, 10, 0, 45],
+              ["Seated Hip Flexor March", "Seated alternating knee lift to isolate front-side control.", "Hip flexors, lower abs, posture", "seated hip flexor march exercise", 3, 16, 0, 30],
+              ["Banded Seated March", "Band-resisted seated march loading the hip flexors directly.", "Hip flexors, lower abs", "banded seated march exercise", 3, 16, 0, 30],
+              ["Psoas March with Mini Band", "Mini-band march keeping the torso still as the knee rises.", "Hip flexors, lower abs, posture", "psoas march mini band exercise", 3, 12, 0, 30],
+              ["Psoas Wall Drive Hold", "Knee-up wall hold teaching hip lock and front-side tension.", "Hip flexors, glutes, posture", "psoas wall drive hold exercise", 3, 0, 20, 20, "time"],
+              ["Single-Leg Box March", "March onto a box and pause to own the front side.", "Hip flexors, glutes, balance", "single leg box march exercise", 3, 10, 0, 30],
+              ["Step-Up Knee Drive", "Step-up finished with an aggressive knee drive and tall posture.", "Hip flexors, glutes, quads", "step up knee drive exercise", 3, 8, 0, 30],
+              ["B-Stance Knee Drive March", "Split-stance march teaching loaded front-side drive.", "Hip flexors, calves, posture", "b stance knee drive march exercise", 3, 12, 0, 30],
+              ["Dip Bar L-Sit Hold", "Parallel-bar hold building compression and front-side endurance.", "Hip flexors, lower abs, shoulders", "dip bar l sit hold exercise", 3, 0, 15, 30, "time"],
+              ["Tuck Sit Hold", "Tucked support hold building front-side compression from the floor or bars.", "Hip flexors, abs, shoulders", "tuck sit hold exercise", 3, 0, 15, 30, "time"],
+              ["V-Sit Knee Tuck", "Compression drill toggling between V-sit reach and tuck.", "Hip flexors, abs, compression", "v sit knee tuck exercise", 3, 10, 0, 30],
+              ["Slider Mountain Climber", "Slider version keeping constant tension on the hip flexors.", "Hip flexors, abs, shoulders", "slider mountain climber exercise", 4, 0, 20, 20, "time"],
+              ["Sprinter Sit-Up", "Sit-up pattern linking one knee drive to the trunk.", "Hip flexors, abs, coordination", "sprinter sit up exercise", 3, 12, 0, 30],
+              ["Reverse Sled March", "Resisted march pattern challenging each knee lift under load.", "Hip flexors, quads, posture", "reverse sled march exercise", 4, 0, 20, 40, "time"],
+              ["A-Skip", "Running-mechanics skip building front-side lift and rhythm.", "Hip flexors, calves, coordination", "a skip running drill", 4, 0, 20, 20, "time"],
+              ["B-Skip", "Skip variation adding extension and front-side recovery mechanics.", "Hip flexors, hamstrings, coordination", "b skip running drill", 4, 0, 20, 20, "time"],
+              ["High Knee Run", "Fast high-knee pattern keeping posture tall and feet active.", "Hip flexors, calves, rhythm", "high knee run drill", 5, 0, 20, 20, "time"],
+              ["Resisted High Knee March", "Band-resisted march forcing harder front-side lift.", "Hip flexors, abs, posture", "resisted high knee march exercise", 3, 12, 0, 30],
+              ["Supine Straight-Leg Lift", "Straight-leg lift from the floor for clean hip-flexor work.", "Hip flexors, lower abs", "supine straight leg lift exercise", 3, 12, 0, 30],
+              ["Single-Leg Lowering", "Lower one straight leg at a time while ribs stay down.", "Hip flexors, lower abs, trunk control", "single leg lowering exercise", 3, 10, 0, 30],
+              ["Dead Bug Heel Tap", "Heel tap dead bug teaching hip movement without losing trunk position.", "Hip flexors, lower abs, coordination", "dead bug heel tap exercise", 3, 12, 0, 30],
+              ["90-90 Toe Tap Hold", "Hold the legs at ninety degrees and tap without losing shape.", "Hip flexors, abs, trunk control", "90 90 toe tap hold exercise", 3, 0, 20, 20, "time"],
+              ["Hollow March", "March the legs from a hollow hold without opening the ribs.", "Hip flexors, abs, compression", "hollow march exercise", 3, 12, 0, 30],
+              ["Dip Bar Knee Raise", "Parallel-bar knee raise with strong pelvic tuck at the top.", "Hip flexors, lower abs, shoulders", "dip bar knee raise exercise", 3, 12, 0, 45],
+              ["Dip Bar Straight-Leg Raise", "Parallel-bar straight-leg raise for harder compression.", "Hip flexors, lower abs, shoulders", "dip bar straight leg raise exercise", 3, 8, 0, 45],
+              ["Cable Knee Drive", "Cable-resisted knee drive for loaded hip flexion.", "Hip flexors, abs, posture", "cable knee drive exercise", 3, 12, 0, 30],
+              ["Half-Kneeling Band Drive", "Half-kneeling band drive pattern teaching front-side projection.", "Hip flexors, glutes, posture", "half kneeling band drive exercise", 3, 10, 0, 30],
+              ["Pike Compression Lift", "Seated compression lift trying to float the heels off the floor.", "Hip flexors, abs, compression", "pike compression lift exercise", 3, 10, 0, 30],
+              ["Standing Pike March", "Tall pike-position march loading active hip flexion.", "Hip flexors, hamstrings, lower abs", "standing pike march exercise", 3, 12, 0, 30],
+              ["Wall-Supported Leg Lowering", "Wall-assisted lowering drill training front-side control under tension.", "Hip flexors, lower abs, trunk control", "wall supported leg lowering exercise", 3, 10, 0, 30],
+            ]),
+            "Plyometrics": seedMany("Plyometrics", powerSource, [
+              ["Box Jump", "Simple box jump for vertical power and clean landing mechanics.", "Leg power, landing control", "box jump exercise", 4, 5, 0, 45],
+              ["Depth Drop", "Step off and absorb the landing with stacked posture.", "Landing mechanics, ankles, quads", "depth drop exercise", 3, 5, 0, 45],
+              ["Depth Drop to Stick", "Depth drop with a longer stick to own the landing position.", "Landing control, balance, deceleration", "depth drop to stick exercise", 3, 5, 0, 45],
+              ["Countermovement Jump", "Classic vertical jump using a fast dip and rebound.", "Leg power, elastic rebound", "countermovement jump exercise", 4, 5, 0, 45],
+              ["Split Squat Jump", "Explosive split-stance jump for unilateral power.", "Quads, glutes, stance power", "split squat jump exercise", 3, 6, 0, 45],
+              ["Lunge Switch Jump", "Jump switch from one split stance to the other with balance.", "Leg power, coordination, conditioning", "lunge switch jump exercise", 3, 6, 0, 45],
+              ["Tuck Jump", "Jump pulling the knees up to drive reactive power.", "Hip flexors, abs, leg power", "tuck jump exercise", 3, 6, 0, 45],
+              ["Lateral Line Hop", "Quick repeated hops over a line for side-to-side elasticity.", "Ankles, calves, lateral rhythm", "lateral line hop exercise", 4, 0, 20, 25, "time"],
+              ["Forward Line Hop", "Repeated line hops sharpening quick contacts and rhythm.", "Ankles, calves, rhythm", "forward line hop exercise", 4, 0, 20, 25, "time"],
+              ["Single-Leg Line Hop", "One-leg line hop building ankle stiffness and balance.", "Ankles, calves, single-leg stability", "single leg line hop exercise", 3, 0, 15, 25, "time"],
+              ["Bounding", "Alternating long-stride bounds for elastic lower-body force.", "Glutes, hamstrings, elastic power", "bounding exercise", 4, 8, 0, 45],
+              ["Hurdle Hop", "Repeated hops over a small hurdle with quick stiffness.", "Reactive power, ankles, landing control", "hurdle hop exercise", 4, 5, 0, 45],
+              ["Medicine Ball Chest Pass", "Explosive upper-body throw building chest power.", "Chest, triceps, upper-body power", "medicine ball chest pass exercise", 4, 8, 0, 45],
+              ["Rotational Medicine Ball Throw", "Explosive side throw linking hips and trunk rotation.", "Obliques, hips, rotational power", "rotational medicine ball throw exercise", 4, 6, 0, 45],
+              ["Kneeling Medicine Ball Chest Pass", "Chest pass from kneeling to remove leg compensation.", "Chest, triceps, power", "kneeling medicine ball chest pass exercise", 4, 8, 0, 45],
+            ]),
+          },
+          topCategories: [],
+          topCategorySections: {},
+        };
+      }
+
       function mergeGymCatalogExerciseDefaults(existing, seed) {
         if (!existing || !seed) return existing;
         if (!normalizeGymCatalogText(existing.desc) && normalizeGymCatalogText(seed.desc)) existing.desc = normalizeGymCatalogText(seed.desc);
@@ -6462,6 +7223,7 @@
         mergeGymCatalogSeedInto(out, buildDefaultGymCatalogSeed());
         mergeGymCatalogSeedInto(out, buildSupplementalGymCatalogSeed());
         mergeGymCatalogSeedInto(out, buildExpandedGymCatalogSeed());
+        mergeGymCatalogSeedInto(out, buildStrengthVolumeGymCatalogSeed());
         return out;
       }
 
@@ -6674,10 +7436,120 @@
         return out;
       }
 
+      function buildPostingTemplateReferenceText() {
+        return "Timeline reference of mission styles in order, moving from discovery and probing into trust, production, sales, and clear calls to action.";
+      }
+
+      function buildMissionStarterTemplateData() {
+        return {
+          core: [
+            { label: "Framework", value: "Formula or pathway for general missions." },
+            { label: "Mission Starter", value: "Engagement / Probing" },
+            { label: "What do I want?", value: "(My pain points)" },
+            { label: "What do they need?", value: "(Their pain points)" },
+            { label: "Formula", value: "Fate + PCP + Macro / Micro" },
+            { label: "Permission", value: "Present" },
+            { label: "Perspective Shift", value: "Maintain the same context, but change the perspective so permission shifts from seek to present." },
+            { label: "Macro Shift", value: "Change from micro (treatment for 1000) to macro (1 treatment presented to 1000)." },
+            { label: "Goal", value: "" },
+            { label: "Byproduct", value: "" },
+          ],
+          examples: [
+            [
+              { label: "Need", value: "I need sales from DMs." },
+              { label: "Fate (Probe)", value: "Treatment" },
+              { label: "Issue", value: "I can't make 1000 treatments and hit up 1000 at the same time." },
+              { label: "PCP [Fix]", value: "Make 1 universal treatment and pitch to everyone." },
+            ],
+            [
+              { label: "Issue", value: "I can't recommend people to book with me." },
+              { label: "PCP [Fix]", value: "Don't tell them to book me, introduce myself and let them decide to book me." },
+              { label: "[Follow up]", value: "" },
+            ],
+          ],
+        };
+      }
+
+      function buildMissionStarterTemplateBlock() {
+        return [
+          "Framework: Formula or pathway for general missions.",
+          "Mission Starter: Engagement / Probing",
+          "What do I want? (My pain points):",
+          "What do they need? (Their pain points):",
+          "Formula: Fate + PCP + Macro / Micro",
+          "Permission: Present",
+          "Perspective Shift: Maintain the same context, but change the perspective so permission shifts from seek to present.",
+          "Macro Shift: Change from micro (treatment for 1000) to macro (1 treatment presented to 1000).",
+          "Goal:",
+          "Byproduct:",
+          "",
+          "Example",
+          "Need: I need sales from DMs.",
+          "Fate (Probe): Treatment",
+          "Issue: I can't make 1000 treatments and hit up 1000 at the same time.",
+          "PCP [Fix]: Make 1 universal treatment and pitch to everyone.",
+          "Issue: I can't recommend people to book with me.",
+          "PCP [Fix]: Don't tell them to book me, introduce myself and let them decide to book me.",
+          "[Follow up]",
+        ].join("\n");
+      }
+
+      function normalizePostingTemplateSubtitle(text, fallback = "") {
+        const source = String(text || "").replace(/\r\n/g, "\n").trim();
+        const fallbackText = String(fallback || buildPostingTemplateReferenceText()).trim() || buildPostingTemplateReferenceText();
+        if (!source) return fallbackText;
+        const starterBlock = buildMissionStarterTemplateBlock().trim();
+        if (!source.startsWith(starterBlock)) return source;
+        const remainder = source.slice(starterBlock.length).trim();
+        if (remainder) return remainder;
+        return fallbackText;
+      }
+
+      function buildPostingTemplateMissionStarterHtml() {
+        const data = buildMissionStarterTemplateData();
+        const coreHtml = data.core.map((row) => `
+          <div class="posting-template-mission-starter-row">
+            <div class="posting-template-mission-starter-label">${escapeHtmlAttr(row.label)}</div>
+            <div class="posting-template-mission-starter-value">${escapeHtmlAttr(row.value || " ")}</div>
+          </div>
+        `).join("");
+        const exampleHtml = data.examples.map((group, index) => `
+          <div class="posting-template-mission-starter-example-card">
+            <div class="posting-template-mission-starter-example-title">EXAMPLE ${index + 1}</div>
+            <div class="posting-template-mission-starter-example-rows">
+              ${group.map((row) => `
+                <div class="posting-template-mission-starter-row">
+                  <div class="posting-template-mission-starter-label">${escapeHtmlAttr(row.label)}</div>
+                  <div class="posting-template-mission-starter-value">${escapeHtmlAttr(row.value || " ")}</div>
+                </div>
+              `).join("")}
+            </div>
+          </div>
+        `).join("");
+        return `
+          <article class="posting-template-item posting-template-mission-starter-item">
+            <div class="posting-template-item-head">
+              <span class="posting-template-order">00</span>
+              <span class="posting-template-handle">::</span>
+              <span class="posting-template-step">PINNED MISSION STARTER</span>
+            </div>
+            <div class="posting-template-mission-starter-body">
+              <div class="posting-template-mission-starter-group">
+                ${coreHtml}
+              </div>
+              <div class="posting-template-mission-starter-divider"></div>
+              <div class="posting-template-mission-starter-example-shell">
+                ${exampleHtml}
+              </div>
+            </div>
+          </article>
+        `;
+      }
+
       function buildDefaultPostingTemplateState(seedTs = Date.now()) {
         return {
           title: "Mission Prioritization for Sales Engagement",
-          subtitle: "Timeline reference of mission styles in order, moving from discovery and probing into trust, production, sales, and clear calls to action.",
+          subtitle: buildPostingTemplateReferenceText(),
           items: [
             {
               id: `pt_${seedTs}_1`,
@@ -6859,23 +7731,24 @@
           return base.map((d, j) => ({
             id: String(d?.id || `${prefix}_dc_${Date.now()}_${i}_${j}`),
             text: String(d?.text || "").trim(),
-            done: !!d?.done,
-          })).filter((d) => d.text);
+              done: !!d?.done,
+            })).filter((d) => d.text);
         };
-        out.morning = out.morning.map((x, i) => ({
-          id: String(x?.id || `rm_fix_${Date.now()}_${i}`),
-          title: String(x?.title || "Task"),
-          desc: String(x?.desc || ""),
-          descChecks: normalizeDescChecks(x, "rm", i),
-          done: !!x?.done,
-        }));
-        out.night = out.night.map((x, i) => ({
-          id: String(x?.id || `rn_fix_${Date.now()}_${i}`),
-          title: String(x?.title || "Task"),
-          desc: String(x?.desc || ""),
-          descChecks: normalizeDescChecks(x, "rn", i),
-          done: !!x?.done,
-        }));
+        const normalizeRoutineTaskItem = (x, prefix, i) => {
+          const nextId = String(x?.id || `${prefix}_fix_${Date.now()}_${i}`);
+          const inferredIso = new Date(inferTimestampFromId(nextId) || Date.now()).toISOString();
+          return {
+            id: nextId,
+            title: String(x?.title || "Task"),
+            desc: String(x?.desc || ""),
+            descChecks: normalizeDescChecks(x, prefix, i),
+            done: !!x?.done,
+            createdAt: String(x?.createdAt || inferredIso),
+            updatedAt: String(x?.updatedAt || x?.createdAt || inferredIso),
+          };
+        };
+        out.morning = out.morning.map((x, i) => normalizeRoutineTaskItem(x, "rm", i));
+        out.night = out.night.map((x, i) => normalizeRoutineTaskItem(x, "rn", i));
         applyEducationRoutineMigration(out);
 
         for (const section of Object.keys(out.catalog)) {
@@ -6976,7 +7849,10 @@
           : basePostingTemplate.items;
         out.postingTemplate = {
           title: String(rawPostingTemplate?.title || basePostingTemplate.title || "Posting Template"),
-          subtitle: String(rawPostingTemplate?.subtitle || basePostingTemplate.subtitle || ""),
+          subtitle: normalizePostingTemplateSubtitle(
+            String(rawPostingTemplate?.subtitle || ""),
+            String(basePostingTemplate.subtitle || "")
+          ),
           items: rawPostingItems.map((item, i) => ({
             id: String(item?.id || `pt_fix_${Date.now()}_${i}`),
             title: String(item?.title || `Stage ${i + 1}`),
@@ -7018,17 +7894,26 @@
       function renderRoutineList(period) {
         const listEl = document.getElementById(`${period}-routine-list`);
         if (!listEl || !routineData) return;
-        const items = Array.isArray(routineData[period]) ? routineData[period] : [];
+        const manualMode = getViewSortMode("routines") === "manual";
+        const items = sortCollectionForView(
+          Array.isArray(routineData[period]) ? routineData[period] : [],
+          "routines",
+          (item) => ({
+            label: `${String(period || "").toUpperCase()} ${String(item?.title || "")}`,
+            date: toSortDateMs(item?.updatedAt || item?.createdAt || "", item?.id || ""),
+            progress: routineTaskProgressScore(item),
+          })
+        );
         listEl.innerHTML = items.map((item, idx) => {
           const rawChecks = Array.isArray(item.descChecks) ? item.descChecks : [];
           const checks = rawChecks.filter((d) => String(d?.text || "").trim().length > 0);
           return `
-          <li class="routine-item ${item.done ? "done" : ""}"
-              draggable="true"
-              ondragstart="onRoutineTaskDragStart('${period}',${idx},event)"
+          <li class="routine-item ${item.done ? "done" : ""} ${manualMode ? "" : "sort-locked"}"
+              draggable="${manualMode ? "true" : "false"}"
+              ${manualMode ? `ondragstart="onRoutineTaskDragStart('${period}',${idx},event)"
               ondragover="onRoutineTaskDragOver(event)"
               ondragleave="onRoutineTaskDragLeave(event)"
-              ondrop="onRoutineTaskDrop('${period}',${idx},event)">
+              ondrop="onRoutineTaskDrop('${period}',${idx},event)"` : ""}>
             <div class="routine-item-copy">
               <div class="routine-item-head">
                 <span class="routine-item-title routine-inline-editable"
@@ -7048,12 +7933,12 @@
                 : `<div class="routine-item-desc routine-item-desc-empty">No description yet. Use EDIT.</div>`}
               <ul class="routine-subcheck-list">
                 ${checks.map((d, dIdx) => `
-                  <li class="routine-subcheck-item ${d.done ? "done" : ""}"
-                      draggable="true"
-                      ondragstart="onRoutineDescDragStart('${period}','${escapeHtmlAttr(item.id)}',${dIdx},event)"
+                  <li class="routine-subcheck-item ${d.done ? "done" : ""} ${manualMode ? "" : "sort-locked"}"
+                      draggable="${manualMode ? "true" : "false"}"
+                      ${manualMode ? `ondragstart="onRoutineDescDragStart('${period}','${escapeHtmlAttr(item.id)}',${dIdx},event)"
                       ondragover="onRoutineDescDragOver(event)"
                       ondragleave="onRoutineDescDragLeave(event)"
-                      ondrop="onRoutineDescDrop('${period}','${escapeHtmlAttr(item.id)}',${dIdx},event)">
+                      ondrop="onRoutineDescDrop('${period}','${escapeHtmlAttr(item.id)}',${dIdx},event)"` : ""}>
                     <span class="routine-subcheck-title routine-inline-editable"
                           onclick="onRoutineSubcheckClick('${period}','${escapeHtmlAttr(item.id)}','${escapeHtmlAttr(d.id)}', event)"
                           ondblclick="onRoutineSubcheckDblClick('${period}','${escapeHtmlAttr(item.id)}','${escapeHtmlAttr(d.id)}', event, this)"
@@ -7068,9 +7953,17 @@
       }
 
       function renderRoutines() {
+        ensureViewSortBar("routines-sort-slot", "routines", "#view-routines .routine-grid");
         renderRoutineList("morning");
         renderRoutineList("night");
         renderOperationFocus();
+      }
+
+      function touchRoutineTask(item) {
+        if (!item || typeof item !== "object") return;
+        const nowIso = isoTimestamp();
+        if (!String(item.createdAt || "").trim()) item.createdAt = nowIso;
+        item.updatedAt = nowIso;
       }
 
       function collectIncompleteRoutineTasks() {
@@ -9341,7 +10234,17 @@
       function renderJournal() {
         const host = document.getElementById("journal-list");
         if (!host || !routineData) return;
-        const rows = Array.isArray(routineData.journal) ? routineData.journal.slice().reverse() : [];
+        ensureViewSortBar("journal-sort-slot", "journal", host);
+        const baseRows = Array.isArray(routineData.journal) ? routineData.journal.slice().reverse() : [];
+        const rows = sortCollectionForView(
+          baseRows,
+          "journal",
+          (item) => ({
+            label: String(item?.title || ""),
+            date: toSortDateMs(item?.at || "", item?.id || ""),
+            progress: journalProgressScore(item),
+          })
+        );
         host.innerHTML = rows.map((j) => `
           <div class="journal-item">
             <div class="journal-head">
@@ -9424,7 +10327,9 @@
         if (titleEl && titleEl.value !== String(board.title || "")) titleEl.value = String(board.title || "");
         if (subtitleEl && subtitleEl.value !== String(board.subtitle || "")) subtitleEl.value = String(board.subtitle || "");
         const rows = Array.isArray(board.items) ? board.items : [];
-        listEl.innerHTML = rows.map((item, index) => `
+        listEl.innerHTML = [
+          buildPostingTemplateMissionStarterHtml(),
+          rows.map((item, index) => `
           <article class="posting-template-item"
                    draggable="true"
                    ondragstart="onPostingTemplateDragStart(${index}, event)"
@@ -9450,7 +10355,8 @@
                       placeholder="Subtext / reference details..."
                       oninput="updatePostingTemplateItemField('${escapeHtmlAttr(item.id)}', 'subtext', this.value)">${escapeHtmlAttr(item.subtext || "")}</textarea>
           </article>
-        `).join("") || `<div class="posting-template-empty">No posting stages yet. Add one to start the timeline.</div>`;
+        `).join("") || `<div class="posting-template-empty">No posting stages yet. Add one to start the timeline.</div>`
+        ].join("");
       }
 
       function updatePostingTemplateBoardField(field, value) {
@@ -9594,6 +10500,7 @@
       function renderReminderList() {
         const host = document.getElementById("reminder-list");
         if (!host || !routineData) return;
+        ensureViewSortBar("reminders-sort-slot", "reminders", host);
         if (!reminderCalendarSelectedDate) {
           host.innerHTML = `<div class="reminder-row"><div style="color:var(--term-dim);">Select a calendar date to view or add entries.</div></div>`;
           return;
@@ -9604,7 +10511,16 @@
           if (Number.isNaN(d.getTime())) return false;
           return localDateKey(d) === reminderCalendarSelectedDate;
         });
-        rows.sort((a, b) => new Date(a.when).getTime() - new Date(b.when).getTime());
+        rows = sortCollectionForView(
+          rows,
+          "reminders",
+          (item) => ({
+            label: String(item?.title || ""),
+            date: toSortDateMs(item?.when || "", item?.id || ""),
+            progress: reminderProgressScore(item),
+          }),
+          { dateDirection: "asc" }
+        );
         host.innerHTML = rows.map((r) => `
           <div class="reminder-row">
             <div style="color:var(--warning-yellow); font-weight:700;">${escapeHtmlAttr(formatReminderWhen(r.when))}</div>
@@ -11216,6 +12132,7 @@
         const descEl = document.getElementById(`${period}-routine-desc-input`);
         const title = String(titleEl?.value || "").trim();
         const desc = String(descEl?.value || "").trim();
+        const nowIso = isoTimestamp();
         const descChecks = desc.split(/[\n;,]+/).map((s) => s.trim()).filter(Boolean).map((text, idx) => ({
           id: `dc_${Date.now()}_${idx}_${Math.floor(Math.random() * 100000)}`,
           text,
@@ -11228,6 +12145,8 @@
           desc,
           descChecks,
           done: false,
+          createdAt: nowIso,
+          updatedAt: nowIso,
         });
         if (titleEl) titleEl.value = "";
         if (descEl) descEl.value = "";
@@ -11241,6 +12160,7 @@
         const item = (routineData[period] || []).find((x) => x.id === id);
         if (!item) return;
         item.done = !item.done;
+        touchRoutineTask(item);
         saveRoutineData();
         renderRoutines();
       }
@@ -11280,6 +12200,7 @@
               done: oldDoneByText.get(key) || false,
             };
           });
+        touchRoutineTask(item);
         saveRoutineData();
         renderRoutines();
       }
@@ -11295,6 +12216,7 @@
         }
         if (field === "title") item.title = next;
         if (field === "desc") item.desc = next;
+        touchRoutineTask(item);
         saveRoutineData();
         renderOperationFocus();
       }
@@ -11311,6 +12233,7 @@
           return;
         }
         check.text = next;
+        touchRoutineTask(item);
         saveRoutineData();
         renderOperationFocus();
       }
@@ -11324,6 +12247,7 @@
         const next = await themedPrompt("Edit description", item.desc || "");
         if (next === null) return;
         item.desc = String(next || "").trim();
+        touchRoutineTask(item);
         saveRoutineData();
         renderRoutines();
       }
@@ -11340,6 +12264,7 @@
         const t = String(next || "").trim();
         if (!t) return;
         check.text = t;
+        touchRoutineTask(item);
         saveRoutineData();
         renderRoutines();
       }
@@ -11351,6 +12276,7 @@
         const check = item.descChecks.find((d) => d.id === checkId);
         if (!check) return;
         check.done = !check.done;
+        touchRoutineTask(item);
         saveRoutineData();
         renderRoutines();
       }
@@ -11404,6 +12330,19 @@
 
       function checklistStorageKey() {
         return "checklistItems:v1";
+      }
+
+      function normalizeChecklistItem(item, index = 0) {
+        const nextId = String(item?.id || `chk_${Date.now()}_${index}_${Math.floor(Math.random() * 100000)}`);
+        const inferredIso = new Date(inferTimestampFromId(nextId) || Date.now()).toISOString();
+        return {
+          id: nextId,
+          text: String(item?.text || "").trim(),
+          subtext: String(item?.subtext || "").trim(),
+          done: !!item?.done,
+          createdAt: String(item?.createdAt || inferredIso),
+          updatedAt: String(item?.updatedAt || item?.createdAt || inferredIso),
+        };
       }
 
       function checklistSeedItems() {
@@ -11492,20 +12431,20 @@
               existing.delete(`${text.toLowerCase()}::${String(existingItem.subtext || "").trim().toLowerCase()}`);
               existingItem.subtext = subtext;
               existing.add(`${text.toLowerCase()}::${subtext.toLowerCase()}`);
-            }
-            continue;
           }
-          const sig = `${text.toLowerCase()}::${subtext.toLowerCase()}`;
-          if (existing.has(sig)) continue;
-          checklistItems.push({
-            id: `seed_${Date.now()}_${Math.floor(Math.random() * 100000)}`,
-            text,
-            subtext,
-            done: false,
-          });
-          existing.add(sig);
+          continue;
         }
+        const sig = `${text.toLowerCase()}::${subtext.toLowerCase()}`;
+        if (existing.has(sig)) continue;
+        checklistItems.push(normalizeChecklistItem({
+          id: `seed_${Date.now()}_${Math.floor(Math.random() * 100000)}`,
+          text,
+          subtext,
+          done: false,
+        }));
+        existing.add(sig);
       }
+    }
 
       function migrateChecklistSeedItems() {
         checklistItems = (Array.isArray(checklistItems) ? checklistItems : []).filter((item) => {
@@ -11520,7 +12459,7 @@
         try {
           const raw = localStorage.getItem(checklistStorageKey());
           const parsed = raw ? JSON.parse(raw) : [];
-          checklistItems = Array.isArray(parsed) ? parsed : [];
+          checklistItems = Array.isArray(parsed) ? parsed.map((item, index) => normalizeChecklistItem(item, index)) : [];
         } catch (e) {
           checklistItems = [];
         }
@@ -11531,6 +12470,7 @@
       }
 
       function saveChecklistItems() {
+        checklistItems = (Array.isArray(checklistItems) ? checklistItems : []).map((item, index) => normalizeChecklistItem(item, index));
         localStorage.setItem(checklistStorageKey(), JSON.stringify(checklistItems));
         queueNativeNotificationRefresh(250, { prompt: false });
       }
@@ -11542,11 +12482,14 @@
         const text = (input.value || "").trim();
         const subtext = (subInput && subInput.value ? subInput.value : "").trim();
         if (!text) return;
+        const nowIso = isoTimestamp();
         checklistItems.push({
           id: `t_${Date.now()}_${Math.floor(Math.random() * 100000)}`,
           text,
           subtext,
           done: false,
+          createdAt: nowIso,
+          updatedAt: nowIso,
         });
         input.value = "";
         if (subInput) subInput.value = "";
@@ -11563,6 +12506,7 @@
         const idx = checklistItems.findIndex((x) => x.id === id);
         if (idx < 0) return;
         checklistItems[idx].done = !checklistItems[idx].done;
+        checklistItems[idx].updatedAt = isoTimestamp();
         saveChecklistItems();
         renderChecklist();
       }
@@ -11612,7 +12556,18 @@
         const list = document.getElementById("checklist-list");
         const empty = document.getElementById("checklist-empty");
         if (!list || !empty) return;
-        if (!checklistItems.length) {
+        ensureViewSortBar("checklist-sort-slot", "checklist", empty);
+        const manualMode = getViewSortMode("checklist") === "manual";
+        const rows = sortCollectionForView(
+          Array.isArray(checklistItems) ? checklistItems : [],
+          "checklist",
+          (item) => ({
+            label: String(item?.text || ""),
+            date: toSortDateMs(item?.updatedAt || item?.createdAt || "", item?.id || ""),
+            progress: checklistProgressScore(item),
+          })
+        );
+        if (!rows.length) {
           list.style.display = "none";
           empty.style.display = "block";
           list.innerHTML = "";
@@ -11620,13 +12575,13 @@
         }
         empty.style.display = "none";
         list.style.display = "block";
-        list.innerHTML = checklistItems.map((item, index) => `
-          <li class="checklist-item ${item.done ? "done" : ""}"
-              draggable="true"
-              ondragstart="onChecklistDragStart(${index}, event)"
+        list.innerHTML = rows.map((item, index) => `
+          <li class="checklist-item ${item.done ? "done" : ""} ${manualMode ? "" : "sort-locked"}"
+              draggable="${manualMode ? "true" : "false"}"
+              ${manualMode ? `ondragstart="onChecklistDragStart(${index}, event)"
               ondragover="onChecklistDragOver(${index}, event)"
               ondragleave="onChecklistDragLeave(event)"
-              ondrop="onChecklistDrop(${index}, event)">
+              ondrop="onChecklistDrop(${index}, event)"` : ""}>
             <span class="checklist-handle">::</span>
             <input class="checklist-check" type="checkbox" ${item.done ? "checked" : ""} onchange="toggleChecklistItem('${escapeHtmlAttr(item.id)}')" />
             <div class="checklist-copy">
@@ -13786,6 +14741,7 @@
       function renderMissions() {
         const tbody = document.querySelector("#view-mission-log tbody");
         if (!tbody) return;
+        ensureViewSortBar("missions-sort-slot", "missions", document.getElementById("mission-table"));
 
         let filtered = allMissions;
         if (selectedOperation) {
@@ -13800,6 +14756,15 @@
             (m.status || "").toLowerCase().includes(missionSearchQuery)
           );
         }
+        filtered = sortCollectionForView(
+          filtered,
+          "missions",
+          (item) => ({
+            label: `${String(item?.operation || "")} ${String(item?.name || "")}`,
+            date: toSortDateMs(item?.created_at || item?.date || "", item?.path || item?.mission_id || ""),
+            progress: missionStatusProgressScore(item?.status),
+          })
+        );
 
         tbody.innerHTML = filtered.map(m => `
           <tr ondblclick="openMissionEditor('${escapeJsString(m.path)}')" title="Double-click to open mission brief">
@@ -13830,6 +14795,7 @@
       function renderOperations() {
         const grid = document.querySelector("#view-operations .ops-grid");
         if (!grid) return;
+        ensureViewSortBar("operations-sort-slot", "operations", grid);
         grid.ondragover = onOperationGridDragOver;
         grid.ondrop = onOperationGridDrop;
 
@@ -13841,21 +14807,31 @@
         if (operationSearchQuery) {
           filtered = filtered.filter(op => op.toLowerCase().includes(operationSearchQuery));
         }
+        filtered = sortCollectionForView(
+          filtered,
+          "operations",
+          (item) => ({
+            label: String(item || ""),
+            date: operationDateMs(item),
+            progress: operationProgressScore(item),
+          })
+        );
+        const manualMode = getViewSortMode("operations") === "manual";
 
         grid.innerHTML = filtered.map(op => {
           const opColor = getOperationColor(op) || "#00ff41";
           const safeColor = escapeHtmlAttr(opColor);
           return `
           <div
-            class="op-card"
+            class="op-card ${manualMode ? "" : "sort-locked"}"
             data-op="${escapeHtmlAttr(op)}"
-            draggable="true"
+            draggable="${manualMode ? "true" : "false"}"
             onclick="handleOpCardFromCard(this)"
-            ondragstart="onOperationDragStart(this, event)"
+            ${manualMode ? `ondragstart="onOperationDragStart(this, event)"
             ondragover="onOperationDragOver(this, event)"
             ondragleave="onOperationDragLeave(this)"
             ondrop="onOperationDrop(this, event)"
-            ondragend="onOperationDragEnd()"
+            ondragend="onOperationDragEnd()"` : ""}
             style="border-color:${safeColor}; box-shadow: inset 0 0 0 1px ${safeColor}33;"
           >
             <div class="op-color-wrap" onclick="event.stopPropagation()">
@@ -13881,6 +14857,8 @@
         const mainTbody = document.querySelector("#view-blackbook tbody");
         const opsTbody = document.getElementById("operations-blackbook-tbody");
         if (!mainTbody && !opsTbody) return;
+        if (mainTbody) ensureViewSortBar("blackbook-main-sort-slot", "blackbook", mainTbody.closest("table"));
+        if (opsTbody) ensureViewSortBar("blackbook-ops-sort-slot", "blackbook", opsTbody.closest(".ops-blackbook-reference"));
         let data = allBlackbook;
         if (blackbookSearchQuery) {
           data = data.filter((p) => {
@@ -13891,6 +14869,15 @@
             return blob.includes(blackbookSearchQuery);
           });
         }
+        data = sortCollectionForView(
+          data,
+          "blackbook",
+          (item) => ({
+            label: `${String(item?.Operation || "")} ${String(item?.Mission || "")}`,
+            date: blackbookDateMs(item),
+            progress: blackbookStatusProgressScore(item?.Status),
+          })
+        );
         const rowsHtml = data.map((p, idx) => {
           const status = String(p.Status || "PENDING");
           const statusClass = `mission-link status-${status.toLowerCase().replace(/_/g, "-")}`;
@@ -13915,6 +14902,7 @@
       function renderHvi() {
         const container = document.getElementById("hvi-container");
         if (!container) return;
+        ensureViewSortBar("hvi-sort-slot", "hvi", container);
         let data = allHvi.map((h) => augmentHvi(h));
         const categorySelect = document.getElementById("hvi-filter-category");
         if (categorySelect) {
@@ -13963,6 +14951,15 @@
             return true;
           });
         }
+        data = sortCollectionForView(
+          data,
+          "hvi",
+          (item) => ({
+            label: String(item?.handle || ""),
+            date: hviDateFromItem(item)?.getTime() || 0,
+            progress: hviProgressScore(item),
+          })
+        );
 
         container.innerHTML = data.map(h => `
           <div class="hvi-card hvi-summary-row ${hviFreshnessClass(h)}" ondblclick="openHviPopup('${escapeJsString(h.handle || "Unknown")}')" title="Double-click to open profile">
@@ -15473,6 +16470,7 @@
           file: String(b.file || ""),
           title: String(b.title || b.file || "BLUEPRINT"),
           sourcePath: String(b.source_path || `/home/samuelapata/.openclaw/workspace/${b.file || ""}`),
+          modifiedAt: String(b.modified_at || ""),
         })).filter((b) => b.file);
       }
 
@@ -15630,6 +16628,7 @@
         }
         loadOperationColors();
         loadOperationOrder();
+        loadViewSortModes();
         loadHviProfileExtras();
         loadHviStatTemplates();
         loadChecklistItems();

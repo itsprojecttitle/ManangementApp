@@ -3,12 +3,13 @@ import json
 import os
 import re
 import shutil
+import socket
 import time
 import ipaddress
 import shlex
 import subprocess
 import uuid
-from threading import Lock
+from threading import Lock, Thread
 from collections import deque
 from datetime import datetime
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -71,6 +72,374 @@ DEV_WATCH_FILES = (
     "assets/managementapp.css",
     "sw.js",
 )
+PROJECT_ROOT_ENV = os.environ.get("OMNI_PROJECT_ROOT", "").strip()
+PROJECT_ROOT = Path(PROJECT_ROOT_ENV).expanduser().resolve() if PROJECT_ROOT_ENV else Path(__file__).resolve().parent
+CAPACITOR_CONFIG_PATH = PROJECT_ROOT / "capacitor.config.json"
+IOS_PROJECT_DIR = PROJECT_ROOT / "ios" / "App" / "App"
+IPHONE_LIVE_PORT = 8099
+IPHONE_LIVE_PAGE = "/ManagementApp.html"
+_IPHONE_LIVE_SERVER = None
+_IPHONE_LIVE_THREAD = None
+_IPHONE_LIVE_LOCK = Lock()
+_IPHONE_LIVE_META = {
+    "last_action": "",
+    "last_changed_at": "",
+    "last_error": "",
+    "last_summary": "",
+}
+
+
+def _command_env():
+    env = os.environ.copy()
+    path_parts = [part for part in env.get("PATH", "").split(os.pathsep) if part]
+    extra_parts = [
+        str(PROJECT_ROOT / "node_modules" / ".bin"),
+        "/opt/homebrew/bin",
+        "/usr/local/bin",
+        "/usr/bin",
+        "/bin",
+        "/usr/sbin",
+        "/sbin",
+    ]
+    for part in extra_parts:
+        if part and part not in path_parts and Path(part).exists():
+            path_parts.append(part)
+    env["PATH"] = os.pathsep.join(path_parts)
+    return env
+
+
+def _project_has_ios_live_support() -> bool:
+    return CAPACITOR_CONFIG_PATH.exists() and IOS_PROJECT_DIR.exists()
+
+
+def _detect_ip_for_interface(iface: str) -> str:
+    iface = str(iface or "").strip()
+    if not iface:
+        return ""
+    for cmd in (["ipconfig", "getifaddr", iface],):
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=3,
+                env=_command_env(),
+            )
+        except Exception:
+            continue
+        if result.returncode == 0:
+            value = (result.stdout or "").strip()
+            if value:
+                return value
+    try:
+        result = subprocess.run(
+            ["/sbin/ifconfig", iface],
+            capture_output=True,
+            text=True,
+            timeout=3,
+            env=_command_env(),
+        )
+        if result.returncode == 0:
+            match = re.search(r"\binet\s+(\d+\.\d+\.\d+\.\d+)\b", result.stdout or "")
+            if match:
+                value = match.group(1).strip()
+                if value and not value.startswith("127."):
+                    return value
+    except Exception:
+        pass
+    return ""
+
+
+def _detect_lan_ip() -> str:
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+            sock.connect(("8.8.8.8", 80))
+            ip = (sock.getsockname()[0] or "").strip()
+            if ip and not ip.startswith("127."):
+                return ip
+    except Exception:
+        pass
+
+    try:
+        result = subprocess.run(
+            ["route", "get", "default"],
+            capture_output=True,
+            text=True,
+            timeout=3,
+            env=_command_env(),
+        )
+        match = re.search(r"interface:\s+(\S+)", result.stdout or "")
+        if match:
+            value = _detect_ip_for_interface(match.group(1))
+            if value:
+                return value
+    except Exception:
+        pass
+
+    for iface in ("en0", "en1"):
+        value = _detect_ip_for_interface(iface)
+        if value:
+            return value
+
+    try:
+        result = subprocess.run(
+            ["/sbin/ifconfig", "-l"],
+            capture_output=True,
+            text=True,
+            timeout=3,
+            env=_command_env(),
+        )
+        if result.returncode == 0:
+            for iface in (result.stdout or "").split():
+                if not iface.startswith("en"):
+                    continue
+                value = _detect_ip_for_interface(iface)
+                if value:
+                    return value
+    except Exception:
+        pass
+
+    return ""
+
+
+def _read_capacitor_config() -> dict:
+    if not CAPACITOR_CONFIG_PATH.exists():
+        return {}
+    try:
+        return json.loads(CAPACITOR_CONFIG_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _write_capacitor_config(config: dict) -> None:
+    CAPACITOR_CONFIG_PATH.write_text(f"{json.dumps(config, indent=2)}\n", encoding="utf-8")
+
+
+def _run_cap_copy_ios() -> None:
+    result = subprocess.run(
+        ["npx", "cap", "copy", "ios"],
+        cwd=str(PROJECT_ROOT),
+        capture_output=True,
+        text=True,
+        timeout=180,
+        env=_command_env(),
+    )
+    if result.returncode != 0:
+        stderr = (result.stderr or result.stdout or "").strip()
+        raise RuntimeError(stderr or "Failed to sync iOS live configuration.")
+
+
+def _configured_iphone_live_payload() -> dict:
+    config = _read_capacitor_config()
+    server = config.get("server") if isinstance(config.get("server"), dict) else {}
+    url = str(server.get("url") or "").strip()
+    parsed = urlparse(url) if url else None
+    return {
+        "configured_mode": "live" if url else "bundled",
+        "configured_url": url,
+        "configured_host": parsed.hostname or "" if parsed else "",
+    }
+
+
+def _set_iphone_live_meta(*, action: str = "", error: str = "", summary: str = "") -> None:
+    _IPHONE_LIVE_META.update({
+        "last_action": str(action or "").strip(),
+        "last_changed_at": datetime.now().isoformat(timespec="seconds"),
+        "last_error": str(error or "").strip(),
+        "last_summary": str(summary or "").strip(),
+    })
+
+
+def _tcp_port_open(host: str, port: int) -> bool:
+    try:
+        with socket.create_connection((host, port), timeout=0.35):
+            return True
+    except OSError:
+        return False
+
+
+def _managed_iphone_live_running() -> bool:
+    global ALLOW_LAN, _IPHONE_LIVE_SERVER, _IPHONE_LIVE_THREAD
+    if not _IPHONE_LIVE_SERVER or not _IPHONE_LIVE_THREAD:
+        return False
+    if not _IPHONE_LIVE_THREAD.is_alive():
+        _IPHONE_LIVE_SERVER = None
+        _IPHONE_LIVE_THREAD = None
+        ALLOW_LAN = False
+        return False
+    return True
+
+
+def _start_managed_iphone_live_server() -> None:
+    global ALLOW_LAN, _IPHONE_LIVE_SERVER, _IPHONE_LIVE_THREAD
+    with _IPHONE_LIVE_LOCK:
+        if _managed_iphone_live_running():
+            return
+        if _tcp_port_open("127.0.0.1", IPHONE_LIVE_PORT):
+            raise RuntimeError("Port 8099 is already in use by another process.")
+        server = ThreadingHTTPServer(("0.0.0.0", IPHONE_LIVE_PORT), Handler)
+        thread = Thread(target=server.serve_forever, daemon=True)
+        ALLOW_LAN = True
+        thread.start()
+        deadline = time.time() + 3.0
+        while time.time() < deadline:
+            if _tcp_port_open("127.0.0.1", IPHONE_LIVE_PORT):
+                _IPHONE_LIVE_SERVER = server
+                _IPHONE_LIVE_THREAD = thread
+                return
+            time.sleep(0.05)
+        try:
+            server.shutdown()
+            server.server_close()
+        except Exception:
+            pass
+        ALLOW_LAN = False
+        raise RuntimeError("Managed LAN server did not start on port 8099.")
+
+
+def shutdown_managed_iphone_live_server() -> bool:
+    global ALLOW_LAN, _IPHONE_LIVE_SERVER, _IPHONE_LIVE_THREAD
+    with _IPHONE_LIVE_LOCK:
+        if not _managed_iphone_live_running():
+            _IPHONE_LIVE_SERVER = None
+            _IPHONE_LIVE_THREAD = None
+            ALLOW_LAN = False
+            return False
+        server = _IPHONE_LIVE_SERVER
+        thread = _IPHONE_LIVE_THREAD
+        _IPHONE_LIVE_SERVER = None
+        _IPHONE_LIVE_THREAD = None
+        try:
+            server.shutdown()
+            server.server_close()
+        finally:
+            if thread:
+                thread.join(timeout=1.5)
+        ALLOW_LAN = False
+        return True
+
+
+def _sync_ios_live_configuration(target_mode: str) -> dict:
+    if not _project_has_ios_live_support():
+        raise RuntimeError("iPhone live configuration is not available from this OMNI copy.")
+    mode = str(target_mode or "").strip().lower()
+    if mode not in {"live", "bundled"}:
+        raise RuntimeError("Invalid iPhone live configuration mode.")
+    config = _read_capacitor_config()
+    if mode == "live":
+        ip = _detect_lan_ip()
+        if not ip:
+            raise RuntimeError("Could not detect a LAN IP for live iPhone mode.")
+        config["server"] = {
+            "url": f"http://{ip}:{IPHONE_LIVE_PORT}{IPHONE_LIVE_PAGE}",
+            "cleartext": True,
+        }
+    else:
+        config.pop("server", None)
+    _write_capacitor_config(config)
+    _run_cap_copy_ios()
+    return _configured_iphone_live_payload()
+
+
+def iphone_live_status_payload() -> dict:
+    configured = _configured_iphone_live_payload()
+    managed = _managed_iphone_live_running()
+    port_running = _tcp_port_open("127.0.0.1", IPHONE_LIVE_PORT)
+    server_running = managed or port_running
+    if managed:
+        server_control = "managed"
+    elif port_running:
+        server_control = "external"
+    else:
+        server_control = "stopped"
+
+    summary = _IPHONE_LIVE_META.get("last_summary", "").strip()
+    if not summary:
+        if configured["configured_mode"] == "live":
+            if server_control == "managed":
+                summary = "Live build configured and Mac app live server is running."
+            elif server_control == "external":
+                summary = "Live build configured and an external LAN server is running."
+            else:
+                summary = "Live build configured, but the LAN server is stopped."
+        else:
+            summary = "Bundled/offline build configured on this Mac."
+
+    return {
+        "available": _project_has_ios_live_support(),
+        "configured_mode": configured["configured_mode"],
+        "configured_url": configured["configured_url"],
+        "configured_host": configured["configured_host"],
+        "server_running": server_running,
+        "managed_by_app": managed,
+        "server_control": server_control,
+        "last_action": _IPHONE_LIVE_META.get("last_action", ""),
+        "last_changed_at": _IPHONE_LIVE_META.get("last_changed_at", ""),
+        "last_error": _IPHONE_LIVE_META.get("last_error", ""),
+        "last_summary": summary,
+        "xcode_step_required": True,
+    }
+
+
+def enable_iphone_live_mode() -> dict:
+    started_managed = False
+    try:
+        configured = _sync_ios_live_configuration("live")
+        if not _managed_iphone_live_running() and not _tcp_port_open("127.0.0.1", IPHONE_LIVE_PORT):
+            _start_managed_iphone_live_server()
+            started_managed = True
+        payload = iphone_live_status_payload()
+        summary = (
+            "Phone live connection prepared. Press Run in Xcode on the iPhone again."
+            if payload.get("server_control") == "managed"
+            else "Phone live build configured. External LAN server detected on port 8099."
+        )
+        _set_iphone_live_meta(action="connect", summary=summary)
+        payload.update({
+            "configured_mode": configured["configured_mode"],
+            "configured_url": configured["configured_url"],
+            "configured_host": configured["configured_host"],
+            "last_action": _IPHONE_LIVE_META.get("last_action", ""),
+            "last_changed_at": _IPHONE_LIVE_META.get("last_changed_at", ""),
+            "last_error": "",
+            "last_summary": _IPHONE_LIVE_META.get("last_summary", ""),
+        })
+        return payload
+    except Exception as exc:
+        if started_managed:
+            shutdown_managed_iphone_live_server()
+        _set_iphone_live_meta(action="connect_failed", error=str(exc), summary=f"Phone live connect failed: {exc}")
+        payload = iphone_live_status_payload()
+        payload["error"] = str(exc)
+        return payload
+
+
+def disable_iphone_live_mode() -> dict:
+    try:
+        configured = _sync_ios_live_configuration("bundled")
+        stopped = shutdown_managed_iphone_live_server()
+        payload = iphone_live_status_payload()
+        summary = "Phone disconnected from Mac live mode. Bundled/offline build restored."
+        if payload.get("server_control") == "external":
+            summary = "Phone disconnected from Mac live mode. Bundled build restored, but an external LAN server is still running."
+        elif stopped:
+            summary = "Phone disconnected from Mac live mode and the managed LAN server was stopped."
+        _set_iphone_live_meta(action="disconnect", summary=summary)
+        payload.update({
+            "configured_mode": configured["configured_mode"],
+            "configured_url": configured["configured_url"],
+            "configured_host": configured["configured_host"],
+            "last_action": _IPHONE_LIVE_META.get("last_action", ""),
+            "last_changed_at": _IPHONE_LIVE_META.get("last_changed_at", ""),
+            "last_error": "",
+            "last_summary": _IPHONE_LIVE_META.get("last_summary", ""),
+        })
+        return payload
+    except Exception as exc:
+        _set_iphone_live_meta(action="disconnect_failed", error=str(exc), summary=f"Phone disconnect failed: {exc}")
+        payload = iphone_live_status_payload()
+        payload["error"] = str(exc)
+        return payload
 
 
 def _safe_name(name: str) -> str:
@@ -1724,6 +2093,13 @@ class Handler(SimpleHTTPRequestHandler):
         except Exception:
             return False
 
+    def _is_loopback_client(self) -> bool:
+        ip = self._client_ip()
+        try:
+            return ipaddress.ip_address(ip).is_loopback
+        except Exception:
+            return False
+
     def _is_allowed_host(self) -> bool:
         host = (self.headers.get("Host") or "").strip().lower()
         if host in ALLOWED_HOSTS:
@@ -1810,6 +2186,10 @@ class Handler(SimpleHTTPRequestHandler):
         if not self._enforce_request_guard("GET", path):
             return
         query = parse_qs(parsed.query)
+        if path == "/api/iphone/live/status":
+            if not self._is_loopback_client():
+                return self._forbidden("Loopback access only")
+            return _json_response(self, iphone_live_status_payload(), 200)
         if path == "/api/operations":
             return _json_response(self, load_operations())
         if path == "/api/missions":
@@ -1866,6 +2246,18 @@ class Handler(SimpleHTTPRequestHandler):
         if not self._enforce_request_guard("POST", path):
             return
         body = self._read_json_body()
+
+        if path == "/api/iphone/live/on":
+            if not self._is_loopback_client():
+                return self._forbidden("Loopback access only")
+            payload = enable_iphone_live_mode()
+            return _json_response(self, payload, 200 if not payload.get("error") else 500)
+
+        if path == "/api/iphone/live/off":
+            if not self._is_loopback_client():
+                return self._forbidden("Loopback access only")
+            payload = disable_iphone_live_mode()
+            return _json_response(self, payload, 200 if not payload.get("error") else 500)
 
         if path == "/api/operation":
             op = _safe_name(body.get("name", ""))

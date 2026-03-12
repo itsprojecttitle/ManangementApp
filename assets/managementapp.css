@@ -1937,6 +1937,37 @@
         gap: 8px;
         margin: 10px 0 12px 0;
       }
+      .omni-filter-slot {
+        margin: 10px 0 12px 0;
+      }
+      .omni-filter-bar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        flex-wrap: wrap;
+        padding: 10px 12px;
+        border: 1px solid var(--term-green);
+        background: rgba(0, 255, 65, 0.04);
+      }
+      .omni-filter-title {
+        color: var(--warning-yellow);
+        font-size: 0.8rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      .omni-filter-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .omni-filter-btn.is-active {
+        background: var(--warning-yellow);
+        color: #000;
+        border-color: var(--warning-yellow);
+      }
       .search-input {
         width: 100%;
         padding: 8px 10px;
@@ -2033,6 +2064,12 @@
       }
       .checklist-item.drag-over {
         background: rgba(255, 204, 0, 0.12);
+      }
+      .checklist-item.sort-locked {
+        cursor: default;
+      }
+      .checklist-item.sort-locked .checklist-handle {
+        opacity: 0.35;
       }
       .checklist-item.done .checklist-text {
         opacity: 0.55;
@@ -2139,6 +2176,10 @@
       .routine-item:last-child {
         border-bottom: none;
       }
+      .routine-item.sort-locked,
+      .routine-subcheck-item.sort-locked {
+        cursor: default;
+      }
       .routine-item.done .routine-item-title {
         opacity: 0.55;
         text-decoration: line-through;
@@ -2191,6 +2232,10 @@
       }
       .routine-subcheck-item.drag-over {
         background: rgba(255, 204, 0, 0.12);
+      }
+      .routine-item.sort-locked .routine-item-title,
+      .routine-subcheck-item.sort-locked .routine-subcheck-title {
+        opacity: 0.82;
       }
       .routine-subcheck-title {
         color: var(--warning-yellow);
@@ -3536,6 +3581,9 @@
         .hvi-dossier-grid {
           grid-template-columns: 1fr;
         }
+        .omni-filter-bar {
+          align-items: flex-start;
+        }
         .mission-profile-highlights {
           grid-template-columns: 1fr;
         }
@@ -4400,6 +4448,11 @@
         display: grid;
         gap: 10px;
       }
+      .posting-template-mission-starter-item {
+        border-color: rgba(255, 216, 74, 0.78);
+        background: linear-gradient(180deg, rgba(255, 216, 74, 0.08), rgba(6, 20, 6, 0.94));
+        box-shadow: 0 0 18px rgba(255, 216, 74, 0.12);
+      }
       .posting-template-item.drag-over {
         border-color: var(--warning-yellow);
         box-shadow: 0 0 16px rgba(255, 216, 74, 0.18);
@@ -4435,6 +4488,51 @@
       }
       .posting-template-subtext-input {
         min-height: 92px;
+      }
+      .posting-template-mission-starter-body {
+        border: 1px solid rgba(0, 255, 65, 0.28);
+        background: rgba(0, 18, 4, 0.78);
+        color: var(--term-green);
+        padding: 16px;
+        display: grid;
+        gap: 16px;
+      }
+      .posting-template-mission-starter-group,
+      .posting-template-mission-starter-example-shell {
+        display: grid;
+        gap: 12px;
+      }
+      .posting-template-mission-starter-row {
+        display: grid;
+        gap: 6px;
+        padding-bottom: 10px;
+        border-bottom: 1px solid rgba(0, 255, 65, 0.12);
+      }
+      .posting-template-mission-starter-label,
+      .posting-template-mission-starter-example-title {
+        color: var(--warning-yellow);
+        font-size: 0.82rem;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+      }
+      .posting-template-mission-starter-value {
+        color: var(--term-green);
+        line-height: 1.7;
+      }
+      .posting-template-mission-starter-divider {
+        height: 1px;
+        background: linear-gradient(90deg, rgba(255, 216, 74, 0.38), rgba(0, 255, 65, 0.12));
+      }
+      .posting-template-mission-starter-example-card {
+        border: 1px solid rgba(255, 216, 74, 0.22);
+        background: rgba(10, 10, 0, 0.34);
+        padding: 14px;
+        display: grid;
+        gap: 12px;
+      }
+      .posting-template-mission-starter-example-rows {
+        display: grid;
+        gap: 12px;
       }
       .posting-template-empty {
         border: 1px dashed rgba(0, 255, 65, 0.35);
@@ -4534,6 +4632,10 @@
         .linked-datawell-actions,
         .posting-template-controls {
           justify-content: flex-start;
+        }
+        .posting-template-mission-starter-body,
+        .posting-template-mission-starter-example-card {
+          padding: 12px;
         }
       }
     
