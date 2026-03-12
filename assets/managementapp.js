@@ -13301,6 +13301,7 @@
         if (/^[-*_]{3,}$/.test(clean)) return false;
         if (parseMissionFieldLine(clean) || missionBulletText(clean)) return false;
         if (/[.!?]$/.test(clean)) return false;
+        if (/^(?:[A-Z]\)\s+.+|THE BRIEF \(PRE-OP\)|THE DEBRIEF \(POST-OP\)|SHORT PROBE PLAN|IMMEDIATE EXECUTION CHECKLIST|OPEN QUESTIONS|ASSUMPTION LOG|EXECUTION DIRECTIONS SUMMARY|OPERATION WORKFLOW)$/i.test(String(value || "").trim())) return true;
         const words = clean.split(/\s+/).filter(Boolean);
         if (!words.length || words.length > 6) return false;
         if (!nextLine) return false;
@@ -13311,12 +13312,86 @@
         return stripMissionTextMarkup(
           String(value || "")
             .replace(/^#+\s*/, "")
+            .replace(/^[A-Z]\)\s*/, "")
             .replace(/[：:]\s*$/, "")
         );
       }
 
       function missionSectionKey(value) {
         return normalizeMissionSectionTitle(value).toLowerCase();
+      }
+
+      const MISSION_PROFILE_HIDDEN_SECTION_TITLES = [
+        "refined instruction layer",
+        "instruction priority",
+        "ai role",
+        "operating rules",
+        "mandatory intake gate",
+        "intake state format",
+        "ai instructions",
+        "how to use",
+        "mission brief format",
+        "expanded mission brief format",
+        "entry points / available assets intake",
+        "environmental system factors",
+        "discovery method bank",
+        "datawell discovery output",
+        "field collection task rule",
+        "pain point inventory",
+        "method to find new pain points",
+      ];
+
+      const MISSION_PROFILE_SECTION_ORDER = [
+        "mission",
+        "objective",
+        "context",
+        "target",
+        "execution block",
+        "content execution block",
+        "experiment logic block",
+        "non-negotiable rule",
+        "operation workflow",
+        "the brief (pre-op)",
+        "the debrief (post-op)",
+        "execution directions summary",
+        "short probe plan",
+        "immediate execution checklist",
+        "open questions",
+        "assumption log",
+        "next action",
+      ];
+
+      function missionSectionRank(title) {
+        const key = missionSectionKey(title);
+        const idx = MISSION_PROFILE_SECTION_ORDER.indexOf(key);
+        return idx >= 0 ? idx : Number.MAX_SAFE_INTEGER;
+      }
+
+      function missionSectionIsInstructional(section) {
+        const titleKey = missionSectionKey(section?.title || "");
+        if (!titleKey) return false;
+        if (/^step\s+\d+/.test(titleKey)) return true;
+        if (MISSION_PROFILE_HIDDEN_SECTION_TITLES.includes(titleKey)) return true;
+        const combined = [
+          ...(Array.isArray(section?.paragraphs) ? section.paragraphs : []),
+          ...(Array.isArray(section?.bullets) ? section.bullets : []),
+          ...(Array.isArray(section?.rows) ? section.rows.map((row) => `${row?.key || ""}: ${row?.value || ""}`) : []),
+        ].join(" ").toLowerCase();
+        return combined.includes("do not summarize")
+          || combined.includes("active instruction")
+          || combined.includes("do not search the web")
+          || combined.includes("mission intake state")
+          || combined.includes("use these as candidate pain points");
+      }
+
+      function missionSectionDisplayKind(title) {
+        const key = missionSectionKey(title);
+        if (key === "execution directions summary") return "directions";
+        if (key === "short probe plan") return "probe-plan";
+        if (key === "immediate execution checklist") return "checklist";
+        if (key === "open questions") return "questions";
+        if (key === "assumption log") return "assumptions";
+        return "default";
       }
 
       function missionBulletText(line) {
@@ -13511,6 +13586,9 @@
       function buildMissionProfileData(text, kind = "brief", meta = {}) {
         const normalized = normalizeMissionProfileSections(text);
         const sections = normalized.sections;
+        const displaySections = sections
+          .filter((section) => !missionSectionIsInstructional(section))
+          .sort((a, b) => missionSectionRank(a.title) - missionSectionRank(b.title));
         const fieldMap = collectMissionFieldMap(sections);
         const datawellSummary = missionDatawellSummaryForPath(meta?.path || "");
         if (!fieldMap["Datawell Present"] && datawellSummary.present) fieldMap["Datawell Present"] = datawellSummary.present;
@@ -13591,13 +13669,19 @@
           : [
               { key: "Operation", value: operation },
               { key: "Mission", value: firstMissionValue(fieldMap["Mission"], meta.name, title) },
+              { key: "Mission State", value: fieldMap["Mission State"] },
               { key: "Status", value: status },
               { key: "Objective", value: firstMissionValue(fieldMap["Objective"], fieldMap["Primary goal"], fieldMap["Today’s goal"], summary) },
               { key: "Target", value: target },
+              { key: "Relationship Move", value: fieldMap["Desired relationship move"] },
+              { key: "Target Type", value: fieldMap["Primary target entity type"] },
+              { key: "Scope", value: fieldMap["Geography / scope"] },
               { key: "Datawell Present", value: fieldMap["Datawell Present"] },
               { key: "Datawell Name", value: fieldMap["Datawell Name"] },
               { key: "Datawell Relation", value: fieldMap["Datawell Relation"] },
               { key: "Platform", value: platform },
+              { key: "Pain Point", value: fieldMap["Pain point being tested"] },
+              { key: "Success Condition", value: fieldMap["Success condition"] },
               { key: "Metric", value: metric },
               { key: "Next Move", value: nextMove },
             ])
@@ -13608,6 +13692,8 @@
           summary,
           status,
           sections,
+          displaySections,
+          instructionCount: Math.max(0, sections.length - displaySections.length),
           fieldMap,
           highlights: highlightRows,
         };
@@ -13626,7 +13712,10 @@
           out.push({ key: cleanKey, value: cleanValue });
         };
         (profile?.highlights || []).forEach((row) => push(row.key, row.value));
-        (profile?.sections || []).forEach((section) => {
+        const sections = Array.isArray(profile?.displaySections) && profile.displaySections.length
+          ? profile.displaySections
+          : (profile?.sections || []);
+        sections.forEach((section) => {
           section.rows.forEach((row) => push(row.key, row.value));
           if (!section.rows.length) push(section.title, missionSectionSummary(section));
         });
@@ -13634,6 +13723,8 @@
       }
 
       function buildMissionProfileSectionHtml(section) {
+        const kind = missionSectionDisplayKind(section?.title || "");
+        const sectionSlug = missionSectionKey(section?.title || "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
         const rowHtml = [];
         section.rows.forEach((row) => {
           rowHtml.push(`
@@ -13660,7 +13751,7 @@
           `);
         });
         return `
-          <section class="mission-dossier-block">
+          <section class="mission-dossier-block mission-dossier-block-${kind} ${sectionSlug ? `mission-section-${sectionSlug}` : ""}">
             <div class="mission-dossier-block-title">${escapeHtmlAttr(section.title || "Section")}</div>
             <div class="mission-dossier-block-body">
               ${rowHtml.join("") || `<div class="mission-dossier-empty">No structured details in this section yet.</div>`}
@@ -13675,7 +13766,10 @@
           return `<div class="mission-dossier-empty">Paste a consistent ${String(kind || "brief").toLowerCase()} template to auto-fill this profile offline.</div>`;
         }
         const profile = buildMissionProfileData(cleanText, kind, meta);
-        const sectionHtml = profile.sections.map((section) => buildMissionProfileSectionHtml(section)).join("");
+        const renderSections = Array.isArray(profile.displaySections) && profile.displaySections.length
+          ? profile.displaySections
+          : profile.sections;
+        const sectionHtml = renderSections.map((section) => buildMissionProfileSectionHtml(section)).join("");
         const highlightsHtml = profile.highlights.length
           ? `<div class="mission-profile-highlights">
               ${profile.highlights.map((row) => `
@@ -13693,9 +13787,10 @@
               <div class="mission-profile-name">${escapeHtmlAttr(profile.title)}</div>
               <div class="mission-profile-subdesc">${escapeHtmlAttr(profile.summary || "Structured fields will appear here as you paste the template.")}</div>
             </div>
+            ${profile.instructionCount ? `<div class="mission-profile-note">Instruction/template sections hidden: ${profile.instructionCount}</div>` : ""}
             ${highlightsHtml}
             <div class="mission-profile-sections">
-              ${sectionHtml || `<div class="mission-dossier-empty">No structured sections detected yet.</div>`}
+              ${sectionHtml || `<div class="mission-dossier-empty">No clean final-brief sections detected yet. Paste the brief output rather than the instruction template.</div>`}
             </div>
           </div>
         `;
