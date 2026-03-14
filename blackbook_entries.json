@@ -1,159 +1,172 @@
 [
   {
     "Probe_ID": "T001-V1",
-    "Date": "",
-    "Time": "",
+    "Date": "2026-03-14",
+    "Time": "13:42",
     "Operation": "",
     "Mission": "",
     "Status": "PENDING",
     "Hypothesis": "Posting a contrarian take at 7 PM will generate high debate among UK producers.",
     "Platform": "Twitter",
     "Result_Quantitative": "Likes: 45, Shares: 12, Comments: 33",
-    "Notes": ""
+    "Notes": "",
+    "Description": ""
   },
   {
     "Probe_ID": "T001-V2",
-    "Date": "",
-    "Time": "",
+    "Date": "2026-03-14",
+    "Time": "13:42",
     "Operation": "",
     "Mission": "",
     "Status": "PENDING",
     "Hypothesis": "If actively researching HVI accounts, engaging with likes, and identifying pain points (including personal names) will lead to actionable insights for knowledge and network acquisition. Simultaneously, posting 5-10 times daily on Instagram, covering all ProjectTitle topics, will reveal engagement peaks.",
     "Platform": "Instagram",
     "Result_Quantitative": "PENDING",
-    "Notes": ""
+    "Notes": "",
+    "Description": ""
   },
   {
     "Probe_ID": "T002",
-    "Date": "",
-    "Time": "",
+    "Date": "2026-03-14",
+    "Time": "13:42",
     "Operation": "",
     "Mission": "",
     "Status": "PENDING",
     "Hypothesis": "",
     "Platform": "Social Media/Blogs",
     "Result_Quantitative": "PENDING",
-    "Notes": ""
+    "Notes": "",
+    "Description": ""
   },
   {
     "Probe_ID": "T003",
-    "Date": "",
-    "Time": "",
+    "Date": "2026-03-14",
+    "Time": "13:42",
     "Operation": "",
     "Mission": "",
     "Status": "PENDING",
     "Hypothesis": "",
     "Platform": "Event promotion platforms",
     "Result_Quantitative": "PENDING",
-    "Notes": ""
+    "Notes": "",
+    "Description": ""
   },
   {
     "Probe_ID": "T004",
-    "Date": "",
-    "Time": "",
+    "Date": "2026-03-14",
+    "Time": "13:42",
     "Operation": "",
     "Mission": "",
     "Status": "PENDING",
     "Hypothesis": "",
     "Platform": "Social Media",
     "Result_Quantitative": "PENDING",
-    "Notes": ""
+    "Notes": "",
+    "Description": ""
   },
   {
     "Probe_ID": "T005",
-    "Date": "",
-    "Time": "",
+    "Date": "2026-03-14",
+    "Time": "13:42",
     "Operation": "",
     "Mission": "",
     "Status": "PENDING",
     "Hypothesis": "",
     "Platform": "Social Media",
     "Result_Quantitative": "PENDING",
-    "Notes": ""
+    "Notes": "",
+    "Description": ""
   },
   {
     "Probe_ID": "T006",
-    "Date": "",
-    "Time": "",
+    "Date": "2026-03-14",
+    "Time": "13:42",
     "Operation": "",
     "Mission": "",
     "Status": "PENDING",
     "Hypothesis": "",
     "Platform": "Twitter, SoundCloud",
     "Result_Quantitative": "PENDING",
-    "Notes": ""
+    "Notes": "",
+    "Description": ""
   },
   {
     "Probe_ID": "T007",
-    "Date": "",
-    "Time": "",
+    "Date": "2026-03-14",
+    "Time": "13:42",
     "Operation": "",
     "Mission": "",
     "Status": "PENDING",
     "Hypothesis": "",
     "Platform": "Spotify (via Oracle), Social Media",
     "Result_Quantitative": "PENDING",
-    "Notes": ""
+    "Notes": "",
+    "Description": ""
   },
   {
     "Probe_ID": "T008",
-    "Date": "",
-    "Time": "",
+    "Date": "2026-03-14",
+    "Time": "13:42",
     "Operation": "",
     "Mission": "",
     "Status": "PENDING",
     "Hypothesis": "",
     "Platform": "Social Media/Boxing Forums",
     "Result_Quantitative": "PENDING",
-    "Notes": ""
+    "Notes": "",
+    "Description": ""
   },
   {
     "Probe_ID": "T009",
-    "Date": "",
-    "Time": "",
+    "Date": "2026-03-14",
+    "Time": "13:42",
     "Operation": "",
     "Mission": "",
     "Status": "PENDING",
     "Hypothesis": "",
     "Platform": "Event promotion platforms/Boxing communities",
     "Result_Quantitative": "PENDING",
-    "Notes": ""
+    "Notes": "",
+    "Description": ""
   },
   {
     "Probe_ID": "T010",
-    "Date": "",
-    "Time": "",
+    "Date": "2026-03-14",
+    "Time": "13:42",
     "Operation": "",
     "Mission": "",
     "Status": "PENDING",
     "Hypothesis": "",
     "Platform": "(To be defined later)",
     "Result_Quantitative": "PENDING",
-    "Notes": ""
+    "Notes": "",
+    "Description": ""
   },
   {
     "Probe_ID": "T011",
-    "Date": "",
-    "Time": "",
+    "Date": "2026-03-14",
+    "Time": "13:42",
     "Operation": "",
     "Mission": "",
     "Status": "PENDING",
     "Hypothesis": "",
     "Platform": "Instagram, TikTok",
     "Result_Quantitative": "PENDING",
-    "Notes": ""
+    "Notes": "",
+    "Description": ""
   },
   {
     "Probe_ID": "T012",
-    "Date": "",
-    "Time": "",
+    "Date": "2026-03-14",
+    "Time": "13:42",
     "Operation": "",
     "Mission": "",
     "Status": "PENDING",
     "Hypothesis": "",
     "Platform": "Instagram, TikTok",
     "Result_Quantitative": "PENDING",
-    "Notes": ""
+    "Notes": "",
+    "Description": ""
   },
   {
     "Date": "2026-03-07",
@@ -165,7 +178,8 @@
     "Platform": "Internal",
     "Result_Quantitative": "PENDING",
     "Notes": "/Users/samuelapata/Desktop/ManagementApp_Project/OperationDir/Operations/Job/Missions/TEST_CREATE_MISSION.md",
-    "Probe_ID": "BB-20260307-133309"
+    "Probe_ID": "BB-20260307-133309",
+    "Description": ""
   },
   {
     "Date": "2026-03-08",
