@@ -1945,6 +1945,18 @@
       }
 
       function currentAppDataCounts() {
+        const contacts = Array.isArray(allContacts) ? allContacts : [];
+        const invoiceCount = contacts.reduce((sum, contact) => sum + (Array.isArray(contact?.invoices) ? contact.invoices.length : 0), 0);
+        const reminderRows = Array.isArray(routineData?.reminders) ? routineData.reminders : [];
+        const reminderDays = new Set(
+          reminderRows
+            .map((row) => {
+              const d = new Date(row?.when || "");
+              if (Number.isNaN(d.getTime())) return "";
+              return localDateKey(d);
+            })
+            .filter(Boolean)
+        ).size;
         const routineCount = ["morning", "night"].reduce((sum, period) => sum + (Array.isArray(routineData?.[period]) ? routineData[period].length : 0), 0);
         const gymExerciseCount = routineData?.catalog && typeof routineData.catalog === "object"
           ? Object.values(routineData.catalog).reduce((sum, rows) => sum + (Array.isArray(rows) ? rows.length : 0), 0)
@@ -1959,13 +1971,66 @@
           blueprints: Array.isArray(blueprintCatalog) ? blueprintCatalog.length : 0,
           checklist: Array.isArray(checklistItems) ? checklistItems.length : 0,
           reminders: Array.isArray(routineData?.reminders) ? routineData.reminders.length : 0,
+          calendarDays: reminderDays,
           journal: Array.isArray(routineData?.journal) ? routineData.journal.length : 0,
           postingTemplate: Array.isArray(routineData?.postingTemplate?.items) ? routineData.postingTemplate.items.length : 0,
           routines: routineCount,
           gym: gymExerciseCount,
           gymSavedSessions: Array.isArray(routineData?.savedSessions) ? routineData.savedSessions.length : 0,
+          contacts: contacts.length,
+          invoices: invoiceCount,
           syncQueue: Array.isArray(getOfflineSyncQueue()) ? getOfflineSyncQueue().length : 0,
         };
+      }
+
+      function getLocalStorageBackupStats() {
+        let keyCount = 0;
+        let byteCount = 0;
+        const keys = [];
+        for (let i = 0; i < localStorage.length; i += 1) {
+          const key = localStorage.key(i);
+          if (!key) continue;
+          const value = localStorage.getItem(key) || "";
+          keyCount += 1;
+          byteCount += String(key).length + String(value).length;
+          keys.push(String(key));
+        }
+        return { keyCount, byteCount, keys };
+      }
+
+      function countLocalStoragePrefix(prefix) {
+        const target = String(prefix || "");
+        if (!target) return 0;
+        let count = 0;
+        for (let i = 0; i < localStorage.length; i += 1) {
+          const key = localStorage.key(i);
+          if (key && key.startsWith(target)) count += 1;
+        }
+        return count;
+      }
+
+      function getBackupSettingsCoverage() {
+        const keys = [
+          appearanceSettingsKey(),
+          performanceSettingsKey(),
+          OMNI_PRIVACY_SETTINGS_KEY,
+          OMNI_VIEW_SORTS_KEY,
+          operationColorsKey(),
+          operationOrderKey(),
+          hviLayoutStorageKey(),
+          hviStatTemplatesKey(),
+          hviExtrasStorageKey(),
+          missionDatawellLinksKey(),
+          datawellsStorageKey(),
+          routineStorageKey(),
+          checklistStorageKey(),
+          omniCalendarSyncStateKey(),
+          notificationSettingsKey(),
+          firedNotificationsKey(),
+          notificationHistoryKey(),
+        ];
+        const present = keys.filter((key) => localStorage.getItem(key) !== null).length;
+        return { total: keys.length, present };
       }
 
       function buildSyncCenterReportText() {
@@ -1990,11 +2055,14 @@
           `Blueprints: ${counts.blueprints}`,
           `Checklist: ${counts.checklist}`,
           `Reminders: ${counts.reminders}`,
+          `Calendar Days: ${counts.calendarDays}`,
           `Journal: ${counts.journal}`,
           `Posting Template Stages: ${counts.postingTemplate}`,
           `Routine Tasks: ${counts.routines}`,
           `Gym Exercises: ${counts.gym}`,
           `Saved Gym Sessions: ${counts.gymSavedSessions}`,
+          `Contacts: ${counts.contacts}`,
+          `Invoices: ${counts.invoices}`,
           `Offline Sync Queue: ${counts.syncQueue}`,
           "",
           "[RECENT EVENTS]",
@@ -2294,6 +2362,11 @@
           .slice()
           .reverse()
           .slice(0, 8);
+        const localStorageStats = getLocalStorageBackupStats();
+        const settingsCoverage = getBackupSettingsCoverage();
+        const missionPlanDays = countLocalStoragePrefix("missionPlan:");
+        const appearanceModeLabel = localStorage.getItem(appearanceSettingsKey()) ? "CUSTOM" : "DEFAULT";
+        const hviLayoutLabel = String(hviLayoutTemplate || "grid").toUpperCase();
         const quietLabel = notificationSettings.quietEnabled
           ? `${notificationSettings.quietStart || "22:00"}-${notificationSettings.quietEnd || "07:00"}`
           : "OFF";
@@ -2381,6 +2454,29 @@
           : `<div class="sync-center-row sync-center-empty">No dismissed alerts yet.</div>`;
 
         countsHost.innerHTML = `
+          <div class="sync-center-list">
+            <div class="sync-center-list-title">Backup Coverage</div>
+            <div class="sync-center-row">
+              <span class="sync-center-meta">Local Storage</span>
+              <span>${escapeHtmlAttr(String(localStorageStats.keyCount || 0))} keys • ${escapeHtmlAttr(formatFileSize(localStorageStats.byteCount || 0))}</span>
+            </div>
+            <div class="sync-center-row">
+              <span class="sync-center-meta">Settings & Layout</span>
+              <span>${escapeHtmlAttr(String(settingsCoverage.present || 0))}/${escapeHtmlAttr(String(settingsCoverage.total || 0))} keys • UI ${escapeHtmlAttr(appearanceModeLabel)} • HVI ${escapeHtmlAttr(hviLayoutLabel)}</span>
+            </div>
+            <div class="sync-center-row">
+              <span class="sync-center-meta">Planner Sessions</span>
+              <span>${escapeHtmlAttr(String(missionPlanDays || 0))} day plan key(s)</span>
+            </div>
+            <div class="sync-center-row">
+              <span class="sync-center-meta">Contacts & Invoices</span>
+              <span>${escapeHtmlAttr(String(counts.contacts || 0))} contacts • ${escapeHtmlAttr(String(counts.invoices || 0))} invoices</span>
+            </div>
+            <div class="sync-center-row">
+              <span class="sync-center-meta">Calendar</span>
+              <span>${escapeHtmlAttr(String(counts.reminders || 0))} reminders across ${escapeHtmlAttr(String(counts.calendarDays || 0))} day(s)</span>
+            </div>
+          </div>
           <div class="sync-center-stat-grid">
             <div class="sync-center-stat"><span class="sync-center-stat-key">Operations</span><span class="sync-center-stat-value">${escapeHtmlAttr(String(counts.operations || 0))}</span></div>
             <div class="sync-center-stat"><span class="sync-center-stat-key">Missions</span><span class="sync-center-stat-value">${escapeHtmlAttr(String(counts.missions || 0))}</span></div>
@@ -2391,11 +2487,14 @@
             <div class="sync-center-stat"><span class="sync-center-stat-key">Blueprints</span><span class="sync-center-stat-value">${escapeHtmlAttr(String(counts.blueprints || 0))}</span></div>
             <div class="sync-center-stat"><span class="sync-center-stat-key">Checklist</span><span class="sync-center-stat-value">${escapeHtmlAttr(String(counts.checklist || 0))}</span></div>
             <div class="sync-center-stat"><span class="sync-center-stat-key">Reminders</span><span class="sync-center-stat-value">${escapeHtmlAttr(String(counts.reminders || 0))}</span></div>
+            <div class="sync-center-stat"><span class="sync-center-stat-key">Calendar Days</span><span class="sync-center-stat-value">${escapeHtmlAttr(String(counts.calendarDays || 0))}</span></div>
             <div class="sync-center-stat"><span class="sync-center-stat-key">Journal</span><span class="sync-center-stat-value">${escapeHtmlAttr(String(counts.journal || 0))}</span></div>
             <div class="sync-center-stat"><span class="sync-center-stat-key">Posting Stages</span><span class="sync-center-stat-value">${escapeHtmlAttr(String(counts.postingTemplate || 0))}</span></div>
             <div class="sync-center-stat"><span class="sync-center-stat-key">Routine Tasks</span><span class="sync-center-stat-value">${escapeHtmlAttr(String(counts.routines || 0))}</span></div>
             <div class="sync-center-stat"><span class="sync-center-stat-key">Gym Exercises</span><span class="sync-center-stat-value">${escapeHtmlAttr(String(counts.gym || 0))}</span></div>
             <div class="sync-center-stat"><span class="sync-center-stat-key">Saved Sessions</span><span class="sync-center-stat-value">${escapeHtmlAttr(String(counts.gymSavedSessions || 0))}</span></div>
+            <div class="sync-center-stat"><span class="sync-center-stat-key">Contacts</span><span class="sync-center-stat-value">${escapeHtmlAttr(String(counts.contacts || 0))}</span></div>
+            <div class="sync-center-stat"><span class="sync-center-stat-key">Invoices</span><span class="sync-center-stat-value">${escapeHtmlAttr(String(counts.invoices || 0))}</span></div>
           </div>
         `;
       }

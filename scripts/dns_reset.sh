@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "Flushing DNS cache..."
+sudo dscacheutil -flushcache
+sudo killall -HUP mDNSResponder
+echo "DNS cache flushed."
