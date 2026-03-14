@@ -15,14 +15,16 @@
       let bookSearchQuery = "";
       let blackbookSearchQuery = "";
       let hviSearchQuery = "";
+      let contactsSearchQuery = "";
       let datawellSearchQuery = "";
-      let hviFilterCategory = "";
+      let hviFilterCategory = [];
       let hviFilterParam = "";
       let hviFilterDateFrom = "";
       let hviFilterDateTo = "";
       let datawellFilterType = "";
       let allBlackbook = [];
       let allHvi = [];
+      let allContacts = [];
       let allDatawells = [];
       let missionDatawellLinks = { workflow: [], missions: {} };
       let missionIntelDatawellSyncTimer = 0;
@@ -112,6 +114,7 @@
         operations: "manual",
         blackbook: "manual",
         hvi: "manual",
+        contacts: "manual",
         datawells: "date",
         journal: "date",
         reminders: "date",
@@ -194,8 +197,13 @@
       const OMNI_CALENDAR_SYNC_STATE_KEY = "omniCalendarSyncState:v1";
       const OMNI_CALENDAR_EVENT_DURATION_MS = 30 * 60 * 1000;
       const NOTIFICATION_ENGINE_INTERVAL_MS = 60 * 1000;
-      const OMNI_APP_VERSION_LABEL = "OMNI DEV";
-      const OMNI_APP_BUILD_LABEL = "2026-03-10 05:05";
+      let OMNI_APP_VERSION_BASE = "0.0.0";
+      let OMNI_APP_BUILD_LABEL = "";
+      let OMNI_APP_VERSION_LABEL = "OMNI v0.0.0";
+      const OMNI_APP_VERSION_KEY = "omniAppVersion";
+      const OMNI_APP_BUILD_KEY = "omniAppBuild";
+      const SWISSKNIFE_LOG_KEY = "swissknifeFailLog:v1";
+      let swissknifeFailLog = [];
       const OMNI_NOTIFICATION_THREAD_ID = "omni-alerts";
       const OMNI_PINNED_REMINDER_SPECS = [
         {
@@ -208,6 +216,100 @@
         },
       ];
       const nativeWindowFetch = window.fetch.bind(window);
+
+      function loadSwissknifeFailLog() {
+        try {
+          const raw = localStorage.getItem(SWISSKNIFE_LOG_KEY);
+          const parsed = raw ? JSON.parse(raw) : [];
+          swissknifeFailLog = Array.isArray(parsed) ? parsed.slice(-200) : [];
+        } catch {
+          swissknifeFailLog = [];
+        }
+      }
+
+      function saveSwissknifeFailLog() {
+        localStorage.setItem(SWISSKNIFE_LOG_KEY, JSON.stringify(swissknifeFailLog.slice(-200)));
+      }
+
+      function logSwissknifeFail(message, context = {}) {
+        const entry = {
+          ts: new Date().toISOString(),
+          message: String(message || "Failure"),
+          context,
+        };
+        swissknifeFailLog.push(entry);
+        saveSwissknifeFailLog();
+        renderSwissknifeLog();
+      }
+
+      function renderSwissknifeLog() {
+        const host = document.getElementById("swissknife-log-output");
+        if (!host) return;
+        const lines = (swissknifeFailLog || []).map((row) => {
+          const ctx = row?.context && Object.keys(row.context || {}).length
+            ? ` | ${JSON.stringify(row.context)}`
+            : "";
+          return `[${row.ts || ""}] ${row.message || ""}${ctx}`;
+        });
+        host.value = lines.join("\n") || "";
+      }
+
+      async function copySwissknifeLog() {
+        const host = document.getElementById("swissknife-log-output");
+        const text = String(host?.value || "").trim();
+        if (!text) {
+          themedNotice("No log data to copy.");
+          return;
+        }
+        const result = await copyTextWithFallback(text, "SWISSKNIFE LOG");
+        themedNotice(result === "manual" ? "Clipboard blocked. Manual copy view opened." : "Swissknife log copied.");
+      }
+
+      function clearSwissknifeLog() {
+        swissknifeFailLog = [];
+        saveSwissknifeFailLog();
+        renderSwissknifeLog();
+        themedNotice("Swissknife log cleared.");
+      }
+
+      function deriveVersionBaseFromIso(iso) {
+        const date = new Date(iso || "");
+        if (!iso || Number.isNaN(date.getTime())) return "0.0.0";
+        const y = date.getFullYear();
+        const m = String(date.getMonth() + 1).padStart(2, "0");
+        const d = String(date.getDate()).padStart(2, "0");
+        return `${y}.${m}.${d}`;
+      }
+
+      async function refreshAppBuildLabels() {
+        try {
+          const res = await nativeWindowFetch("/api/dev/version", { cache: "no-store" });
+          if (res.ok) {
+            const payload = await res.json().catch(() => null);
+            const updatedAt = String(payload?.updated_at || "");
+            if (updatedAt) {
+              OMNI_APP_BUILD_LABEL = updatedAt.replace("T", " ").replace(/:\d\d$/, "");
+              OMNI_APP_VERSION_BASE = deriveVersionBaseFromIso(updatedAt);
+            }
+          }
+        } catch {}
+        const versionEl = document.getElementById("app-version-label");
+        const buildEl = document.getElementById("app-build-label");
+        if (buildEl) buildEl.textContent = OMNI_APP_BUILD_LABEL || "UNKNOWN";
+        const storedBuild = localStorage.getItem(OMNI_APP_BUILD_KEY);
+        let versionLabel = localStorage.getItem(OMNI_APP_VERSION_KEY) || "";
+        if (storedBuild !== OMNI_APP_BUILD_LABEL || !versionLabel) {
+          const parts = String(versionLabel || "").replace(/^OMNI\s+v/i, "").split(".");
+          const currentPatch = Number(parts[parts.length - 1]) || 0;
+          const nextPatch = currentPatch + 1;
+          versionLabel = `OMNI v${OMNI_APP_VERSION_BASE}.${nextPatch}`;
+          localStorage.setItem(OMNI_APP_VERSION_KEY, versionLabel);
+          localStorage.setItem(OMNI_APP_BUILD_KEY, OMNI_APP_BUILD_LABEL);
+        }
+        OMNI_APP_VERSION_LABEL = versionLabel || `OMNI v${OMNI_APP_VERSION_BASE}.1`;
+        if (versionEl) versionEl.textContent = OMNI_APP_VERSION_LABEL;
+        if (currentView === "settings") renderSyncCenter();
+      }
 
       function getDesktopBridgeApi() {
         const api = window.pywebview?.api;
@@ -900,6 +1002,21 @@
         allHvi = cloneSyncData(shadow.hvi || []) || [];
       }
 
+      function clearMissionWorkspaceCaches() {
+        const shadow = getOfflineSyncShadow();
+        shadow.missions = [];
+        shadow.missionBriefs = {};
+        shadow.missionDebriefs = {};
+        shadow.dirty = false;
+        shadow.seeded = true;
+        saveOfflineSyncShadow();
+        offlineSyncQueue = [];
+        saveOfflineSyncQueue();
+        allMissions = [];
+        missionDatawellLinks = { workflow: [], missions: {} };
+        saveMissionDatawellLinks(true);
+      }
+
       function applyOfflineShadowWorkspaceToRuntime(shadow) {
         const src = shadow && typeof shadow === "object" ? shadow : getOfflineSyncShadow();
         reindexShadowMissions(src);
@@ -1491,6 +1608,7 @@
             missions: Array.isArray(allMissions) ? allMissions : [],
             blackbook: Array.isArray(allBlackbook) ? allBlackbook : [],
             hvi: Array.isArray(allHvi) ? allHvi : [],
+            contacts: Array.isArray(allContacts) ? allContacts : [],
             blueprints: Array.isArray(blueprintCatalog) ? blueprintCatalog : [],
             books: Array.isArray(booksCatalog) ? booksCatalog : [],
             swissknife_sessions: Array.isArray(swissknifeSessions) ? swissknifeSessions : [],
@@ -1503,6 +1621,14 @@
       function buildBackupFile() {
         const payload = collectAppBackupPayload();
         const text = JSON.stringify(payload, null, 2);
+        const ts = new Date().toISOString().replace(/[:.]/g, "-");
+        const name = `omni-backup-${ts}.json`;
+        const file = new File([text], name, { type: "application/json" });
+        return { file, name, text };
+      }
+
+      function buildBackupFileFromPayload(payload) {
+        const text = JSON.stringify(payload || {}, null, 2);
         const ts = new Date().toISOString().replace(/[:.]/g, "-");
         const name = `omni-backup-${ts}.json`;
         const file = new File([text], name, { type: "application/json" });
@@ -1530,7 +1656,13 @@
 
       async function exportAllDataBackup() {
         try {
-          const { file, name, text } = buildBackupFile();
+          let payload = null;
+          try {
+            payload = await fetchJsonSmart("/api/backup/export");
+          } catch (_) {
+            payload = null;
+          }
+          const { file, name, text } = payload && payload.meta ? buildBackupFileFromPayload(payload) : buildBackupFile();
           await downloadBackupText(file.name || name, text);
           recordSyncCenterEvent("backup_exported", { message: file.name || name });
           if (currentView === "settings") renderSyncCenter();
@@ -1542,7 +1674,13 @@
 
       async function shareAllDataBackup() {
         try {
-          const { file, name, text } = buildBackupFile();
+          let payload = null;
+          try {
+            payload = await fetchJsonSmart("/api/backup/export");
+          } catch (_) {
+            payload = null;
+          }
+          const { file, name, text } = payload && payload.meta ? buildBackupFileFromPayload(payload) : buildBackupFile();
           if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
             await navigator.share({
               title: "OMNI Backup",
@@ -1583,6 +1721,7 @@
         shadow.missions = Array.isArray(snapshot.missions) ? cloneSyncData(snapshot.missions) : [];
         shadow.blackbook = Array.isArray(snapshot.blackbook) ? cloneSyncData(snapshot.blackbook) : [];
         shadow.hvi = Array.isArray(snapshot.hvi) ? cloneSyncData(snapshot.hvi) : [];
+        allContacts = Array.isArray(snapshot.contacts) ? cloneSyncData(snapshot.contacts) : [];
         shadow.seeded = true;
         shadow.dirty = false;
         reindexShadowMissions(shadow);
@@ -1696,16 +1835,31 @@
             themedNotice("Invalid backup JSON.");
             return;
           }
+          const hasSnapshot = parsed && parsed.snapshot && typeof parsed.snapshot === "object";
           const backupLocalStorage = parsed && parsed.local_storage && typeof parsed.local_storage === "object"
             ? parsed.local_storage
             : null;
-          if (!backupLocalStorage) {
+          if (!backupLocalStorage && !hasSnapshot) {
             themedNotice("Backup format not recognized.");
             return;
           }
           if (!(await themedConfirm("Import this backup and replace current OMNI local data?"))) return;
 
           const projectSyncResult = await importProjectBackupToMac(parsed);
+          if (!backupLocalStorage) {
+            const applied = hasSnapshot ? replaceOfflineWorkspaceFromBackupPayload(parsed) : false;
+            let notice = applied ? "Snapshot imported." : "Snapshot import failed.";
+            if (projectSyncResult && projectSyncResult.ok) {
+              const appliedCount = Number(projectSyncResult?.summary?.applied_actions || 0);
+              notice = `Snapshot imported. Mac files synced: ${appliedCount} action(s).`;
+            } else if (projectSyncResult && !projectSyncResult.ok) {
+              notice = `Snapshot imported locally. Mac file sync failed: ${projectSyncResult.error || "Unknown error"}`;
+            }
+            recordSyncCenterEvent("backup_imported", { message: notice });
+            themedNotice(`${notice} Reloading...`);
+            setTimeout(() => window.location.reload(), 450);
+            return;
+          }
           if (projectSyncResult && projectSyncResult.ok) {
             delete backupLocalStorage[OMNI_SYNC_QUEUE_KEY];
             delete backupLocalStorage[OMNI_SYNC_SHADOW_KEY];
@@ -3076,11 +3230,11 @@
         try {
           const text = await buildMissionProbePackText();
           if ("value" in target) target.value = text;
-          else target.textContent = text;
+          else target.innerHTML = renderManualMarkdown(text);
         } catch (e) {
           const fallback = `Full Mission + Probe failed to render.\n\n${String(e?.message || "Unknown error")}`;
           if ("value" in target) target.value = fallback;
-          else target.textContent = fallback;
+          else target.innerHTML = renderManualMarkdown(fallback);
         }
       }
 
@@ -3590,6 +3744,15 @@
         return String(h?.fields?.["Category"] || h?.fields?.["Type"] || "").trim();
       }
 
+      function hviCategoryListFromItem(h) {
+        const raw = hviCategoryFromItem(h);
+        if (!raw) return [];
+        return raw
+          .split(/[,;|/]+/g)
+          .map((x) => String(x || "").trim())
+          .filter(Boolean);
+      }
+
       function hviParametersFromItem(h) {
         return String(h?.fields?.["Parameters"] || "").trim();
       }
@@ -3599,7 +3762,15 @@
         const paramEl = document.getElementById("hvi-filter-param");
         const fromEl = document.getElementById("hvi-filter-date-from");
         const toEl = document.getElementById("hvi-filter-date-to");
-        hviFilterCategory = String(catEl?.value || "").trim().toLowerCase();
+        if (catEl && catEl.selectedOptions) {
+          hviFilterCategory = Array.from(catEl.selectedOptions)
+            .map((opt) => String(opt?.value || "").trim().toLowerCase())
+            .filter((v) => v);
+        } else {
+          hviFilterCategory = String(catEl?.value || "").trim()
+            ? [String(catEl?.value || "").trim().toLowerCase()]
+            : [];
+        }
         hviFilterParam = String(paramEl?.value || "").trim().toLowerCase();
         hviFilterDateFrom = String(fromEl?.value || "").trim();
         hviFilterDateTo = String(toEl?.value || "").trim();
@@ -3607,7 +3778,7 @@
       }
 
       function clearHviFilters() {
-        hviFilterCategory = "";
+        hviFilterCategory = [];
         hviFilterParam = "";
         hviFilterDateFrom = "";
         hviFilterDateTo = "";
@@ -3615,7 +3786,7 @@
         const paramEl = document.getElementById("hvi-filter-param");
         const fromEl = document.getElementById("hvi-filter-date-from");
         const toEl = document.getElementById("hvi-filter-date-to");
-        if (catEl) catEl.value = "";
+        if (catEl) Array.from(catEl.options || []).forEach((opt) => { opt.selected = false; });
         if (paramEl) paramEl.value = "";
         if (fromEl) fromEl.value = "";
         if (toEl) toEl.value = "";
@@ -3911,6 +4082,13 @@
       function splitMissionDatawellNames(raw) {
         const placeholders = new Set([
           "created by me",
+          "datawell entry / account / tag / store / community / source",
+          "datawell entry point",
+          "datawell entry points",
+          "datawell entry",
+          "datawell entrypoint",
+          "collected datawells / targets",
+          "confirmed account / page / tag / location / source",
           "linked datawell name",
           "n a",
           "n/a",
@@ -3932,6 +4110,96 @@
           });
       }
 
+      function extractDatawellHandlesFromText(text) {
+        const out = [];
+        const seen = new Set();
+        const source = String(text || "");
+        let m;
+        const handlePattern = /@([A-Za-z0-9._-]{2,64})/g;
+        while ((m = handlePattern.exec(source)) !== null) {
+          const handle = `@${String(m[1] || "").trim()}`;
+          if (!handle) continue;
+          const key = handle.toLowerCase();
+          if (seen.has(key)) continue;
+          seen.add(key);
+          out.push(handle);
+        }
+        return out;
+      }
+
+      function extractDatawellNamesFromEntryText(text) {
+        const handles = extractDatawellHandlesFromText(text);
+        const tokens = splitMissionDatawellNames(text);
+        const seen = new Set();
+        const out = [];
+        const push = (value) => {
+          const clean = String(value || "").trim();
+          if (!clean) return;
+          const key = clean.toLowerCase();
+          if (seen.has(key)) return;
+          seen.add(key);
+          out.push(clean);
+        };
+        handles.forEach(push);
+        tokens.forEach(push);
+        return out;
+      }
+
+      function normalizeDatawellTag(value) {
+        const raw = String(value || "").trim().toLowerCase();
+        if (!raw) return "";
+        if (raw.includes("entry") && raw.includes("point")) return "entry-point";
+        if (raw.includes("entry") && raw.includes("node")) return "entry-point";
+        if (raw.includes("discovery") && raw.includes("method")) return "discovery-method";
+        if (raw.includes("datawell")) return "datawell";
+        return raw.replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+      }
+
+      function collectDatawellCategoryMapFromSections(sections) {
+        const map = new Map();
+        (Array.isArray(sections) ? sections : []).forEach((section) => {
+          const key = missionSectionKey(section?.title || "");
+          if (!key.includes("datawell")) return;
+          const tag = normalizeDatawellTag(section?.title || "datawell");
+          const blob = [
+            ...(Array.isArray(section?.rows) ? section.rows.map((row) => `${row?.key || ""}: ${row?.value || ""}`) : []),
+            ...(Array.isArray(section?.paragraphs) ? section.paragraphs : []),
+            ...(Array.isArray(section?.bullets) ? section.bullets : []),
+          ].join("\n");
+          extractDatawellHandlesFromText(blob).forEach((handle) => {
+            const token = String(handle || "").trim();
+            if (!token) return;
+            const key = token.toLowerCase();
+            const entry = map.get(key) || { handle: token, tags: new Set() };
+            if (tag) entry.tags.add(tag);
+            map.set(key, entry);
+          });
+        });
+        return map;
+      }
+
+      function collectDatawellNamesFromSections(sections) {
+        const names = [];
+        const seen = new Set();
+        (Array.isArray(sections) ? sections : []).forEach((section) => {
+          const key = missionSectionKey(section?.title || "");
+          if (!key.includes("datawell")) return;
+          const blob = [
+            ...(Array.isArray(section?.rows) ? section.rows.map((row) => `${row?.key || ""}: ${row?.value || ""}`) : []),
+            ...(Array.isArray(section?.paragraphs) ? section.paragraphs : []),
+            ...(Array.isArray(section?.bullets) ? section.bullets : []),
+          ].join("\n");
+          extractDatawellHandlesFromText(blob).forEach((handle) => {
+            const token = String(handle || "").trim();
+            const key = token.toLowerCase();
+            if (!token || seen.has(key)) return;
+            seen.add(key);
+            names.push(token);
+          });
+        });
+        return names;
+      }
+
       function appendMissionDatawellNote(existingNotes, addition) {
         const left = String(existingNotes || "").trim();
         const right = String(addition || "").trim();
@@ -3940,7 +4208,16 @@
         return left.includes(right) ? left : `${left} | ${right}`;
       }
 
-      function upsertDatawellFromMissionBrief(name, relation, meta = {}, profile = null) {
+      function mergeDatawellTags(existing, nextTags = []) {
+        const base = String(existing || "")
+          .split(/[,;|]+/)
+          .map((t) => String(t || "").trim())
+          .filter(Boolean);
+        const merged = [...new Set([...base, ...nextTags.map((t) => String(t || "").trim()).filter(Boolean)])];
+        return merged.join(", ");
+      }
+
+      function upsertDatawellFromMissionBrief(name, relation, meta = {}, profile = null, tags = []) {
         const title = String(name || "").trim();
         if (!title) return { id: "", created: false, updated: false };
         const matchKey = normalizeDatawellMatchKey(title);
@@ -3986,12 +4263,18 @@
             existing.notes = nextNotes;
             changed = true;
           }
+          const mergedTags = mergeDatawellTags(existing.tags, tags);
+          if (mergedTags && mergedTags !== existing.tags) {
+            existing.tags = mergedTags;
+            changed = true;
+          }
           if (changed) {
             existing.updatedAt = new Date().toISOString();
             allDatawells[existingIndex] = normalizeDatawellEntry(existing, existingIndex);
           }
           return { id: existing.id, created: false, updated: changed };
         }
+        const tagString = mergeDatawellTags("mission-brief,auto-linked", tags);
         const created = normalizeDatawellEntry({
           title,
           sourceType: "Mission Brief",
@@ -3999,7 +4282,7 @@
           community,
           painpoints,
           notes: relationNote,
-          tags: "mission-brief,auto-linked",
+          tags: tagString,
         }, allDatawells.length);
         allDatawells.unshift(created);
         return { id: created.id, created: true, updated: true };
@@ -4014,7 +4297,37 @@
         const fieldMap = profile?.fieldMap || {};
         const presentRaw = firstMissionValue(fieldMap["Datawell Present"]);
         const relation = firstMissionValue(fieldMap["Datawell Relation"]);
-        const names = splitMissionDatawellNames(firstMissionValue(fieldMap["Datawell Name"]));
+        let names = splitMissionDatawellNames(firstMissionValue(fieldMap["Datawell Name"]));
+        if (!names.length && Array.isArray(profile?.datawellFromSections) && profile.datawellFromSections.length) {
+          names = profile.datawellFromSections.slice();
+        }
+        if (!names.length && profile?.datawellCategoryMap) {
+          names = Array.from(profile.datawellCategoryMap.values()).map((entry) => entry.handle).filter(Boolean);
+        }
+        if (!names.length) {
+          const entryText = [
+            fieldMap["Starting entry point"],
+            fieldMap["Entry point"],
+            fieldMap["Entry points"],
+            fieldMap["Collected Datawells / targets"],
+            fieldMap["Collected Datawells"],
+            fieldMap["Collected datawells"],
+          ].filter(Boolean).join("\n");
+          const entryNames = extractDatawellNamesFromEntryText(entryText);
+          if (entryNames.length) names = entryNames.slice();
+        }
+        if (!names.length) {
+          const entrySection = findMissionSection(profile?.sections || [], ["Execution Directions Summary", "Execution Directions", "Execution Summary"]);
+          if (entrySection) {
+            const blob = [
+              ...(Array.isArray(entrySection.rows) ? entrySection.rows.map((row) => `${row?.key || ""}: ${row?.value || ""}`) : []),
+              ...(Array.isArray(entrySection.paragraphs) ? entrySection.paragraphs : []),
+              ...(Array.isArray(entrySection.bullets) ? entrySection.bullets : []),
+            ].join("\n");
+            const entryNames = extractDatawellNamesFromEntryText(blob);
+            if (entryNames.length) names = entryNames.slice();
+          }
+        }
         const explicitNo = /^(no|none|n\/a|na)$/i.test(String(presentRaw || "").trim()) && !names.length;
         if (explicitNo) {
           const hadIds = getMissionLinkedDatawellIds(path);
@@ -4030,7 +4343,11 @@
         let updatedCount = 0;
         const linkedIds = [];
         names.forEach((name) => {
-          const result = upsertDatawellFromMissionBrief(name, relation, meta, profile);
+          const tagEntry = profile?.datawellCategoryMap
+            ? profile.datawellCategoryMap.get(String(name || "").trim().toLowerCase())
+            : null;
+          const tags = tagEntry ? Array.from(tagEntry.tags || []) : [];
+          const result = upsertDatawellFromMissionBrief(name, relation, meta, profile, tags);
           if (result.id) linkedIds.push(result.id);
           if (result.created) createdCount += 1;
           else if (result.updated) updatedCount += 1;
@@ -4044,6 +4361,128 @@
           saveMissionDatawellLinks(true);
         }
         return { linkedIds: uniqueIds, created: createdCount, updated: updatedCount, cleared: false };
+      }
+
+      function extractHviHandlesFromText(text) {
+        const out = [];
+        const seen = new Set();
+        const add = (raw) => {
+          let handle = String(raw || "").trim();
+          if (!handle) return;
+          if (!handle.startsWith("@")) handle = `@${handle}`;
+          const key = handle.toLowerCase();
+          if (seen.has(key)) return;
+          seen.add(key);
+          out.push(handle);
+        };
+        const source = String(text || "");
+        let m;
+        const labelPattern = /(?:\bHVI\b|\bHandle\b|\bTarget\b)\s*[:\-]\s*@?([A-Za-z0-9._-]{2,64})/gi;
+        while ((m = labelPattern.exec(source)) !== null) {
+          add(m[1]);
+        }
+        const handlePattern = /@([A-Za-z0-9._-]{2,64})/g;
+        while ((m = handlePattern.exec(source)) !== null) {
+          add(m[1]);
+        }
+        return out.slice(0, 24);
+      }
+
+      function extractHviCategoryMapFromBrief(text) {
+        const lines = String(text || "").replace(/\r\n/g, "\n").split("\n");
+        const map = new Map();
+        let inHviSection = false;
+        let currentCategory = "";
+        const cleanTitle = (value) => String(value || "").replace(/^[#\s\-]+/, "").replace(/[:\-]+$/, "").trim();
+        const isHeaderLine = (value) => /^#{1,6}\s+/.test(value);
+        const isListLine = (value) => /^(\*|-|\d+\.)\s+/.test(value.trim());
+        for (const raw of lines) {
+          const line = String(raw || "").trim();
+          if (!line) continue;
+          if (isHeaderLine(line)) {
+            const title = cleanTitle(line);
+            if (/^HVI\b|High Value/i.test(title)) {
+              inHviSection = true;
+              currentCategory = "";
+              continue;
+            }
+            if (inHviSection) break;
+            continue;
+          }
+          if (!inHviSection && /HVI\s*\(?.*High Value/i.test(line)) {
+            inHviSection = true;
+            currentCategory = "";
+            continue;
+          }
+          if (!inHviSection) continue;
+          if (!isListLine(line) && !line.startsWith("@") && line.length <= 48) {
+            currentCategory = cleanTitle(line);
+            continue;
+          }
+          if (line.startsWith("@") || line.includes("@")) {
+            const handles = extractHviHandlesFromText(line);
+            if (!handles.length) continue;
+            handles.forEach((handle) => {
+              if (!currentCategory) return;
+              const key = handle.toLowerCase();
+              const entry = map.get(key) || { handle, categories: new Set() };
+              entry.categories.add(currentCategory);
+              map.set(key, entry);
+            });
+          }
+        }
+        return map;
+      }
+
+      async function syncHviFromMissionBrief(missionPath, content, options = {}) {
+        const path = String(missionPath || "").trim();
+        const briefText = String(content || "").trim();
+        if (!path || !briefText) return { handles: [], updated: 0 };
+        const meta = missionMetaFromPath(path);
+        const profile = buildMissionProfileData(briefText, "brief", meta);
+        const fieldMap = profile?.fieldMap || {};
+        const datawellPresent = firstMissionValue(fieldMap["Datawell Present"]);
+        const datawellName = firstMissionValue(fieldMap["Datawell Name"]);
+        const datawellRelation = firstMissionValue(fieldMap["Datawell Relation"]);
+        const statusLine = firstMissionValue(fieldMap["Status"]) || "BRIEFED";
+        const missionStage = firstMissionValue(fieldMap["Mission Stage"]) || "BRIEFED";
+        const categoryMap = extractHviCategoryMapFromBrief(briefText);
+        const handles = extractHviHandlesFromText(briefText);
+        if (!handles.length) return { handles: [], updated: 0 };
+        let updated = 0;
+        const createdAt = isoTimestamp();
+        for (const handle of handles) {
+          const existing = allHvi.find((row) => String(row?.handle || "").trim().toLowerCase() === String(handle || "").trim().toLowerCase());
+          const existingCats = hviCategoryListFromItem(existing).map((c) => c.toLowerCase());
+          const mapped = categoryMap.get(String(handle || "").trim().toLowerCase());
+          const mappedCats = mapped ? Array.from(mapped.categories || []) : [];
+          const mergedCats = [...new Set([...existingCats, ...mappedCats].map((c) => String(c || "").trim()).filter(Boolean))];
+          try {
+            const res = await fetch("/api/hvi", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                handle,
+                fields: {
+                  Status: statusLine,
+                  "Mission Stage": missionStage,
+                  Operation: meta?.operation || "",
+                  Mission: meta?.name || "",
+                  "Datawell Present": datawellPresent || "",
+                  "Datawell Name": datawellName || "",
+                  "Datawell Relation": datawellRelation || "",
+                  "Last Brief At": createdAt,
+                  ...(mergedCats.length ? { Category: mergedCats.join(", ") } : {}),
+                },
+              }),
+            });
+            if (res.ok) updated += 1;
+          } catch (_) {}
+        }
+        if (!options?.silent && updated) {
+          themedNotice(`HVI auto-linked: ${updated}`);
+        }
+        return { handles, updated };
       }
 
       function loadDatawells() {
@@ -4102,6 +4541,12 @@
         });
         if (!item.title) {
           themedNotice("Datawell title is required.");
+          return;
+        }
+        const matchKey = normalizeDatawellMatchKey(item.title);
+        const dup = allDatawells.find((row) => normalizeDatawellMatchKey(row?.title || "") === matchKey);
+        if (dup) {
+          themedNotice("Duplicate Datawell detected.");
           return;
         }
         const nowIso = new Date().toISOString();
@@ -4679,7 +5124,15 @@
       function renderSwissknife() {
         const sel = document.getElementById("swissknife-session-select");
         const list = document.getElementById("swissknife-session-list");
-        if (!sel || !list) return;
+        const outputEl = document.getElementById("swissknife-output-dir");
+        if (outputEl && !outputEl.value) {
+          outputEl.value = localStorage.getItem("swissknife_output_dir") || "";
+        }
+        if (!sel || !list) {
+          renderSwissknifeRecentDownloads(Array.isArray(swissknifeSessions) ? swissknifeSessions : []);
+          renderSwissknifeLog();
+          return;
+        }
         ensureViewSortBar("swissknife-sort-slot", "swissknife", list);
         const sessions = sortCollectionForView(
           Array.isArray(swissknifeSessions) ? swissknifeSessions : [],
@@ -4707,6 +5160,9 @@
               <strong>${escapeHtmlAttr(d.shortcode || "N/A")}</strong> |
               ${escapeHtmlAttr(d.owner_username || "unknown")} |
               files: ${Number(d.file_count || 0)}
+              ${d.source ? ` | source: ${escapeHtmlAttr(d.source)}` : ""}
+              ${d.format ? ` | format: ${escapeHtmlAttr(d.format)}` : ""}
+              ${d.quality ? ` | quality: ${escapeHtmlAttr(d.quality)}` : ""}
             </li>
           `).join("") || "<li>No downloads yet.</li>";
           return `
@@ -4724,6 +5180,218 @@
         sel.onchange = () => {
           selectedSwissknifeSession = sel.value || "";
         };
+        renderSwissknifeRecentDownloads(sessions);
+        renderSwissknifeLog();
+      }
+
+      function renderSwissknifeRecentDownloads(sessions) {
+        const host = document.getElementById("swissknife-recent-downloads");
+        if (!host) return;
+        const recent = [];
+        (Array.isArray(sessions) ? sessions : []).forEach((session) => {
+          (Array.isArray(session.downloads) ? session.downloads : []).forEach((d) => {
+            recent.push({ ...d, session });
+          });
+        });
+        recent.sort((a, b) => toSortDateMs(b?.downloaded_at || "") - toSortDateMs(a?.downloaded_at || ""));
+        const rows = recent.slice(0, 6).map((d) => {
+          const label = d?.shortcode || d?.owner_username || d?.url || "Download";
+          const path = d?.download_dir || d?.manifest?.download_dir || "";
+          const openPath = pickSwissknifeFilePath(d);
+          const source = d?.source ? `Source: ${String(d.source).toUpperCase()}` : "";
+          const clickAttr = openPath ? `onclick="openSwissknifePath('${escapeJsString(openPath)}')"` : "";
+          return `
+            <div class="swissknife-recent-card" ${clickAttr} title="${escapeHtmlAttr(openPath || "")}">
+              <div class="swissknife-recent-info">
+                <div class="swissknife-recent-name">${escapeHtmlAttr(label)}</div>
+                <div class="swissknife-recent-path">${escapeHtmlAttr(path || "No download path recorded.")}</div>
+              </div>
+              <div class="swissknife-status-line">${escapeHtmlAttr([d?.downloaded_at || "", source].filter(Boolean).join(" | "))}</div>
+            </div>
+          `;
+        }).join("");
+        host.innerHTML = rows || "Waiting for input...";
+      }
+
+      function pickSwissknifeFilePath(download) {
+        const files = Array.isArray(download?.manifest?.files) ? download.manifest.files : [];
+        const usable = files.filter((f) => !String(f || "").endsWith(".part"));
+        if (!usable.length) return "";
+        const preferred =
+          usable.find((f) => /_h264_2160\.mp4$/i.test(String(f || ""))) ||
+          usable.find((f) => /compat_.*\.mp4$/i.test(String(f || ""))) ||
+          usable.find((f) => /\.(mp4|m4a|mp3|mov|webm)$/i.test(String(f || "")));
+        return String(preferred || usable[0] || "");
+      }
+
+      async function openSwissknifePath(path) {
+        const target = String(path || "").trim();
+        if (!target) return;
+        try {
+          const res = await fetch("/api/system/open", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ path: target, reveal: true }),
+          });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({ error: "Failed to open path." }));
+            throw new Error(err.error || "Failed to open path.");
+          }
+        } catch (e) {
+          logSwissknifeFail("Open path failed.", { path: target, error: e?.message || String(e) });
+          themedNotice("Open path failed: " + e.message);
+        }
+      }
+
+      function switchSwissknifeView(viewId, btn) {
+        const root = document.getElementById("view-swissknife");
+        if (!root) return;
+        const views = root.querySelectorAll(".swissknife-view");
+        views.forEach((el) => el.classList.remove("active"));
+        const target = root.querySelector(`#swissknife-view-${String(viewId || "").trim()}`);
+        if (target) target.classList.add("active");
+        root.querySelectorAll(".swissknife-nav-btn").forEach((el) => el.classList.remove("active"));
+        if (btn && btn.classList) btn.classList.add("active");
+      }
+
+      async function runSwissknifeBatchDownload() {
+        const linksEl = document.getElementById("swissknife-links");
+        const statusEl = document.getElementById("swissknife-batch-status");
+        const sel = document.getElementById("swissknife-session-select");
+        const loginEl = document.getElementById("swissknife-login");
+        const sourceEl = document.getElementById("swissknife-source");
+        const formatEl = document.getElementById("swissknife-format");
+        const qualityEl = document.getElementById("swissknife-quality");
+        const outputEl = document.getElementById("swissknife-output-dir");
+        const h264El = document.getElementById("swissknife-h264");
+        const force4kEl = document.getElementById("swissknife-force-4k");
+        const progressSection = document.getElementById("swissknife-progress-section");
+        const progressBar = document.getElementById("swissknife-progress-bar");
+        const statusLabel = document.getElementById("swissknife-progress-status");
+        const percentLabel = document.getElementById("swissknife-progress-percent");
+        const sessionId = (sel?.value || selectedSwissknifeSession || "").trim();
+        const login = !!(loginEl && loginEl.checked);
+        const source = (sourceEl?.value || "").trim();
+        const format = (formatEl?.value || "").trim();
+        const quality = (qualityEl?.value || "").trim();
+        const output_dir = (outputEl?.value || localStorage.getItem("swissknife_output_dir") || "").trim();
+        const compat_h264 = !!(h264El && h264El.checked);
+        const force_4k = !!(force4kEl && force4kEl.checked);
+        if (outputEl) localStorage.setItem("swissknife_output_dir", output_dir);
+        const raw = String(linksEl?.value || "");
+        const urls = raw.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+        if (!urls.length) {
+          themedNotice("Paste one or more links first.");
+          return;
+        }
+        if (urls.length === 1) {
+          await startSwissknifeAcquisition();
+          return;
+        }
+        const finalizeProgress = () => {
+          setTimeout(() => {
+            if (progressSection) progressSection.style.display = "none";
+            if (progressBar) progressBar.style.width = "0%";
+            if (progressBar) progressBar.classList.remove("indeterminate");
+          }, 600);
+        };
+        const pollJob = async (jobId, onUpdate) => {
+          let finished = false;
+          while (!finished) {
+            const statusRes = await fetch(`/api/swissknife/progress?job_id=${encodeURIComponent(jobId)}`);
+            if (!statusRes.ok) {
+              throw new Error("Failed to read download progress.");
+            }
+            const statusPayload = await statusRes.json().catch(() => ({}));
+            const job = statusPayload?.job || {};
+            onUpdate(job);
+            if (job.status === "complete" || job.status === "failed") {
+              finished = true;
+              return job;
+            }
+            await new Promise((resolve) => setTimeout(resolve, 600));
+          }
+          return {};
+        };
+        let completed = 0;
+        let failed = 0;
+        if (statusEl) statusEl.textContent = `Queue loaded: ${urls.length}`;
+        if (progressSection) progressSection.style.display = "block";
+        if (progressBar) progressBar.style.width = "0%";
+        if (percentLabel) percentLabel.textContent = "0%";
+        if (statusLabel) statusLabel.textContent = "STARTING BATCH...";
+        for (const url of urls) {
+          if (statusEl) statusEl.textContent = `Downloading ${completed + failed + 1}/${urls.length}`;
+          try {
+            if (progressBar) progressBar.classList.add("indeterminate");
+            const res = await fetch("/api/swissknife/download", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                session_id: sessionId,
+                url,
+                login,
+                format,
+                quality,
+                source,
+                output_dir,
+                compat_h264,
+                force_4k,
+                async: true,
+              }),
+            });
+            if (!res.ok) {
+              const err = await res.json().catch(() => ({ error: "Swissknife download failed." }));
+              throw new Error(err.error || "Swissknife download failed.");
+            }
+            const payload = await res.json().catch(() => ({}));
+            const jobId = payload?.job_id;
+            if (!jobId) {
+              throw new Error("Swissknife did not return a job id.");
+            }
+            const job = await pollJob(jobId, (job) => {
+              const stage = String(job.stage || job.status || "DOWNLOADING").toUpperCase();
+              if (statusLabel) statusLabel.textContent = `${stage} (${completed + failed + 1}/${urls.length})`;
+              const pctRaw = Number(job.percent);
+              if (Number.isFinite(pctRaw)) {
+                const clamped = Math.max(0, Math.min(100, pctRaw));
+                if (progressBar) {
+                  progressBar.classList.remove("indeterminate");
+                  progressBar.style.width = `${clamped}%`;
+                }
+                if (percentLabel) percentLabel.textContent = `${job.estimated ? "~" : ""}${Math.round(clamped)}%`;
+              } else {
+                if (progressBar) progressBar.classList.add("indeterminate");
+                if (percentLabel) percentLabel.textContent = "—";
+              }
+            });
+            if (job.status === "failed") {
+              throw new Error(job.error || "Swissknife download failed.");
+            }
+            completed += 1;
+          } catch (e) {
+            failed += 1;
+            if (progressBar) progressBar.classList.remove("indeterminate");
+            logSwissknifeFail("Swissknife batch download failed.", {
+              url,
+              source,
+              format,
+              quality,
+              output_dir,
+              compat_h264,
+              force_4k,
+              error: e?.message || String(e),
+            });
+          }
+        }
+        if (statusEl) statusEl.textContent = `Batch complete. Success: ${completed}, Failed: ${failed}`;
+        if (completed > 0) await fetchData();
+        if (linksEl) linksEl.value = "";
+        if (progressBar) progressBar.classList.remove("indeterminate");
+        if (progressBar) progressBar.style.width = "100%";
+        if (percentLabel) percentLabel.textContent = "100%";
+        if (statusLabel) statusLabel.textContent = "BATCH COMPLETE.";
+        finalizeProgress();
       }
 
       async function deleteSwissknifeSession(sessionId) {
@@ -4749,12 +5417,14 @@
 
       async function createSwissknifeSession() {
         const labelEl = document.getElementById("swissknife-session-label");
+        const sourceEl = document.getElementById("swissknife-source");
         const label = (labelEl?.value || "").trim() || "daily";
+        const source = (sourceEl?.value || "").trim();
         try {
           const res = await fetch("/api/swissknife/session", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ label }),
+            body: JSON.stringify({ label, source }),
           });
           if (!res.ok) {
             const err = await res.json().catch(() => ({ error: "Failed to create Swissknife session." }));
@@ -4769,37 +5439,202 @@
         }
       }
 
-      async function runSwissknifeDownload() {
+      async function runSwissknifeDownload(options = {}) {
         const sel = document.getElementById("swissknife-session-select");
         const urlEl = document.getElementById("swissknife-url");
         const loginEl = document.getElementById("swissknife-login");
+        const sourceEl = document.getElementById("swissknife-source");
+        const formatEl = document.getElementById("swissknife-format");
+        const qualityEl = document.getElementById("swissknife-quality");
+        const outputEl = document.getElementById("swissknife-output-dir");
+        const h264El = document.getElementById("swissknife-h264");
+        const force4kEl = document.getElementById("swissknife-force-4k");
         const sessionId = (sel?.value || selectedSwissknifeSession || "").trim();
-        const url = (urlEl?.value || "").trim();
+        const url = (options.url || urlEl?.value || "").trim();
         const login = !!(loginEl && loginEl.checked);
-        if (!sessionId) {
-          themedNotice("Create/select a session first.");
-          return;
-        }
+        const source = (sourceEl?.value || "").trim();
+        const format = (formatEl?.value || "").trim();
+        const quality = (qualityEl?.value || "").trim();
+        const output_dir = (outputEl?.value || localStorage.getItem("swissknife_output_dir") || "").trim();
+        const compat_h264 = !!(h264El && h264El.checked);
+        const force_4k = !!(force4kEl && force4kEl.checked);
+        if (outputEl) localStorage.setItem("swissknife_output_dir", output_dir);
         if (!url) {
-          themedNotice("Enter an Instagram URL.");
+          themedNotice("Enter a target URL.");
           return;
         }
+        const finalizeProgress = () => {
+          setTimeout(() => {
+            if (progressSection) progressSection.style.display = "none";
+            if (progressBar) progressBar.style.width = "0%";
+            if (progressBar) progressBar.classList.remove("indeterminate");
+          }, 600);
+        };
         try {
           const res = await fetch("/api/swissknife/download", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ session_id: sessionId, url, login }),
+            body: JSON.stringify({ session_id: sessionId, url, login, format, quality, source, output_dir, compat_h264, force_4k }),
           });
           if (!res.ok) {
             const err = await res.json().catch(() => ({ error: "Swissknife download failed." }));
             throw new Error(err.error || "Swissknife download failed.");
           }
-          if (urlEl) urlEl.value = "";
+          if (urlEl && !options.preserveUrl) urlEl.value = "";
           await fetchData();
           closeAllAddPopups();
           themedNotice("Download complete and saved to session.");
         } catch (e) {
+          logSwissknifeFail("Swissknife download failed.", {
+            url,
+            source,
+            format,
+            quality,
+            output_dir,
+            compat_h264,
+            force_4k,
+            error: e?.message || String(e),
+          });
           themedNotice("Download failed: " + e.message);
+        }
+      }
+
+      async function startSwissknifeAcquisition() {
+        const linksEl = document.getElementById("swissknife-links");
+        const sel = document.getElementById("swissknife-session-select");
+        const loginEl = document.getElementById("swissknife-login");
+        const sourceEl = document.getElementById("swissknife-source");
+        const formatEl = document.getElementById("swissknife-format");
+        const qualityEl = document.getElementById("swissknife-quality");
+        const outputEl = document.getElementById("swissknife-output-dir");
+        const h264El = document.getElementById("swissknife-h264");
+        const force4kEl = document.getElementById("swissknife-force-4k");
+        const progressSection = document.getElementById("swissknife-progress-section");
+        const progressBar = document.getElementById("swissknife-progress-bar");
+        const statusLabel = document.getElementById("swissknife-progress-status");
+        const percentLabel = document.getElementById("swissknife-progress-percent");
+        const raw = String(linksEl?.value || "");
+        const urls = raw.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+        const url = urls[0] || "";
+        const sessionId = (sel?.value || selectedSwissknifeSession || "").trim();
+        const login = !!(loginEl && loginEl.checked);
+        const source = (sourceEl?.value || "").trim();
+        const format = (formatEl?.value || "").trim();
+        const quality = (qualityEl?.value || "").trim();
+        const output_dir = (outputEl?.value || localStorage.getItem("swissknife_output_dir") || "").trim();
+        const compat_h264 = !!(h264El && h264El.checked);
+        const force_4k = !!(force4kEl && force4kEl.checked);
+        if (outputEl) localStorage.setItem("swissknife_output_dir", output_dir);
+        if (!url) {
+          themedNotice("Enter a target URL.");
+          return;
+        }
+        if (urls.length > 1) {
+          themedNotice("Multiple links detected. Use RUN BATCH for queues.");
+          return;
+        }
+        if (progressSection) progressSection.style.display = "block";
+        if (progressBar) progressBar.style.width = "0%";
+        if (percentLabel) percentLabel.textContent = "0%";
+        if (statusLabel) statusLabel.textContent = "STARTING DOWNLOAD...";
+        if (progressBar) progressBar.classList.add("indeterminate");
+        try {
+          const res = await fetch("/api/swissknife/download", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              session_id: sessionId,
+              url,
+              login,
+              source,
+              format,
+              quality,
+              output_dir,
+              compat_h264,
+              force_4k,
+              async: true,
+            }),
+          });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({ error: "Swissknife download failed." }));
+            throw new Error(err.error || "Swissknife download failed.");
+          }
+          const payload = await res.json().catch(() => ({}));
+          const jobId = payload?.job_id;
+          if (!jobId) {
+            throw new Error("Swissknife did not return a job id.");
+          }
+          let finished = false;
+          const poll = async () => {
+            if (finished) return;
+            try {
+              const statusRes = await fetch(`/api/swissknife/progress?job_id=${encodeURIComponent(jobId)}`);
+              if (!statusRes.ok) {
+                throw new Error("Failed to read download progress.");
+              }
+              const statusPayload = await statusRes.json().catch(() => ({}));
+              const job = statusPayload?.job || {};
+              const stage = String(job.stage || job.status || "DOWNLOADING").toUpperCase();
+              if (statusLabel) statusLabel.textContent = stage;
+              const pctRaw = Number(job.percent);
+              if (Number.isFinite(pctRaw)) {
+                const clamped = Math.max(0, Math.min(100, pctRaw));
+                if (progressBar) {
+                  progressBar.classList.remove("indeterminate");
+                  progressBar.style.width = `${clamped}%`;
+                }
+                if (percentLabel) percentLabel.textContent = `${job.estimated ? "~" : ""}${Math.round(clamped)}%`;
+              } else {
+                if (progressBar) progressBar.classList.add("indeterminate");
+                if (percentLabel) percentLabel.textContent = "—";
+              }
+              if (job.status === "complete") {
+                finished = true;
+                if (progressBar) {
+                  progressBar.classList.remove("indeterminate");
+                  progressBar.style.width = "100%";
+                }
+                if (percentLabel) percentLabel.textContent = "100%";
+                if (statusLabel) statusLabel.textContent = "COMPLETE.";
+                if (linksEl) linksEl.value = "";
+                await fetchData();
+                closeAllAddPopups();
+                themedNotice("Download complete and saved to session.");
+                finalizeProgress();
+              } else if (job.status === "failed") {
+                finished = true;
+                if (progressBar) progressBar.classList.remove("indeterminate");
+                if (statusLabel) statusLabel.textContent = "FAILED.";
+                const errMsg = job.error || "Swissknife download failed.";
+                themedNotice("Download failed: " + errMsg);
+                logSwissknifeFail("Swissknife download failed.", {
+                  url,
+                  source,
+                  format,
+                  quality,
+                  output_dir,
+                  compat_h264,
+                  force_4k,
+                  error: errMsg,
+                });
+                finalizeProgress();
+              }
+            } catch (e) {
+              finished = true;
+              if (progressBar) progressBar.classList.remove("indeterminate");
+              themedNotice("Download failed: " + e.message);
+              finalizeProgress();
+            }
+          };
+          const interval = setInterval(async () => {
+            await poll();
+            if (finished) clearInterval(interval);
+          }, 600);
+          await poll();
+        } catch (e) {
+          if (progressBar) progressBar.classList.remove("indeterminate");
+          themedNotice("Download failed: " + e.message);
+          finalizeProgress();
         }
       }
 
@@ -4935,6 +5770,91 @@
           "",
           brief || "Mission briefing is empty.",
         ].join("\n");
+      }
+
+      function defaultMissionDebriefTemplate() {
+        return [
+          "# MISSION DEBRIEF FORMAT",
+          "",
+          "## Mission Identity",
+          "- Mission:",
+          "- Operation:",
+          "- Date/Time:",
+          "- Operator:",
+          "",
+          "## Result Summary",
+          "- Outcome:",
+          "- Status:",
+          "- Delta vs expected:",
+          "",
+          "## Measurements",
+          "- Quantitative:",
+          "- Qualitative:",
+          "",
+          "## What Worked",
+          "-",
+          "",
+          "## What Failed",
+          "-",
+          "",
+          "## Root Cause",
+          "-",
+          "",
+          "## Decision",
+          "- Continue / Stop / Pivot:",
+          "- Why:",
+          "",
+          "## Next Probe",
+          "- Next action:",
+          "- Owner:",
+          "- Deadline:",
+        ].join("\n");
+      }
+
+      async function buildMissionDebriefPromptText(briefText, meta = {}) {
+        const template = await readTextForPack("/MissionDebrief.md", "");
+        return [
+          "# Mission Debrief Prompt",
+          "",
+          "Use this prompt only for the mission below. Do not invent data; if a detail is missing, write UNKNOWN.",
+          "",
+          "## Mission Context",
+          "",
+          `Operation: ${String(meta?.operation || "").trim() || "UNKNOWN"}`,
+          `Mission: ${String(meta?.name || "").trim() || "UNKNOWN"}`,
+          `Mission ID: ${String(meta?.mission_id || "").trim() || "UNKNOWN"}`,
+          `Status: ${String(meta?.status || "").trim() || "UNKNOWN"}`,
+          "",
+          "## Mission Brief (Source of Truth)",
+          "",
+          String(briefText || "").trim() || "No brief content provided.",
+          "",
+          "## Debrief Output Template",
+          "",
+          (template && String(template).trim()) ? String(template).trim() : defaultMissionDebriefTemplate(),
+          "",
+          "Return only the completed debrief text.",
+        ].join("\n");
+      }
+
+      async function copyMissionDebriefPromptForMission() {
+        if (missionPopupSection !== "brief") {
+          themedNotice("Open the mission brief to copy a debrief prompt.");
+          return;
+        }
+        const briefText = String(missionEditorBriefContent || "").trim();
+        if (!briefText) {
+          themedNotice("Brief content is empty.");
+          return;
+        }
+        const meta = missionMetaFromPath(missionEditorPath);
+        const text = await buildMissionDebriefPromptText(briefText, meta);
+        try {
+          const result = await copyTextWithFallback(text, "MISSION DEBRIEF PROMPT");
+          themedNotice(result === "manual" ? "Clipboard blocked. Manual copy view opened." : "Mission Debrief prompt copied.");
+        } catch (e) {
+          themedNotice("Copy failed: " + e.message);
+        }
       }
 
       async function buildDatawellDiscoveryPromptText() {
@@ -8141,9 +9061,10 @@
             { id: `rm_${now}_1`, title: "Eat", desc: "Fuel up before starting tasks.", done: false },
             { id: `rm_${now}_2`, title: "Shower", desc: "Reset body and wake up properly.", done: false },
             { id: `rm_${now}_3`, title: "Clean bedroom", desc: "Create a clear, distraction-free environment.", done: false },
-            { id: `rm_${now}_4`, title: "Stretch", desc: "5-10 minutes mobility warm-up.", done: false },
-            { id: `rm_${now}_5`, title: "Gym", desc: "Select a focus and build today's routine list.", done: false },
-            { id: `rm_${now}_6`, title: "Cardio", desc: "Short conditioning block.", done: false },
+            { id: `rm_${now}_4`, title: "Debrief yesterday's Missions", desc: "Log outcomes, learnings, and next probes from yesterday.", done: false },
+            { id: `rm_${now}_5`, title: "Stretch", desc: "5-10 minutes mobility warm-up.", done: false },
+            { id: `rm_${now}_6`, title: "Gym", desc: "Select a focus and build today's routine list.", done: false },
+            { id: `rm_${now}_7`, title: "Cardio", desc: "Short conditioning block.", done: false },
           ],
           night: [
             { id: `rn_${now}_1`, title: "Dinner", desc: "Recovery meal and hydration.", done: false },
@@ -8219,6 +9140,32 @@
         const out = (data && typeof data === "object") ? data : {};
         if (!Array.isArray(out.morning)) out.morning = base.morning;
         if (!Array.isArray(out.night)) out.night = base.night;
+        const normalizeRoutineTitle = (value) => String(value || "").trim().toLowerCase();
+        const ensureRoutineTask = (list, title, desc, afterTitle = "") => {
+          if (!Array.isArray(list)) return;
+          const target = normalizeRoutineTitle(title);
+          if (list.some((item) => normalizeRoutineTitle(item?.title) === target)) return;
+          const entry = {
+            id: `rm_auto_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+            title,
+            desc,
+            done: false,
+          };
+          if (afterTitle) {
+            const afterKey = normalizeRoutineTitle(afterTitle);
+            const idx = list.findIndex((item) => normalizeRoutineTitle(item?.title) === afterKey);
+            if (idx >= 0) list.splice(idx + 1, 0, entry);
+            else list.push(entry);
+            return;
+          }
+          list.push(entry);
+        };
+        ensureRoutineTask(
+          out.morning,
+          "Debrief yesterday's Missions",
+          "Log outcomes, learnings, and next probes from yesterday.",
+          "Clean bedroom"
+        );
         if (!out.catalog || typeof out.catalog !== "object") out.catalog = {};
         for (const section of Object.keys(base.catalog)) {
           if (!Array.isArray(out.catalog[section])) out.catalog[section] = [];
@@ -13590,10 +14537,18 @@
           .filter((section) => !missionSectionIsInstructional(section))
           .sort((a, b) => missionSectionRank(a.title) - missionSectionRank(b.title));
         const fieldMap = collectMissionFieldMap(sections);
+        const datawellFromSections = collectDatawellNamesFromSections(sections);
+        const datawellCategoryMap = collectDatawellCategoryMapFromSections(sections);
         const datawellSummary = missionDatawellSummaryForPath(meta?.path || "");
         if (!fieldMap["Datawell Present"] && datawellSummary.present) fieldMap["Datawell Present"] = datawellSummary.present;
         if (!fieldMap["Datawell Name"] && datawellSummary.names) fieldMap["Datawell Name"] = datawellSummary.names;
         if (!fieldMap["Datawell Relation"] && datawellSummary.relation) fieldMap["Datawell Relation"] = datawellSummary.relation;
+        if (!fieldMap["Datawell Name"] && datawellFromSections.length) {
+          fieldMap["Datawell Name"] = datawellFromSections.join(", ");
+        }
+        if (!fieldMap["Datawell Present"] && datawellFromSections.length) {
+          fieldMap["Datawell Present"] = "YES";
+        }
         const isDebrief = String(kind || "").toLowerCase() === "debrief";
         const summary = isDebrief
           ? firstMissionValue(
@@ -13696,6 +14651,8 @@
           instructionCount: Math.max(0, sections.length - displaySections.length),
           fieldMap,
           highlights: highlightRows,
+          datawellFromSections,
+          datawellCategoryMap,
         };
       }
 
@@ -13760,6 +14717,30 @@
         `;
       }
 
+      function setMissionProfilePage(container, page) {
+        const host = container && typeof container.closest === "function"
+          ? container.closest(".mission-profile-stack")
+          : container;
+        if (!host) return;
+        const count = Math.max(1, Number(host.getAttribute("data-page-count") || 1));
+        const nextPage = Math.min(Math.max(1, Number(page || 1)), count);
+        host.setAttribute("data-page", String(nextPage));
+        const label = host.querySelector(".mission-profile-page-label");
+        if (label) label.textContent = `Page ${nextPage} / ${count}`;
+        const prevBtn = host.querySelector(".mission-profile-page-prev");
+        const nextBtn = host.querySelector(".mission-profile-page-next");
+        if (prevBtn) prevBtn.disabled = nextPage <= 1;
+        if (nextBtn) nextBtn.disabled = nextPage >= count;
+      }
+
+      function advanceMissionProfilePage(btn, delta) {
+        if (!btn) return;
+        const host = btn.closest ? btn.closest(".mission-profile-stack") : null;
+        if (!host) return;
+        const current = Number(host.getAttribute("data-page") || 1);
+        setMissionProfilePage(host, current + Number(delta || 0));
+      }
+
       function buildMissionProfileHtml(text, kind = "brief", meta = {}) {
         const cleanText = String(text || "").trim();
         if (!cleanText) {
@@ -13769,7 +14750,65 @@
         const renderSections = Array.isArray(profile.displaySections) && profile.displaySections.length
           ? profile.displaySections
           : profile.sections;
-        const sectionHtml = renderSections.map((section) => buildMissionProfileSectionHtml(section)).join("");
+        const isBrief = String(profile.kind || "").toLowerCase() === "brief";
+        const checklistIndex = isBrief
+          ? renderSections.findIndex((section) => {
+            const key = missionSectionKey(section?.title || "");
+            if (!key) return false;
+            if (key.includes("execution checklist") || key.includes("execution check list")) return true;
+            return key.includes("immediate") && key.includes("execution") && key.includes("check");
+          })
+          : -1;
+        const shouldSplit = isBrief && checklistIndex >= 0;
+        const briefSections = shouldSplit ? renderSections.slice(0, checklistIndex) : renderSections;
+        const executionSections = shouldSplit ? renderSections.slice(checklistIndex) : [];
+        const missionOutcome = firstMissionValue(
+          profile?.fieldMap?.["Mission outcome"],
+          profile?.fieldMap?.Outcome,
+          profile?.fieldMap?.["Success criteria"],
+          profile?.fieldMap?.["Success condition"]
+        );
+        const outcomeBlock = shouldSplit
+          ? `
+            <section class="mission-dossier-block mission-dossier-block-outcome">
+              <div class="mission-dossier-block-title">Mission Outcome</div>
+              <div class="mission-dossier-block-body">
+                <div class="mission-dossier-row">
+                  <div class="mission-dossier-key">OUTCOME</div>
+                  <div class="mission-dossier-value">${escapeHtmlAttr(missionOutcome || "Not specified yet.")}</div>
+                </div>
+              </div>
+            </section>
+          `
+          : "";
+        const briefSectionHtml = briefSections.map((section) => buildMissionProfileSectionHtml(section)).join("");
+        const executionSectionHtml = executionSections.map((section) => buildMissionProfileSectionHtml(section)).join("");
+        const sectionHtml = shouldSplit
+          ? `
+            <div class="mission-profile-pagination">
+              <button class="submit-btn mission-profile-page-prev" type="button" onclick="advanceMissionProfilePage(this, -1)" disabled>◀ BRIEF</button>
+              <span class="mission-profile-page-label">Page 1 / 2</span>
+              <button class="confirm-btn mission-profile-page-next" type="button" onclick="advanceMissionProfilePage(this, 1)">NEXT ▶ EXECUTION</button>
+            </div>
+            <div class="mission-profile-pages">
+              <div class="mission-profile-page mission-profile-page-1">
+                <div class="mission-profile-sections">
+                  ${briefSectionHtml || `<div class="mission-dossier-empty">No brief sections detected yet.</div>`}
+                </div>
+              </div>
+              <div class="mission-profile-page mission-profile-page-2">
+                <div class="mission-profile-sections">
+                  ${executionSectionHtml || `<div class="mission-dossier-empty">No execution checklist detected yet.</div>`}
+                  ${outcomeBlock}
+                </div>
+              </div>
+            </div>
+          `
+          : `
+            <div class="mission-profile-sections">
+              ${renderSections.map((section) => buildMissionProfileSectionHtml(section)).join("") || `<div class="mission-dossier-empty">No clean final-brief sections detected yet. Paste the brief output rather than the instruction template.</div>`}
+            </div>
+          `;
         const highlightsHtml = profile.highlights.length
           ? `<div class="mission-profile-highlights">
               ${profile.highlights.map((row) => `
@@ -13781,7 +14820,7 @@
             </div>`
           : "";
         return `
-          <div class="mission-profile-stack">
+          <div class="mission-profile-stack" data-page="1" data-page-count="${shouldSplit ? 2 : 1}">
             <div class="mission-profile-hero">
               <div class="mission-profile-kicker">${profile.kind === "debrief" ? "DEBRIEF PROFILE" : "BRIEF PROFILE"} :: OFFLINE STRUCTURED VIEW</div>
               <div class="mission-profile-name">${escapeHtmlAttr(profile.title)}</div>
@@ -13789,9 +14828,7 @@
             </div>
             ${profile.instructionCount ? `<div class="mission-profile-note">Instruction/template sections hidden: ${profile.instructionCount}</div>` : ""}
             ${highlightsHtml}
-            <div class="mission-profile-sections">
-              ${sectionHtml || `<div class="mission-dossier-empty">No clean final-brief sections detected yet. Paste the brief output rather than the instruction template.</div>`}
-            </div>
+            ${sectionHtml}
           </div>
         `;
       }
@@ -14005,6 +15042,7 @@
         if (allow("intel")) {
           allBlackbook.forEach((item) => push("BLACKBOOK", item?.Mission || item?.Probe_ID || "Blackbook", item?.Operation || "", [item?.Description, item?.Notes, item?.Hypothesis].join(" "), { blackbookQuery: item?.Probe_ID || item?.Mission || "" }));
           allHvi.forEach((item) => push("HVI", item?.handle || "Target", item?.category || item?.Status || "", [item?.brief, item?.description, item?.handle].join(" "), { hviQuery: item?.handle || "" }));
+          allContacts.forEach((item) => push("CONTACT", item?.name || "Contact", item?.fields?.Project || item?.fields?.Status || "", Object.entries(item?.fields || {}).flatMap(([k, v]) => [k, v]).join(" "), { contactName: item?.name || "" }));
           allDatawells.forEach((item) => push("DATAWELL", item?.title || "Datawell", item?.sourceType || item?.platform || "", [item?.description, item?.community, item?.painpoints, item?.entryPoints, item?.notes, item?.tags, item?.link].join(" "), { datawellId: item?.id || "" }));
         }
         if (allow("docs")) {
@@ -14099,6 +15137,14 @@
           renderHvi();
           return;
         }
+        if (row.payload?.contactName) {
+          const input = document.getElementById("contacts-search-input");
+          if (input) input.value = row.payload.contactName;
+          contactsSearchQuery = String(row.payload.contactName || "").trim().toLowerCase();
+          switchView("contacts");
+          renderContacts();
+          return;
+        }
         if (row.payload?.datawellId) {
           switchView("datawells");
           openDatawellPopup(row.payload.datawellId);
@@ -14159,6 +15205,8 @@
           const editor = document.getElementById("brief-content");
           if (!missionPath || !editor) return;
           syncMissionBriefDatawells(missionPath, editor.value || "", { silent: true });
+          syncHviFromMissionBrief(missionPath, editor.value || "", { silent: true });
+          syncBlackbookFromMissionBrief(missionPath, editor.value || "", { status: "IN_PROGRESS" }).catch(() => {});
           renderBriefProfilePreview();
         }, Math.max(0, Number(delayMs || 0)));
       }
@@ -14433,6 +15481,7 @@
             throw new Error(err.error || "Failed to save brief phase.");
           }
           syncMissionBriefDatawells(missionPath, editor.value || "", { silent: true });
+          await syncHviFromMissionBrief(missionPath, editor.value || "", { silent: true });
           await syncBlackbookFromMissionBrief(missionPath, editor.value, { status: "IN_PROGRESS" });
           await loadBriefForSelectedMission();
           await fetchData();
@@ -14504,6 +15553,16 @@
           msgEl.innerHTML = '<span style="color:red;">NAME REQUIRED.</span>';
           return;
         }
+        const opName = String(opInput?.value || "").trim();
+        const missionName = String(nameInput.value || "").trim();
+        const dupMission = allMissions.find((m) =>
+          String(m?.operation || "").trim().toLowerCase() === opName.toLowerCase()
+          && String(m?.name || "").trim().toLowerCase() === missionName.toLowerCase()
+        );
+        if (dupMission) {
+          msgEl.innerHTML = '<span style="color:var(--warning-yellow);">DUPLICATE MISSION NAME.</span>';
+          return;
+        }
 
         const briefContent = String(briefInput?.value || "").trim();
         const debriefContent = String(debriefInput?.value || "").trim();
@@ -14543,6 +15602,7 @@
             msgEl.innerHTML = `<span style="color:var(--warning-yellow);">MISSION CREATED. BRIEF WARNING: ${escapeHtmlAttr(err.error || "BRIEF SAVE FAILED.")}</span>`;
           } else {
                 syncMissionBriefDatawells(missionPath, briefContent, { silent: true });
+                await syncHviFromMissionBrief(missionPath, briefContent, { silent: true });
                 try {
                   await syncBlackbookFromMissionBrief(missionPath, briefContent, {
                     status: "IN_PROGRESS",
@@ -14595,6 +15655,12 @@
 
         if (!nameInput.value.trim()) {
           msgEl.innerHTML = '<span style="color:red;">NAME REQUIRED.</span>';
+          return;
+        }
+        const opName = String(nameInput.value || "").trim();
+        const dupOp = allOps.find((op) => String(op || "").trim().toLowerCase() === opName.toLowerCase());
+        if (dupOp) {
+          msgEl.innerHTML = '<span style="color:var(--warning-yellow);">DUPLICATE OPERATION NAME.</span>';
           return;
         }
 
@@ -14978,6 +16044,11 @@
           themedNotice("HVI handle is required.");
           return;
         }
+        const dupHvi = allHvi.find((h) => String(h?.handle || "").trim().toLowerCase() === handle.toLowerCase());
+        if (dupHvi) {
+          themedNotice("Duplicate HVI handle detected.");
+          return;
+        }
         const now = new Date();
         const createdAt = now.toISOString();
         const datawellName = String(datawellNameEl?.value || "").trim();
@@ -15033,6 +16104,342 @@
         } catch (e) {
           themedNotice("Add HVI failed: " + e.message);
         }
+      }
+
+      const CONTACT_FIELD_KEYS = [
+        "Status",
+        "Number",
+        "Email",
+        "Project",
+        "Amount Paid",
+        "Currency",
+        "Booked Date",
+        "Pain Points",
+        "Notes",
+        "Contract Summary",
+        "Rights / Usage",
+        "Royalty Split",
+        "Master Split",
+        "Publishing Split",
+        "Sync Rights",
+        "Mechanical Rights",
+        "Performance Rights",
+        "Credits",
+        "Deliverable Ownership",
+        "Approval Rights",
+        "Payment Terms",
+        "Kill Fee",
+        "Revisions",
+        "Delivery Date",
+        "Governing Law",
+        "Territory",
+        "Term",
+        "Exclusivity",
+        "Moral Rights",
+        "Work Type",
+        "Deliverables",
+      ];
+
+      function contactSlug(name) {
+        return String(name || "")
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9_-]+/g, "-")
+          .replace(/^-+|-+$/g, "") || "contact";
+      }
+
+      function contactFieldId(slug, key) {
+        return `contact-${slug}-${String(key || "").toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+      }
+
+      function contactFieldValue(contact, key) {
+        if (!contact || !contact.fields) return "";
+        return String(contact.fields[key] || "");
+      }
+
+      function contactDateFromItem(contact) {
+        const fields = contact?.fields || {};
+        const raw = fields["Booked Date"] || fields["Created At"] || fields["Date"] || "";
+        if (!raw) return null;
+        const dt = new Date(raw.includes("T") ? raw : `${raw}T00:00:00`);
+        return Number.isNaN(dt.getTime()) ? null : dt;
+      }
+
+      function toggleContactDetails(name) {
+        const slug = contactSlug(name);
+        const panel = document.getElementById(`contact-detail-${slug}`);
+        if (!panel) return;
+        const nextState = panel.style.display === "block" ? "none" : "block";
+        panel.style.display = nextState;
+        if (nextState === "block") {
+          const contact = (Array.isArray(allContacts) ? allContacts : []).find((c) => String(c?.name || "").toLowerCase() === String(name || "").toLowerCase());
+          const invoices = Array.isArray(contact?.invoices) ? contact.invoices : [];
+          if (invoices.length) {
+            setContactInvoicePreview(name, invoices.length - 1);
+          }
+        }
+      }
+
+      function setContactsSearch() {
+        const input = document.getElementById("contacts-search-input");
+        contactsSearchQuery = String(input?.value || "").trim().toLowerCase();
+        renderContacts();
+      }
+
+      async function submitNewContact() {
+        const nameEl = document.getElementById("new-contact-name");
+        const statusEl = document.getElementById("new-contact-status");
+        const numberEl = document.getElementById("new-contact-number");
+        const emailEl = document.getElementById("new-contact-email");
+        const projectEl = document.getElementById("new-contact-project");
+        const paidEl = document.getElementById("new-contact-paid");
+        const currencyEl = document.getElementById("new-contact-currency");
+        const bookedEl = document.getElementById("new-contact-booked");
+        const painEl = document.getElementById("new-contact-painpoints");
+        const notesEl = document.getElementById("new-contact-notes");
+        const contractEl = document.getElementById("new-contact-contract-summary");
+        const rightsEl = document.getElementById("new-contact-rights");
+        const royaltyEl = document.getElementById("new-contact-royalty");
+        const masterEl = document.getElementById("new-contact-master");
+        const publishingEl = document.getElementById("new-contact-publishing");
+        const syncEl = document.getElementById("new-contact-sync");
+        const mechanicalEl = document.getElementById("new-contact-mechanical");
+        const performanceEl = document.getElementById("new-contact-performance");
+        const creditsEl = document.getElementById("new-contact-credits");
+        const ownershipEl = document.getElementById("new-contact-ownership");
+        const approvalEl = document.getElementById("new-contact-approval");
+        const paymentTermsEl = document.getElementById("new-contact-payment-terms");
+        const killFeeEl = document.getElementById("new-contact-kill-fee");
+        const revisionsEl = document.getElementById("new-contact-revisions");
+        const deliveryEl = document.getElementById("new-contact-delivery-date");
+        const lawEl = document.getElementById("new-contact-governing-law");
+        const territoryEl = document.getElementById("new-contact-territory");
+        const termEl = document.getElementById("new-contact-term");
+        const exclusivityEl = document.getElementById("new-contact-exclusivity");
+        const moralEl = document.getElementById("new-contact-moral-rights");
+        const workTypeEl = document.getElementById("new-contact-work-type");
+        const deliverablesEl = document.getElementById("new-contact-deliverables");
+        const name = (nameEl?.value || "").trim();
+        if (!name) {
+          themedNotice("Contact name is required.");
+          return;
+        }
+        const now = new Date();
+        const createdAt = now.toISOString();
+        const fields = {
+          Status: (statusEl?.value || "").trim() || "BOOKED",
+          Number: (numberEl?.value || "").trim(),
+          Email: (emailEl?.value || "").trim(),
+          Project: (projectEl?.value || "").trim(),
+          "Amount Paid": (paidEl?.value || "").trim(),
+          Currency: (currencyEl?.value || "").trim() || "GBP",
+          "Booked Date": (bookedEl?.value || "").trim(),
+          "Pain Points": (painEl?.value || "").trim(),
+          Notes: (notesEl?.value || "").trim(),
+          "Contract Summary": (contractEl?.value || "").trim(),
+          "Rights / Usage": (rightsEl?.value || "").trim(),
+          "Royalty Split": (royaltyEl?.value || "").trim(),
+          "Master Split": (masterEl?.value || "").trim(),
+          "Publishing Split": (publishingEl?.value || "").trim(),
+          "Sync Rights": (syncEl?.value || "").trim(),
+          "Mechanical Rights": (mechanicalEl?.value || "").trim(),
+          "Performance Rights": (performanceEl?.value || "").trim(),
+          Credits: (creditsEl?.value || "").trim(),
+          "Deliverable Ownership": (ownershipEl?.value || "").trim(),
+          "Approval Rights": (approvalEl?.value || "").trim(),
+          "Payment Terms": (paymentTermsEl?.value || "").trim(),
+          "Kill Fee": (killFeeEl?.value || "").trim(),
+          Revisions: (revisionsEl?.value || "").trim(),
+          "Delivery Date": (deliveryEl?.value || "").trim(),
+          "Governing Law": (lawEl?.value || "").trim() || "UK",
+          Territory: (territoryEl?.value || "").trim(),
+          Term: (termEl?.value || "").trim(),
+          Exclusivity: (exclusivityEl?.value || "").trim(),
+          "Moral Rights": (moralEl?.value || "").trim(),
+          "Work Type": (workTypeEl?.value || "").trim(),
+          Deliverables: (deliverablesEl?.value || "").trim(),
+          "Created At": createdAt,
+          Date: createdAt.slice(0, 10),
+          Time: createdAt.slice(11, 16),
+        };
+        try {
+          const res = await fetch("/api/contacts", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name, fields }),
+          });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({ error: "Failed to create contact." }));
+            throw new Error(err.error || "Failed to create contact.");
+          }
+          if (nameEl) nameEl.value = "";
+          if (statusEl) statusEl.value = "";
+          if (numberEl) numberEl.value = "";
+          if (emailEl) emailEl.value = "";
+          if (projectEl) projectEl.value = "";
+          if (paidEl) paidEl.value = "";
+          if (currencyEl) currencyEl.value = "";
+          if (bookedEl) bookedEl.value = "";
+          if (painEl) painEl.value = "";
+          if (notesEl) notesEl.value = "";
+          if (contractEl) contractEl.value = "";
+          if (rightsEl) rightsEl.value = "";
+          if (royaltyEl) royaltyEl.value = "";
+          if (masterEl) masterEl.value = "";
+          if (publishingEl) publishingEl.value = "";
+          if (syncEl) syncEl.value = "";
+          if (mechanicalEl) mechanicalEl.value = "";
+          if (performanceEl) performanceEl.value = "";
+          if (creditsEl) creditsEl.value = "";
+          if (ownershipEl) ownershipEl.value = "";
+          if (approvalEl) approvalEl.value = "";
+          if (paymentTermsEl) paymentTermsEl.value = "";
+          if (killFeeEl) killFeeEl.value = "";
+          if (revisionsEl) revisionsEl.value = "";
+          if (deliveryEl) deliveryEl.value = "";
+          if (lawEl) lawEl.value = "";
+          if (territoryEl) territoryEl.value = "";
+          if (termEl) termEl.value = "";
+          if (exclusivityEl) exclusivityEl.value = "";
+          if (moralEl) moralEl.value = "";
+          if (workTypeEl) workTypeEl.value = "";
+          if (deliverablesEl) deliverablesEl.value = "";
+          closeAllAddPopups();
+          await fetchData();
+          themedNotice("Contact added.");
+        } catch (e) {
+          themedNotice("Add contact failed: " + e.message);
+        }
+      }
+
+      async function deleteContact(name) {
+        if (!(await themedConfirm("Are you sure you want to delete this?"))) return;
+        try {
+          const res = await fetch("/api/contacts", {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name }),
+          });
+          if (res.ok) fetchData();
+        } catch (e) {
+          alert("Delete failed: " + e.message);
+        }
+      }
+
+      async function saveContactFromCard(name) {
+        const slug = contactSlug(name);
+        const fields = {};
+        CONTACT_FIELD_KEYS.forEach((key) => {
+          const el = document.getElementById(contactFieldId(slug, key));
+          fields[key] = String(el?.value || "").trim();
+        });
+        try {
+          const res = await fetch("/api/contacts", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name, fields }),
+          });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({ error: "Failed to save contact." }));
+            throw new Error(err.error || "Failed to save contact.");
+          }
+          await fetchData();
+          themedNotice("Contact updated.");
+        } catch (e) {
+          themedNotice("Contact update failed: " + e.message);
+        }
+      }
+
+      async function uploadContactInvoice(name) {
+        const slug = contactSlug(name);
+        const fileEl = document.getElementById(`contact-${slug}-invoice-file`);
+        const amountEl = document.getElementById(`contact-${slug}-invoice-amount`);
+        const currencyEl = document.getElementById(`contact-${slug}-invoice-currency`);
+        const statusEl = document.getElementById(`contact-${slug}-invoice-status`);
+        const noteEl = document.getElementById(`contact-${slug}-invoice-note`);
+        if (!fileEl || !fileEl.files || !fileEl.files[0]) {
+          themedNotice("Select an invoice file first.");
+          return;
+        }
+        try {
+          const file = fileEl.files[0];
+          const dataUrl = await readFileAsDataUrl(file);
+          const meta = {
+            amount: String(amountEl?.value || "").trim(),
+            currency: String(currencyEl?.value || "").trim(),
+            status: String(statusEl?.value || "").trim(),
+            note: String(noteEl?.value || "").trim(),
+          };
+          const res = await fetch("/api/contacts/invoice", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              name,
+              filename: file.name || "invoice.bin",
+              data_url: dataUrl,
+              meta,
+            }),
+          });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({ error: "Invoice upload failed." }));
+            throw new Error(err.error || "Invoice upload failed.");
+          }
+          if (fileEl) fileEl.value = "";
+          if (amountEl) amountEl.value = "";
+          if (currencyEl) currencyEl.value = "";
+          if (statusEl) statusEl.value = "";
+          if (noteEl) noteEl.value = "";
+          await fetchData();
+          themedNotice("Invoice stored.");
+        } catch (e) {
+          themedNotice("Invoice upload failed: " + e.message);
+        }
+      }
+
+      async function openContactInvoice(path) {
+        const target = String(path || "").trim();
+        if (!target) return;
+        try {
+          const res = await fetch("/api/system/open", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ path: target, reveal: true }),
+          });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({ error: "Failed to open invoice." }));
+            throw new Error(err.error || "Failed to open invoice.");
+          }
+        } catch (e) {
+          themedNotice("Open invoice failed: " + e.message);
+        }
+      }
+
+      function setContactInvoicePreview(name, index) {
+        const slug = contactSlug(name);
+        const host = document.getElementById(`contact-${slug}-invoice-preview`);
+        if (!host) return;
+        const contact = (Array.isArray(allContacts) ? allContacts : []).find((c) => String(c?.name || "").toLowerCase() === String(name || "").toLowerCase());
+        if (!contact || !Array.isArray(contact.invoices)) {
+          host.innerHTML = "";
+          return;
+        }
+        const inv = contact.invoices[Number(index)];
+        host.innerHTML = renderContactInvoicePreview(inv);
+      }
+
+      function renderContactInvoicePreview(invoice) {
+        if (!invoice) return "";
+        const rel = String(invoice.rel_path || "").trim();
+        const mime = String(invoice.mime || "").toLowerCase();
+        const src = rel ? `/${encodeURI(rel)}` : "";
+        if (!src) return "";
+        if (mime.startsWith("image/")) {
+          return `<div class="contact-invoice-preview"><img src="${escapeHtmlAttr(src)}" alt="Invoice preview" /></div>`;
+        }
+        if (mime === "application/pdf" || src.toLowerCase().endsWith(".pdf")) {
+          return `<div class="contact-invoice-preview"><iframe src="${escapeHtmlAttr(src)}"></iframe></div>`;
+        }
+        return "";
       }
 
       async function clearProgressLogs() {
@@ -15116,6 +16523,8 @@
           const missionPath = String(missionEditorPath || "").trim();
           if (!textEl || !missionPath) return;
           syncMissionBriefDatawells(missionPath, textEl.value || "", { silent: true });
+          syncHviFromMissionBrief(missionPath, textEl.value || "", { silent: true });
+          syncBlackbookFromMissionBrief(missionPath, textEl.value || "", { status: "IN_PROGRESS" }).catch(() => {});
           renderMissionIntelPreview();
         }, Math.max(0, Number(delayMs || 0)));
       }
@@ -15164,6 +16573,7 @@
                   </div>
                   <div class="hvi-inline-actions">
                     <button class="submit-btn" type="button" onclick="focusMissionIntelEditor()">EDIT TEXT</button>
+                    ${isDebrief ? "" : `<button class="submit-btn" type="button" onclick="copyMissionDebriefPromptForMission()">COPY DEBRIEF PROMPT</button>`}
                     <button class="confirm-btn" type="button" onclick="toggleMissionIntelSection()" id="intel-mission-toggle">${toggleLabel}</button>
                   </div>
                 </div>
@@ -15211,7 +16621,7 @@
                 ${buildMissionEditorDatawellPanelHtml(meta.path)}
               </div>
             </section>
-            <section class="mission-intel-preview-card">
+            <section class="mission-intel-preview-card" ondblclick="focusMissionIntelEditor()">
               <div class="mission-intel-card-head">
                 <strong>${isDebrief ? "// OFFLINE DEBRIEF PROFILE" : "// OFFLINE BRIEF PROFILE"}</strong>
                 <div class="routine-ex-note">${isDebrief ? "Outcome, measurements, decisions, and next probe render here as you type." : "Mission, objective, target, plan, risks, and next move render here as you type."}</div>
@@ -15414,6 +16824,7 @@
           }
           if (missionEditorMode === "mission" && missionEditorSection === "brief") {
             syncMissionBriefDatawells(missionEditorPath, content, { silent: true });
+            await syncHviFromMissionBrief(missionEditorPath, content, { silent: true });
             await syncBlackbookFromMissionBrief(missionEditorPath, content, { status: "IN_PROGRESS" });
           }
           await fetchData();
@@ -15520,6 +16931,10 @@
         grid.innerHTML = filtered.map(op => {
           const opColor = getOperationColor(op) || "#00ff41";
           const safeColor = escapeHtmlAttr(opColor);
+          const opKey = String(op || "").trim().toLowerCase();
+          const missionCount = Array.isArray(allMissions)
+            ? allMissions.filter((m) => String(m?.operation || "").trim().toLowerCase() === opKey).length
+            : 0;
           return `
           <div
             class="op-card ${manualMode ? "" : "sort-locked"}"
@@ -15548,6 +16963,7 @@
             <button class="op-delete-btn" data-op="${escapeHtmlAttr(op)}" onclick="deleteOperationFromButton(this, event)" title="Delete Operation">X</button>
             <span class="op-icon">📁</span>
             ${op.toUpperCase()}
+            <div class="op-mission-count">${missionCount} MISSION${missionCount === 1 ? "" : "S"}</div>
           </div>
         `}).join("") || "<p>No matching operations.</p>";
       }
@@ -15607,12 +17023,13 @@
         const categorySelect = document.getElementById("hvi-filter-category");
         if (categorySelect) {
           const categories = [...new Set(
-            data.map((h) => hviCategoryFromItem(h)).filter(Boolean)
+            data.flatMap((h) => hviCategoryListFromItem(h)).filter(Boolean)
           )].sort((a, b) => a.localeCompare(b));
-          categorySelect.innerHTML = `<option value="">All Categories</option>${categories.map((c) => `<option value="${escapeHtmlAttr(c)}">${escapeHtmlAttr(c)}</option>`).join("")}`;
-          const selected = (hviFilterCategory || "").trim();
-          const hit = categories.find((c) => c.toLowerCase() === selected);
-          categorySelect.value = hit || "";
+          categorySelect.innerHTML = `${categories.map((c) => `<option value="${escapeHtmlAttr(c)}">${escapeHtmlAttr(c)}</option>`).join("")}`;
+          const selected = Array.isArray(hviFilterCategory) ? hviFilterCategory : [];
+          Array.from(categorySelect.options || []).forEach((opt) => {
+            opt.selected = selected.includes(String(opt.value || "").toLowerCase());
+          });
         }
         if (hviSearchQuery) {
           data = data.filter((h) => {
@@ -15630,8 +17047,11 @@
             return blob.includes(hviSearchQuery);
           });
         }
-        if (hviFilterCategory) {
-          data = data.filter((h) => hviCategoryFromItem(h).toLowerCase() === hviFilterCategory);
+        if (Array.isArray(hviFilterCategory) && hviFilterCategory.length) {
+          data = data.filter((h) => {
+            const tags = hviCategoryListFromItem(h).map((t) => t.toLowerCase());
+            return hviFilterCategory.every((sel) => tags.includes(sel));
+          });
         }
         if (hviFilterParam) {
           data = data.filter((h) => {
@@ -15673,6 +17093,120 @@
             </div>
           </div>
         `).join("") || "<div class='hvi-card'><p>No HVI profiles found.</p></div>";
+      }
+
+      function renderContacts() {
+        const container = document.getElementById("contacts-container");
+        if (!container) return;
+        ensureViewSortBar("contacts-sort-slot", "contacts", container);
+        let data = Array.isArray(allContacts) ? allContacts.slice() : [];
+        if (contactsSearchQuery) {
+          data = data.filter((c) => {
+            const blob = [
+              c.name || "",
+              ...(c.fields && typeof c.fields === "object" ? Object.entries(c.fields).flatMap(([k, v]) => [k, v]) : []),
+            ].join(" ").toLowerCase();
+            return blob.includes(contactsSearchQuery);
+          });
+        }
+        data = sortCollectionForView(
+          data,
+          "contacts",
+          (item) => ({
+            label: String(item?.name || ""),
+            date: contactDateFromItem(item)?.getTime() || 0,
+            progress: 0,
+          })
+        );
+
+        container.innerHTML = data.map((c) => {
+          const name = c?.name || "Unknown";
+          const slug = contactSlug(name);
+          const status = contactFieldValue(c, "Status") || "N/A";
+          const project = contactFieldValue(c, "Project");
+          const paid = contactFieldValue(c, "Amount Paid");
+          const currency = contactFieldValue(c, "Currency") || "GBP";
+          const brief = contactFieldValue(c, "Pain Points") || contactFieldValue(c, "Notes") || "";
+          const invoices = Array.isArray(c.invoices) ? c.invoices : [];
+          const invoiceHtml = invoices.length
+            ? invoices.map((inv, idx) => `
+                <div class="contact-invoice-item">
+                  <div>
+                    <strong>${escapeHtmlAttr(inv.file_name || "Invoice")}</strong>
+                    <div style="color:var(--term-dim);">${escapeHtmlAttr([inv.amount, inv.currency].filter(Boolean).join(" "))} ${escapeHtmlAttr(inv.status || "")}</div>
+                  </div>
+                  <div style="display:flex; gap:6px;">
+                    <button class="submit-btn" type="button" onclick="setContactInvoicePreview('${escapeJsString(name)}', ${idx})">PREVIEW</button>
+                    <button class="submit-btn" type="button" onclick="openContactInvoice('${escapeJsString(inv.path || "")}')">OPEN</button>
+                  </div>
+                </div>
+              `).join("")
+            : `<div class="hvi-meta">No invoices stored yet.</div>`;
+          return `
+            <div class="hvi-card hvi-summary-row" title="Click to expand">
+              <button class="x-btn hvi-row-delete" onclick="event.stopPropagation(); deleteContact('${escapeJsString(name)}')" title="Delete Contact">X</button>
+              <div class="hvi-summary-main" onclick="toggleContactDetails('${escapeJsString(name)}')">
+                <div class="hvi-summary-text">
+                  <div class="hvi-summary-name">${escapeHtmlAttr(name)}</div>
+                  <div class="hvi-summary-brief">${escapeHtmlAttr([status, project, paid ? `${paid} ${currency}` : ""].filter(Boolean).join(" · "))}</div>
+                  ${brief ? `<div class="hvi-summary-brief">${escapeHtmlAttr(brief)}</div>` : ""}
+                </div>
+              </div>
+              <div class="contact-detail-panel" id="contact-detail-${slug}">
+                <div class="contact-detail-grid">
+                  ${CONTACT_FIELD_KEYS.map((key) => {
+                    const value = contactFieldValue(c, key);
+                    const id = contactFieldId(slug, key);
+                    const isTextArea = ["Pain Points", "Notes", "Contract Summary", "Rights / Usage"].includes(key);
+                    return `
+                      <div class="form-group">
+                        <label>${escapeHtmlAttr(key)}</label>
+                        ${isTextArea
+                          ? `<textarea id="${id}" class="search-input" rows="2">${escapeHtmlAttr(value)}</textarea>`
+                          : `<input id="${id}" class="search-input" type="text" value="${escapeHtmlAttr(value)}" />`}
+                      </div>
+                    `;
+                  }).join("")}
+                </div>
+                <div class="form-group">
+                  <label>Invoices</label>
+                  <div class="contact-invoice-list">${invoiceHtml}</div>
+                  <div id="contact-${slug}-invoice-preview"></div>
+                </div>
+                <div class="form-group">
+                  <label>Attach Invoice</label>
+                  <div class="contact-detail-grid">
+                    <div class="form-group">
+                      <label>File</label>
+                      <input id="contact-${slug}-invoice-file" class="search-input" type="file" />
+                    </div>
+                    <div class="form-group">
+                      <label>Amount</label>
+                      <input id="contact-${slug}-invoice-amount" class="search-input" type="text" placeholder="Amount" />
+                    </div>
+                    <div class="form-group">
+                      <label>Currency</label>
+                      <input id="contact-${slug}-invoice-currency" class="search-input" type="text" placeholder="GBP" />
+                    </div>
+                    <div class="form-group">
+                      <label>Status</label>
+                      <input id="contact-${slug}-invoice-status" class="search-input" type="text" placeholder="Sent / Paid / Due" />
+                    </div>
+                    <div class="form-group">
+                      <label>Note</label>
+                      <input id="contact-${slug}-invoice-note" class="search-input" type="text" placeholder="Optional note" />
+                    </div>
+                  </div>
+                  <div style="display:flex; gap:8px; margin-top:8px;">
+                    <button class="submit-btn" type="button" onclick="uploadContactInvoice('${escapeJsString(name)}')">UPLOAD INVOICE</button>
+                    <button class="confirm-btn" type="button" onclick="saveContactFromCard('${escapeJsString(name)}')">SAVE CONTACT</button>
+                    <button class="submit-btn" type="button" onclick="toggleContactDetails('${escapeJsString(name)}')">CLOSE</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          `;
+        }).join("") || "<div class='hvi-card'><p>No contacts found.</p></div>";
       }
 
       function operationalDayKey(now = new Date()) {
@@ -17282,6 +18816,7 @@
             missionsData,
             blackbookData,
             hviData,
+            contactsData,
             blueprintsData,
             manuelsData,
             swissknifeData,
@@ -17290,6 +18825,7 @@
             fetchJsonSmart("/api/missions"),
             fetchJsonSmart("/api/blackbook"),
             fetchJsonSmart("/api/hvi"),
+            fetchJsonSmart("/api/contacts"),
             needsBlueprints ? fetchJsonSmart("/api/blueprints") : Promise.resolve(null),
             needsBooks ? fetchJsonSmart("/api/manuels") : Promise.resolve(null),
             needsSwissknife ? fetchJsonSmart("/api/swissknife/sessions") : Promise.resolve(null),
@@ -17306,6 +18842,9 @@
             allMissions = missionsData;
             const missionCount = document.getElementById("mission-count-dash");
             if (missionCount) missionCount.innerText = String(missionsData.length);
+            if (!missionsData.length) {
+              clearMissionWorkspaceCaches();
+            }
           }
 
           if (Array.isArray(blackbookData)) {
@@ -17316,6 +18855,12 @@
             allHvi = hviData;
             const hviCount = document.getElementById("hvi-count");
             if (hviCount) hviCount.innerText = String(hviData.length);
+          }
+
+          if (Array.isArray(contactsData)) {
+            allContacts = contactsData;
+            const contactCount = document.getElementById("contact-count");
+            if (contactCount) contactCount.innerText = String(contactsData.length);
           }
 
           if (Array.isArray(blueprintsData)) {
@@ -17342,6 +18887,8 @@
             renderBlackbook();
           } else if (currentView === "hvi-intel") {
             renderHvi();
+          } else if (currentView === "contacts") {
+            renderContacts();
           } else if (currentView === "blueprints") {
             renderBlueprints();
           } else if (currentView === "books") {
@@ -17413,6 +18960,7 @@
         loadNotificationSettings();
         loadPerformanceSettings();
         loadPrivacySettings();
+        loadSwissknifeFailLog();
         initMobileMenuGestures();
         initLiveDevReload();
         refreshRuntimeModeState().catch(() => {});
@@ -17422,6 +18970,7 @@
         refreshHviTimeMeta();
         setInterval(refreshHviTimeMeta, 60000);
         initNavHoverDescriptions();
+        refreshAppBuildLabels();
         const missionOverlay = document.getElementById("mission-editor-overlay");
         if (missionOverlay) {
           missionOverlay.addEventListener("click", (e) => {

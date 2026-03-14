@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import json
+import base64
 import os
 import re
 import shutil
@@ -9,11 +10,13 @@ import ipaddress
 import shlex
 import subprocess
 import uuid
+import sys
 from threading import Lock, Thread
 from collections import deque
-from datetime import datetime
+from datetime import datetime, timezone
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from typing import Any, Dict
 from urllib.parse import parse_qs, urlparse
 
 RUNTIME_VARIANT = os.environ.get("OMNI_RUNTIME_VARIANT", "").strip().lower()
@@ -29,6 +32,9 @@ BLACKBOOK_FILE = WORKSPACE / "blackbook.crm"
 BLACKBOOK_MD_FILE = WORKSPACE / "OperationDir" / "BLACK_BOOK.md"
 BLACKBOOK_JSON_FILE = WORKSPACE / "blackbook_entries.json"
 HVI_INDEX_FILE = WORKSPACE / "OperationDir" / "HVI_INDEX.md"
+CONTACTS_INDEX_FILE = WORKSPACE / "OperationDir" / "CONTACTS_INDEX.json"
+CONTACTS_DIR = WORKSPACE / "OperationDir" / "Contacts"
+CONTACTS_INVOICE_DIR = CONTACTS_DIR / "Invoices"
 MANUEL_DIR = WORKSPACE / "OperationDir" / "Manuel"
 TEMPLATES_DIR = WORKSPACE / "OperationDir" / "Templates"
 EDITABLE_DOC_FILES = {
@@ -96,6 +102,9 @@ _IPHONE_LIVE_META = {
     "last_error": "",
     "last_summary": "",
 }
+SWISSKNIFE_JOBS = {}
+SWISSKNIFE_JOBS_LOCK = Lock()
+SWISSKNIFE_JOB_TTL_SEC = 60 * 60
 
 
 def _command_env():
@@ -115,6 +124,34 @@ def _command_env():
             path_parts.append(part)
     env["PATH"] = os.pathsep.join(path_parts)
     return env
+
+
+def _swissknife_job_cleanup(now_ts: float) -> None:
+    with SWISSKNIFE_JOBS_LOCK:
+        stale = [job_id for job_id, job in SWISSKNIFE_JOBS.items() if now_ts - job.get("updated_ts", now_ts) > SWISSKNIFE_JOB_TTL_SEC]
+        for job_id in stale:
+            SWISSKNIFE_JOBS.pop(job_id, None)
+
+
+def _swissknife_job_update(job_id: str, **fields: Any) -> None:
+    now_ts = time.time()
+    _swissknife_job_cleanup(now_ts)
+    with SWISSKNIFE_JOBS_LOCK:
+        job = SWISSKNIFE_JOBS.get(job_id, {"id": job_id})
+        job.update(fields)
+        job["updated_ts"] = now_ts
+        if "created_ts" not in job:
+            job["created_ts"] = now_ts
+        job["updated_at"] = datetime.fromtimestamp(job["updated_ts"]).isoformat(timespec="seconds")
+        if "created_at" not in job:
+            job["created_at"] = datetime.fromtimestamp(job["created_ts"]).isoformat(timespec="seconds")
+        SWISSKNIFE_JOBS[job_id] = job
+
+
+def _swissknife_job_get(job_id: str) -> Dict[str, Any]:
+    _swissknife_job_cleanup(time.time())
+    with SWISSKNIFE_JOBS_LOCK:
+        return dict(SWISSKNIFE_JOBS.get(job_id, {}))
 
 
 def _project_has_ios_live_support() -> bool:
@@ -656,6 +693,28 @@ def _apply_backup_snapshot(snapshot, summary):
         if handle:
             upsert_hvi(handle, fields)
             summary["hvi"] += 1
+    contacts_rows = snapshot.get("contacts", []) if isinstance(snapshot.get("contacts", []), list) else []
+    if contacts_rows:
+        save_contacts(contacts_rows)
+        summary["contacts"] += len(contacts_rows)
+    invoice_files = snapshot.get("invoice_files", []) if isinstance(snapshot.get("invoice_files", []), list) else []
+    if invoice_files:
+        for item in invoice_files:
+            if not isinstance(item, dict):
+                continue
+            rel_path = str(item.get("rel_path", "")).strip().lstrip("/")
+            data_b64 = str(item.get("data_base64", "")).strip()
+            if not rel_path or not data_b64:
+                continue
+            dest = (WORKSPACE / rel_path).resolve()
+            if not str(dest).startswith(str(WORKSPACE.resolve())):
+                continue
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                dest.write_bytes(base64.b64decode(data_b64))
+                summary["invoices"] += 1
+            except Exception:
+                continue
 
 
 def _extract_sync_queue_from_backup(payload):
@@ -682,6 +741,8 @@ def import_backup_payload_to_workspace(payload):
         "missions": 0,
         "blackbook": 0,
         "hvi": 0,
+        "contacts": 0,
+        "invoices": 0,
         "docs": 0,
     }
     errors = []
@@ -718,6 +779,31 @@ def import_backup_payload_to_workspace(payload):
 
 
 def export_workspace_backup_payload():
+    contacts = load_contacts()
+    invoice_files = []
+    for contact in contacts:
+        if not isinstance(contact, dict):
+            continue
+        for inv in contact.get("invoices", []) if isinstance(contact.get("invoices", []), list) else []:
+            if not isinstance(inv, dict):
+                continue
+            rel_path = str(inv.get("rel_path", "")).strip().lstrip("/")
+            path = Path(str(inv.get("path", "")).strip())
+            if (not path.exists()) and rel_path:
+                path = (WORKSPACE / rel_path).resolve()
+            if not path.exists() or not path.is_file():
+                continue
+            try:
+                data_b64 = base64.b64encode(path.read_bytes()).decode("ascii")
+            except Exception:
+                continue
+            invoice_files.append({
+                "rel_path": rel_path or str(path.relative_to(WORKSPACE)) if str(path).startswith(str(WORKSPACE)) else path.name,
+                "file_name": str(inv.get("file_name", "")).strip() or path.name,
+                "mime": str(inv.get("mime", "")).strip(),
+                "data_base64": data_b64,
+                "contact": str(contact.get("name", "")).strip(),
+            })
     return {
         "meta": {
             "app": "OMNI",
@@ -730,9 +816,11 @@ def export_workspace_backup_payload():
             "missions": load_missions(),
             "blackbook": load_blackbook(),
             "hvi": load_hvi(),
+            "contacts": contacts,
             "blueprints": load_blueprints(),
             "books": load_books(),
             "swissknife_sessions": swissknife_list_sessions(),
+            "invoice_files": invoice_files,
         },
         "sync_queue": [],
         "local_storage": {},
@@ -1408,7 +1496,24 @@ def save_mission_brief_version(mission_path_str: str, phase: int, content: str, 
     idx.setdefault("versions", []).append(version)
     _save_brief_index(mission_path, idx)
     update_mission_status(str(mission_path), "IN_PROGRESS")
-    return version
+    operation, mission = _mission_identity_from_path(mission_path)
+    status_line = _extract_line_value(content, [
+        r"^\s*HVI\s*Status\s*[:\-]\s*(.+)$",
+        r"^\s*Status\s*[:\-]\s*(.+)$",
+    ]) or "BRIEFED"
+    handles = _extract_hvi_handles_from_text(content)
+    updated_handles = []
+    for handle in handles:
+        h = upsert_hvi(handle, {
+            "Status": status_line,
+            "Mission Stage": "BRIEFED",
+            "Operation": operation,
+            "Mission": mission,
+            "Last Brief At": datetime.now().isoformat(timespec="seconds"),
+        })
+        if h:
+            updated_handles.append(h)
+    return {"version": version, "hvi_updated": updated_handles}
 
 
 def load_blackbook():
@@ -1664,6 +1769,161 @@ def delete_hvi(handle: str) -> bool:
     return True
 
 
+def _normalize_contact_fields(fields):
+    out = {}
+    if not isinstance(fields, dict):
+        return out
+    for k, v in fields.items():
+        key = str(k or "").strip()
+        if not key:
+            continue
+        val = str(v or "").strip()
+        out[key] = val
+    return out
+
+
+def _contact_slug(name: str) -> str:
+    slug = re.sub(r"[^a-zA-Z0-9_-]+", "_", str(name or "").strip())
+    slug = slug.strip("_")
+    return slug or "contact"
+
+
+def load_contacts():
+    if not CONTACTS_INDEX_FILE.exists():
+        return []
+    try:
+        raw = json.loads(CONTACTS_INDEX_FILE.read_text(encoding="utf-8", errors="ignore"))
+    except Exception:
+        return []
+    rows = raw.get("contacts") if isinstance(raw, dict) else raw
+    if not isinstance(rows, list):
+        return []
+    out = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        name = str(row.get("name", "")).strip()
+        if not name:
+            continue
+        fields = _normalize_contact_fields(row.get("fields", {}))
+        invoices = row.get("invoices") if isinstance(row.get("invoices"), list) else []
+        out.append({
+            "name": name,
+            "fields": fields,
+            "invoices": invoices,
+        })
+    return out
+
+
+def save_contacts(rows):
+    rows = rows if isinstance(rows, list) else []
+    CONTACTS_INDEX_FILE.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "updated_at": datetime.now().isoformat(timespec="seconds"),
+        "contacts": rows,
+    }
+    CONTACTS_INDEX_FILE.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+
+def upsert_contact(name: str, fields: dict):
+    name = str(name or "").strip()
+    if not name:
+        return None
+    rows = load_contacts()
+    merged_fields = _normalize_contact_fields(fields)
+    hit = None
+    for i, row in enumerate(rows):
+        if str(row.get("name", "")).strip().lower() == name.lower():
+            hit = i
+            break
+    if hit is None:
+        base_fields = {
+            "Status": merged_fields.get("Status", "N/A"),
+            "Project": merged_fields.get("Project", ""),
+            "Amount Paid": merged_fields.get("Amount Paid", ""),
+            "Currency": merged_fields.get("Currency", "GBP"),
+        }
+        base_fields.update(merged_fields)
+        rows.append({
+            "name": name,
+            "fields": base_fields,
+            "invoices": [],
+        })
+    else:
+        row = rows[hit]
+        cur_fields = _normalize_contact_fields(row.get("fields", {}))
+        cur_fields.update(merged_fields)
+        rows[hit] = {
+            **row,
+            "name": row.get("name", name),
+            "fields": cur_fields,
+        }
+    save_contacts(rows)
+    return name
+
+
+def delete_contact(name: str) -> bool:
+    name = str(name or "").strip()
+    if not name:
+        return False
+    rows = load_contacts()
+    new_rows = [r for r in rows if str(r.get("name", "")).strip().lower() != name.lower()]
+    if len(new_rows) == len(rows):
+        return False
+    save_contacts(new_rows)
+    return True
+
+
+def attach_contact_invoice(name: str, filename: str, data_url: str, meta: dict):
+    name = str(name or "").strip()
+    if not name:
+        raise RuntimeError("Contact name is required")
+    data_url = str(data_url or "")
+    if ";base64," not in data_url:
+        raise RuntimeError("Invalid invoice payload")
+    header, b64 = data_url.split(";base64,", 1)
+    mime = header.replace("data:", "").strip() if header else ""
+    raw = base64.b64decode(b64)
+    safe_name = Path(filename or "").name or f"invoice_{int(time.time())}.bin"
+    slug = _contact_slug(name)
+    dest_dir = CONTACTS_INVOICE_DIR / slug
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest_path = dest_dir / safe_name
+    dest_path.write_bytes(raw)
+
+    rows = load_contacts()
+    hit = None
+    for i, row in enumerate(rows):
+        if str(row.get("name", "")).strip().lower() == name.lower():
+            hit = i
+            break
+    if hit is None:
+        upsert_contact(name, {})
+        rows = load_contacts()
+        for i, row in enumerate(rows):
+            if str(row.get("name", "")).strip().lower() == name.lower():
+                hit = i
+                break
+    if hit is None:
+        raise RuntimeError("Contact not found")
+    rel_path = str(dest_path.relative_to(WORKSPACE)) if str(dest_path).startswith(str(WORKSPACE)) else str(dest_path.name)
+    invoice = {
+        "file_name": dest_path.name,
+        "path": str(dest_path.resolve()),
+        "rel_path": rel_path,
+        "uploaded_at": datetime.now().isoformat(timespec="seconds"),
+        "size": len(raw),
+        "mime": mime,
+        "amount": str((meta or {}).get("amount", "")).strip(),
+        "currency": str((meta or {}).get("currency", "")).strip(),
+        "status": str((meta or {}).get("status", "")).strip(),
+        "note": str((meta or {}).get("note", "")).strip(),
+    }
+    rows[hit].setdefault("invoices", []).append(invoice)
+    save_contacts(rows)
+    return invoice
+
+
 def _validate_doc_file(name: str):
     key = str(name or "").replace("\\", "/").lstrip("/").strip()
     if key not in EDITABLE_DOC_FILES:
@@ -1751,13 +2011,33 @@ def swissknife_list_sessions():
     return rows
 
 
-def swissknife_create_session(label: str):
+def _get_or_create_default_swissknife_session(source: str = ""):
+    source = str(source or "").strip().lower() or "instagram"
+    rows = _load_swissknife_sessions()
+    for row in rows:
+        if row.get("label") == "default" and row.get("source") == source:
+            return row
+    row = swissknife_create_session("default", source)
+    row["auto"] = True
+    rows = _load_swissknife_sessions()
+    for i, existing in enumerate(rows):
+        if existing.get("id") == row.get("id"):
+            rows[i] = row
+            break
+    _save_swissknife_sessions(rows)
+    return row
+
+
+def swissknife_create_session(label: str, source: str = ""):
     label = str(label or "").strip() or "daily"
+    source = str(source or "").strip().lower()
     session_id = _swissknife_session_id(label)
     day = datetime.now().strftime("%Y-%m-%d")
-    remote_path = f"{SWISSKNIFE_VM_BASE}/{day}/{session_id}"
-    cmd = f"mkdir -p {shlex.quote(remote_path)} && echo OK"
-    _run_vm_command(cmd, timeout_sec=60)
+    if source == "ytdlp":
+        remote_path = str((WORKSPACE / "swissknife_ytdlp" / session_id).resolve())
+    else:
+        remote_path = str((WORKSPACE / "swissknife_instagram" / session_id).resolve())
+    Path(remote_path).mkdir(parents=True, exist_ok=True)
     rows = _load_swissknife_sessions()
     row = {
         "id": session_id,
@@ -1766,80 +2046,418 @@ def swissknife_create_session(label: str):
         "created_at": datetime.now().isoformat(timespec="seconds"),
         "remote_path": remote_path,
         "downloads": [],
+        "source": source or "instagram",
     }
     rows.append(row)
     _save_swissknife_sessions(rows)
     return row
 
 
-def swissknife_download_to_session(session_id: str, url: str, do_login: bool):
+def _ytdlp_quality_height(quality: str) -> str:
+    q = str(quality or "").strip().lower()
+    if q == "4k":
+        return "2160"
+    if q == "high":
+        return "1080"
+    if q == "medium":
+        return "720"
+    if q == "low":
+        return "480"
+    return ""
+
+
+def _ytdlp_audio_quality(quality: str) -> str:
+    q = str(quality or "").strip().lower()
+    if q == "high":
+        return "1"
+    if q == "medium":
+        return "5"
+    if q == "low":
+        return "9"
+    return "0"
+
+
+def _ffprobe_video_info(path: Path) -> Dict[str, Any]:
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-select_streams",
+                "v:0",
+                "-show_entries",
+                "stream=codec_name,width,height",
+                "-of",
+                "json",
+                str(path),
+            ],
+            text=True,
+            capture_output=True,
+            timeout=15,
+        )
+        data = json.loads(result.stdout or "{}")
+        streams = data.get("streams") if isinstance(data, dict) else []
+        if isinstance(streams, list) and streams:
+            return streams[0] if isinstance(streams[0], dict) else {}
+    except Exception:
+        pass
+    return {}
+
+
+def _pick_video_file(files: List[str], out_dir: Path) -> Path:
+    usable = [Path(p) for p in files if p and not str(p).endswith(".part")]
+    usable = [p for p in usable if p.exists()]
+    if usable:
+        usable.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+        return usable[0]
+    candidates = sorted(out_dir.glob("*"), key=lambda p: p.stat().st_mtime, reverse=True)
+    for cand in candidates:
+        if cand.is_file() and not cand.name.endswith(".part"):
+            return cand
+    raise RuntimeError("No video file found to transcode.")
+
+
+def _transcode_h264_4k(src: Path, dest: Path) -> None:
+    cmd = [
+        "ffmpeg",
+        "-y",
+        "-i",
+        str(src),
+        "-c:v",
+        "libx264",
+        "-preset",
+        "medium",
+        "-crf",
+        "18",
+        "-vf",
+        "scale=-2:2160",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "192k",
+        "-movflags",
+        "+faststart",
+        str(dest),
+    ]
+    subprocess.run(cmd, check=True)
+
+
+def _parse_ytdlp_progress_line(line: str) -> Dict[str, Any]:
+    if not line.startswith("download:"):
+        return {}
+    keys = ("downloaded_bytes", "total_bytes", "total_bytes_estimate", "eta", "speed")
+    data = {}
+    for key in keys:
+        match = re.search(rf"{key}:(\S+)", line)
+        if match:
+            data[key] = match.group(1)
+    return data
+
+
+def _ytdlp_stage_from_line(line: str) -> str:
+    low = line.lower()
+    if "downloading webpage" in low or "downloading api json" in low:
+        return "Fetching metadata"
+    if "extracting" in low or "parsing" in low:
+        return "Preparing"
+    if "downloading video info" in low or "format" in low and "available" in low:
+        return "Analyzing streams"
+    if "merging formats" in low:
+        return "Merging formats"
+    if "fixing" in low or "deleting original file" in low:
+        return "Finalizing"
+    return ""
+
+
+def _map_download_percent(raw_percent: float) -> float:
+    raw = max(0.0, min(100.0, float(raw_percent)))
+    return 20.0 + (raw * 0.70)
+
+
+def _run_ytdlp_download(
+    out_dir: Path,
+    url: str,
+    format_hint: str,
+    quality_hint: str,
+    compat_h264: bool = False,
+    force_4k: bool = False,
+    progress_cb=None,
+) -> Dict[str, Any]:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    before = {p.name for p in out_dir.glob("*")}
+    fmt = str(format_hint or "original").strip().lower()
+    quality = str(quality_hint or "").strip().lower()
+    height = _ytdlp_quality_height(quality)
+    if force_4k:
+        height = "2160"
+    audio_q = _ytdlp_audio_quality(quality)
+    venv_py = Path("/Users/samuelapata/Library/Application Support/OMNI/venv_ytdlp/bin/python")
+    venv_bin = venv_py.parent
+    venv_root = venv_bin.parent
+    if venv_py.exists():
+        cmd = [str(venv_py), "-m", "yt_dlp"]
+    else:
+        ytdlp_bin = shutil.which("yt-dlp") or "/opt/homebrew/bin/yt-dlp"
+        cmd = [ytdlp_bin]
+    cmd += [
+        "--no-warnings",
+        "--no-playlist",
+        *(['--force-overwrites'] if compat_h264 else []),
+        "--output",
+        str(out_dir / "%(upload_date)s_%(id)s.%(ext)s"),
+    ]
+    if fmt == "mp3":
+        cmd += ["-x", "--audio-format", "mp3", "--audio-quality", audio_q]
+    elif fmt == "m4a":
+        cmd += ["-x", "--audio-format", "m4a", "--audio-quality", audio_q]
+    elif fmt == "mp4":
+        if force_4k and compat_h264:
+            cmd += ["-f", "bestvideo[height=2160]+bestaudio/best", "--merge-output-format", "mp4"]
+        elif compat_h264:
+            if height:
+                cmd += ["-f", f"bestvideo[vcodec^=avc][height<={height}][ext=mp4]+bestaudio[ext=m4a]/bestvideo[vcodec^=avc][ext=mp4]+bestaudio/best[ext=mp4][vcodec^=avc]/best[vcodec^=avc]", "--merge-output-format", "mp4"]
+            else:
+                cmd += ["-f", "bestvideo[vcodec^=avc][ext=mp4]+bestaudio[ext=m4a]/bestvideo[vcodec^=avc][ext=mp4]+bestaudio/best[ext=mp4][vcodec^=avc]/best[vcodec^=avc]", "--merge-output-format", "mp4"]
+        else:
+            if height:
+                if force_4k:
+                    cmd += ["-f", f"bestvideo[height=2160]+bestaudio/best", "--merge-output-format", "mp4"]
+                else:
+                    cmd += ["-f", f"bestvideo[height<={height}]+bestaudio/best", "--merge-output-format", "mp4"]
+            else:
+                cmd += ["-f", "bestvideo+bestaudio/best", "--merge-output-format", "mp4"]
+    else:
+        if height:
+            cmd += ["-f", f"bestvideo[height<={height}]+bestaudio/best"]
+        else:
+            cmd += ["-f", "bestvideo+bestaudio/best"]
+    cmd += [
+        "--newline",
+        "--progress-template",
+        "download:downloaded_bytes:%(progress.downloaded_bytes)s total_bytes:%(progress.total_bytes)s total_bytes_estimate:%(progress.total_bytes_estimate)s eta:%(progress.eta)s speed:%(progress.speed)s",
+    ]
+    cmd.append(url)
+    env = os.environ.copy()
+    env.pop("PYTHONHOME", None)
+    env.pop("PYTHONPATH", None)
+    if venv_py.exists():
+        env["VIRTUAL_ENV"] = str(venv_root)
+        env["PATH"] = f"{venv_bin}:{env.get('PATH', '')}"
+    output_lines = []
+    if progress_cb:
+        progress_cb({"status": "preparing", "stage": "Preparing", "percent": 5})
+    proc = subprocess.Popen(
+        cmd,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        env=env,
+        bufsize=1,
+    )
+    if proc.stdout:
+        for raw_line in proc.stdout:
+            line = raw_line.strip()
+            if line:
+                output_lines.append(line)
+            stage = _ytdlp_stage_from_line(line)
+            if progress_cb and stage:
+                stage_percent = {
+                    "Preparing": 5,
+                    "Fetching metadata": 10,
+                    "Analyzing streams": 15,
+                    "Merging formats": 95,
+                    "Finalizing": 98,
+                }.get(stage)
+                payload = {"status": "processing", "stage": stage}
+                if stage_percent is not None:
+                    payload["percent"] = stage_percent
+                progress_cb(payload)
+            progress = _parse_ytdlp_progress_line(line)
+            if progress_cb and progress:
+                downloaded = progress.get("downloaded_bytes")
+                total = progress.get("total_bytes")
+                estimate = progress.get("total_bytes_estimate")
+                eta = progress.get("eta")
+                speed = progress.get("speed")
+                percent = None
+                estimated = False
+                try:
+                    if total and total != "NA":
+                        total_val = float(total)
+                        if total_val > 0:
+                            percent = _map_download_percent(float(downloaded or 0) * 100.0 / total_val)
+                    elif estimate and estimate != "NA":
+                        total_val = float(estimate)
+                        if total_val > 0:
+                            percent = _map_download_percent(float(downloaded or 0) * 100.0 / total_val)
+                            estimated = True
+                except Exception:
+                    percent = None
+                progress_cb({
+                    "status": "downloading",
+                    "stage": "Downloading",
+                    "percent": percent,
+                    "estimated": estimated,
+                    "downloaded_bytes": downloaded,
+                    "total_bytes": total,
+                    "total_bytes_estimate": estimate,
+                    "eta": eta,
+                    "speed": speed,
+                })
+    proc.wait()
+    if proc.returncode != 0:
+        msg = "yt-dlp failed"
+        for line in reversed(output_lines[-15:]):
+            if line:
+                msg = line
+                break
+        raise RuntimeError(msg)
+    after = sorted({p for p in out_dir.glob("*")} , key=lambda p: p.name)
+    new_names = sorted({p.name for p in after} - before)
+    files = [str((out_dir / name).resolve()) for name in new_names] if new_names else [str(p.resolve()) for p in after]
+    if compat_h264 and force_4k:
+        try:
+            src = _pick_video_file(files, out_dir)
+            info = _ffprobe_video_info(src)
+            if str(info.get("codec_name", "")).lower() != "h264" or int(info.get("height", 0) or 0) != 2160:
+                dest = out_dir / f"{src.stem}_h264_2160.mp4"
+                _transcode_h264_4k(src, dest)
+                files.append(str(dest.resolve()))
+        except Exception as exc:
+            raise RuntimeError(f"4K H.264 transcode failed: {exc}")
+    return {"files": files}
+
+
+def _run_instagram_download(out_dir: Path, url: str, do_login: bool) -> Dict[str, Any]:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    script = Path("/Users/samuelapata/.codex/skills/swissknife-backend/scripts/ig_download_post.py")
+    if not script.exists():
+        raise RuntimeError("swissknife-backend script not found on this machine.")
+    cmd = ["python3", str(script), url, "--out", str(out_dir)]
+    if do_login:
+        cmd.append("--login")
+    output = subprocess.check_output(cmd, text=True)
+    try:
+        data = json.loads(output)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("Instagram download did not return JSON.") from exc
+    if not isinstance(data, dict):
+        raise RuntimeError("Instagram download returned unexpected JSON type.")
+    return data
+
+
+def swissknife_download_to_session(session_id: str, url: str, do_login: bool, format_hint: str = "", quality_hint: str = "", source: str = "", output_dir: str = "", compat_h264: bool = False, force_4k: bool = False, progress_cb=None):
     session_id = str(session_id or "").strip()
     url = str(url or "").strip()
-    if not session_id or not url:
-        raise RuntimeError("session_id and url are required")
+    if not url:
+        raise RuntimeError("url is required")
 
     rows = _load_swissknife_sessions()
+    source = str(source or "").strip().lower() or "instagram"
+    if not session_id:
+        row = _get_or_create_default_swissknife_session(source)
+        session_id = str(row.get("id", "")).strip()
     idx = _find_session(rows, session_id)
     if idx < 0:
-        raise RuntimeError("Session not found")
+        row = _get_or_create_default_swissknife_session(source)
+        session_id = str(row.get("id", "")).strip()
+        rows = _load_swissknife_sessions()
+        idx = _find_session(rows, session_id)
+        if idx < 0:
+            raise RuntimeError("Session not found")
 
-    remote_path = str(rows[idx].get("remote_path", "")).strip()
-    if not remote_path:
-        raise RuntimeError("Session missing remote_path")
-
-    login_flag = "--login" if do_login else ""
-    remote_cmd = (
-        "set -e; "
-        f"OUT={shlex.quote(remote_path)}; URL={shlex.quote(url)}; "
-        "export SWISSKNIFE_DIR=/home/samuelapata/.codex/skills/swissknife-backend; "
-        "mkdir -p \"$OUT\"; "
-        "SCRIPT=''; "
-        "for b in "
-        "/home/samuelapata/.codex/skills/swissknife-backend/scripts "
-        "/home/samuelapata/Swissknife/scripts "
-        "/home/samuelapata/.openclaw/workspace/swissknife-backend/scripts; do "
-        "  if [ -f \"$b/ig_download_post.py\" ]; then SCRIPT=\"$b/ig_download_post.py\"; break; fi; "
-        "done; "
-        "if [ -z \"$SCRIPT\" ]; then "
-        "  echo '{\"error\":\"ig_download_post.py not found on VM\"}'; exit 2; "
-        "fi; "
-        f"python3 \"$SCRIPT\" \"$URL\" --out \"$OUT\" {login_flag}"
-    )
-    try:
-        stdout = _run_vm_command(remote_cmd, timeout_sec=360)
-    except Exception as exc:
-        raw = str(exc).strip()
-        msg = raw
-        try:
-            parsed_err = json.loads(raw)
-        except Exception:
-            parsed_err = None
-        if isinstance(parsed_err, dict) and parsed_err.get("error"):
-            msg = str(parsed_err.get("error"))
-        raise RuntimeError(msg)
     parsed = None
-    try:
-        parsed = json.loads(stdout)
-    except Exception:
-        m = re.search(r"(\{[\s\S]*\})\s*$", stdout)
-        if m:
-            parsed = json.loads(m.group(1))
-    if not isinstance(parsed, dict):
-        raise RuntimeError("Swissknife download did not return JSON manifest")
+    download_dir = ""
+    output_dir = str(output_dir or "").strip()
+    resolved_output = ""
+    if output_dir:
+        resolved_output = str(Path(output_dir).expanduser().resolve())
+        Path(resolved_output).mkdir(parents=True, exist_ok=True)
+    if source == "ytdlp":
+        download_dir = resolved_output or str((WORKSPACE / "swissknife_ytdlp" / session_id).resolve())
+        if resolved_output:
+            rows[idx]["remote_path"] = resolved_output
+            _save_swissknife_sessions(rows)
+        try:
+            parsed = _run_ytdlp_download(Path(download_dir), url, format_hint, quality_hint, compat_h264, force_4k, progress_cb=progress_cb)
+        except Exception as exc:
+            raise RuntimeError(str(exc))
+    else:
+        remote_path = str(rows[idx].get("remote_path", "")).strip()
+        if (not remote_path) or remote_path.startswith(SWISSKNIFE_VM_BASE) or (not Path(remote_path).exists()):
+            remote_path = str((WORKSPACE / "swissknife_instagram" / session_id).resolve())
+            rows[idx]["remote_path"] = remote_path
+            _save_swissknife_sessions(rows)
+        download_dir = resolved_output or remote_path
+        if resolved_output:
+            rows[idx]["remote_path"] = resolved_output
+            _save_swissknife_sessions(rows)
+        try:
+            parsed = _run_instagram_download(Path(download_dir), url, do_login)
+        except Exception as exc:
+            raise RuntimeError(str(exc))
 
     record = {
         "url": url,
         "downloaded_at": datetime.now().isoformat(timespec="seconds"),
         "shortcode": parsed.get("shortcode", ""),
         "owner_username": parsed.get("owner_username", ""),
-        "download_dir": parsed.get("download_dir", remote_path),
+        "download_dir": download_dir,
         "file_count": len(parsed.get("files", [])) if isinstance(parsed.get("files", []), list) else 0,
         "manifest": parsed,
+        "format": str(format_hint or "").strip(),
+        "quality": str(quality_hint or "").strip(),
+        "source": source,
+        "compat_h264": bool(compat_h264),
+        "force_4k": bool(force_4k),
     }
     rows[idx].setdefault("downloads", []).append(record)
     rows[idx]["last_download_at"] = record["downloaded_at"]
     _save_swissknife_sessions(rows)
     return {"session": rows[idx], "download": record}
+
+
+def swissknife_start_download_async(session_id: str, url: str, do_login: bool, format_hint: str = "", quality_hint: str = "", source: str = "", output_dir: str = "", compat_h264: bool = False, force_4k: bool = False) -> str:
+    job_id = uuid.uuid4().hex
+    _swissknife_job_update(
+        job_id,
+        status="queued",
+        stage="Queued",
+        percent=2,
+        source=str(source or "").strip().lower() or "instagram",
+        format=str(format_hint or "").strip(),
+        quality=str(quality_hint or "").strip(),
+        output_dir=str(output_dir or "").strip(),
+        compat_h264=bool(compat_h264),
+        force_4k=bool(force_4k),
+    )
+
+    def progress_cb(update: Dict[str, Any]):
+        _swissknife_job_update(job_id, **update)
+
+    def worker():
+        _swissknife_job_update(job_id, status="running", stage="Preparing", percent=5)
+        try:
+            result = swissknife_download_to_session(
+                session_id,
+                url,
+                do_login,
+                format_hint,
+                quality_hint,
+                source,
+                output_dir,
+                compat_h264,
+                force_4k,
+                progress_cb=progress_cb,
+            )
+        except Exception as exc:
+            _swissknife_job_update(job_id, status="failed", error=str(exc))
+            return
+        _swissknife_job_update(job_id, status="complete", percent=100, stage="Complete", result=result)
+
+    Thread(target=worker, daemon=True).start()
+    return job_id
 
 
 def swissknife_delete_session(session_id: str):
@@ -1923,6 +2541,21 @@ def run_python_sandbox(code: str):
             script_path.unlink(missing_ok=True)
         except Exception:
             pass
+
+
+def open_system_path(path: str, reveal: bool = False):
+    target = str(path or "").strip()
+    if not target:
+        raise RuntimeError("path is required")
+    p = Path(target).expanduser()
+    if not p.exists():
+        raise RuntimeError("path not found")
+    cmd = ["open"]
+    if reveal:
+        cmd.append("-R")
+    cmd.append(str(p))
+    subprocess.run(cmd, check=False)
+    return {"ok": True}
 
 
 def _validate_bash_script(source: str):
@@ -2252,6 +2885,8 @@ class Handler(SimpleHTTPRequestHandler):
             return _json_response(self, load_blackbook())
         if path == "/api/hvi":
             return _json_response(self, load_hvi())
+        if path == "/api/contacts":
+            return _json_response(self, load_contacts())
         if path == "/api/blueprints":
             return _json_response(self, load_blueprints())
         if path == "/api/books":
@@ -2260,8 +2895,31 @@ class Handler(SimpleHTTPRequestHandler):
             return _json_response(self, load_manuels())
         if path == "/api/swissknife/sessions":
             return _json_response(self, swissknife_list_sessions())
+        if path == "/api/swissknife/progress":
+            job_id = (query.get("job_id", [""])[0] or "").strip()
+            if not job_id:
+                return _json_response(self, {"error": "job_id is required"}, 400)
+            job = _swissknife_job_get(job_id)
+            if not job:
+                return _json_response(self, {"error": "job not found"}, 404)
+            return _json_response(self, {"ok": True, "job": job}, 200)
         if path == "/api/dev/version":
             return _json_response(self, load_dev_build_meta())
+        if path == "/api/dev/paths":
+            try:
+                import managementapp_server as mod
+                mod_file = str(getattr(mod, "__file__", "")) or ""
+            except Exception:
+                mod_file = ""
+            payload = {
+                "ok": True,
+                "cwd": os.getcwd(),
+                "resourcepath": os.environ.get("RESOURCEPATH", ""),
+                "project_root": os.environ.get("OMNI_PROJECT_ROOT", ""),
+                "module_file": mod_file,
+                "sys_path": list(sys.path),
+            }
+            return _json_response(self, payload, 200)
         if path == "/api/backup/export":
             return _json_response(self, export_workspace_backup_payload(), 200)
         if path == "/api/mission/brief":
@@ -2308,6 +2966,15 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._forbidden("Loopback access only")
             payload = copy_text_to_clipboard(body.get("text", ""))
             return _json_response(self, payload, 200 if payload.get("ok") else 500)
+
+        if path == "/api/system/open":
+            if not self._is_loopback_client():
+                return self._forbidden("Loopback access only")
+            try:
+                payload = open_system_path(body.get("path", ""), bool(body.get("reveal", False)))
+            except Exception as exc:
+                return _json_response(self, {"error": str(exc)}, 400)
+            return _json_response(self, payload, 200)
 
         if path == "/api/iphone/live/on":
             if not self._is_loopback_client():
@@ -2393,19 +3060,40 @@ class Handler(SimpleHTTPRequestHandler):
 
         if path == "/api/swissknife/session":
             label = body.get("label", "daily")
+            source = body.get("source", "")
             try:
-                row = swissknife_create_session(label)
+                row = swissknife_create_session(label, source)
             except Exception as exc:
                 return _json_response(self, {"error": str(exc)}, 400)
             return _json_response(self, {"ok": True, "session": row}, 201)
 
         if path == "/api/swissknife/download":
             try:
-                result = swissknife_download_to_session(
-                    body.get("session_id", ""),
-                    body.get("url", ""),
-                    bool(body.get("login", False)),
-                )
+                if bool(body.get("async", False)):
+                    job_id = swissknife_start_download_async(
+                        body.get("session_id", ""),
+                        body.get("url", ""),
+                        bool(body.get("login", False)),
+                        body.get("format", ""),
+                        body.get("quality", ""),
+                        body.get("source", ""),
+                        body.get("output_dir", ""),
+                        bool(body.get("compat_h264", False)),
+                        bool(body.get("force_4k", False)),
+                    )
+                    result = {"job_id": job_id}
+                else:
+                    result = swissknife_download_to_session(
+                        body.get("session_id", ""),
+                        body.get("url", ""),
+                        bool(body.get("login", False)),
+                        body.get("format", ""),
+                        body.get("quality", ""),
+                        body.get("source", ""),
+                        body.get("output_dir", ""),
+                        bool(body.get("compat_h264", False)),
+                        bool(body.get("force_4k", False)),
+                    )
             except Exception as exc:
                 return _json_response(self, {"error": str(exc)}, 400)
             return _json_response(self, {"ok": True, **result}, 200)
@@ -2422,11 +3110,17 @@ class Handler(SimpleHTTPRequestHandler):
             phase = int(body.get("phase", 1) or 1)
             content = body.get("content", "")
             variables = body.get("variables", [])
-            version = save_mission_brief_version(mission_path, phase, content, variables)
-            if version is None:
+            result = save_mission_brief_version(mission_path, phase, content, variables)
+            if result is None:
                 return _json_response(self, {"error": "Invalid mission_path"}, 400)
+            if isinstance(result, dict) and "version" in result:
+                version = result.get("version", {})
+                hvi_updated = result.get("hvi_updated", [])
+            else:
+                version = result
+                hvi_updated = []
             sync_blackbook_for_mission_path(mission_path, event=f"PHASE {version.get('phase', phase)} SAVED")
-            return _json_response(self, {"ok": True, "version": version}, 201)
+            return _json_response(self, {"ok": True, "version": version, "hvi_updated": hvi_updated}, 201)
 
         if path == "/api/mission/debrief/save":
             mission_path = body.get("mission_path", "")
@@ -2465,6 +3159,26 @@ class Handler(SimpleHTTPRequestHandler):
             if not saved:
                 return _json_response(self, {"error": "Invalid HVI handle"}, 400)
             return _json_response(self, {"ok": True, "handle": saved}, 200)
+
+        if path == "/api/contacts":
+            name = body.get("name", "")
+            fields = body.get("fields", {})
+            saved = upsert_contact(name, fields)
+            if not saved:
+                return _json_response(self, {"error": "Invalid contact name"}, 400)
+            return _json_response(self, {"ok": True, "name": saved}, 200)
+
+        if path == "/api/contacts/invoice":
+            try:
+                invoice = attach_contact_invoice(
+                    body.get("name", ""),
+                    body.get("filename", ""),
+                    body.get("data_url", ""),
+                    body.get("meta", {}),
+                )
+            except Exception as exc:
+                return _json_response(self, {"error": str(exc)}, 400)
+            return _json_response(self, {"ok": True, "invoice": invoice}, 200)
 
         if path == "/api/backup/import":
             result = import_backup_payload_to_workspace(body)
@@ -2525,6 +3239,12 @@ class Handler(SimpleHTTPRequestHandler):
             if delete_hvi(handle):
                 return _json_response(self, {"ok": True})
             return _json_response(self, {"error": "HVI not found"}, 404)
+
+        if path == "/api/contacts":
+            name = body.get("name", "")
+            if delete_contact(name):
+                return _json_response(self, {"ok": True})
+            return _json_response(self, {"error": "Contact not found"}, 404)
 
         if path == "/api/swissknife/session":
             try:

@@ -1,6 +1,0 @@
-# TEST_CREATE_MISSION
-
-Mission ID: MIS-008
-Created: 2026-03-11 18:04
-Mission Name: TEST_CREATE_MISSION
-Status: PENDING

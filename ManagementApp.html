@@ -20,8 +20,8 @@
         }
       })();
     </script>
-    <link rel="stylesheet" href="/assets/managementapp.css?v=20260311-classic-2" />
-    <link rel="stylesheet" href="/assets/managementapp-draft.css?v=20260311-classic-2" />
+    <link rel="stylesheet" href="/assets/managementapp.css?v=20260313-swissknife-2" />
+    <link rel="stylesheet" href="/assets/managementapp-draft.css?v=20260313-swissknife-2" />
 
   </head>
   <body>
@@ -48,13 +48,14 @@
       <button class="nav-btn nav-yellow" onclick="switchView('templates')">[05] TEMPLATES</button>
       <button class="nav-btn nav-yellow" onclick="switchView('datawells')">[06] DATAWELLS</button>
       <button class="nav-btn nav-yellow" onclick="switchView('hvi-intel')">[07] HVI TARGETS</button>
-      <button class="nav-btn nav-red" onclick="switchView('checklist')">[08] CHECKLIST & REMINDERS</button>
-      <button class="nav-btn nav-red" onclick="switchView('journal')">[09] JOURNAL</button>
-      <button class="nav-btn nav-red" onclick="switchView('blueprints')">[10] ORACLE</button>
-      <button class="nav-btn nav-red" onclick="switchView('books')">[11] BOOKS</button>
-      <button class="nav-btn nav-gray" onclick="switchView('swissknife')">[12] SWISSKNIFE</button>
-      <button class="nav-btn nav-gray" onclick="switchView('terminal-lab')">[13] STUDY TERMINAL</button>
-      <button class="nav-btn nav-gray" onclick="switchView('settings')">[14] SETTINGS</button>
+      <button class="nav-btn nav-yellow" onclick="switchView('contacts')">[08] CONTACTS</button>
+      <button class="nav-btn nav-red" onclick="switchView('checklist')">[09] CHECKLIST & REMINDERS</button>
+      <button class="nav-btn nav-red" onclick="switchView('journal')">[10] JOURNAL</button>
+      <button class="nav-btn nav-red" onclick="switchView('blueprints')">[11] ORACLE</button>
+      <button class="nav-btn nav-red" onclick="switchView('books')">[12] BOOKS</button>
+      <button class="nav-btn nav-gray" onclick="switchView('swissknife')">[13] SWISSKNIFE</button>
+      <button class="nav-btn nav-gray" onclick="switchView('terminal-lab')">[14] STUDY TERMINAL</button>
+      <button class="nav-btn nav-gray" onclick="switchView('settings')">[15] SETTINGS</button>
       <div id="nav-hover-desc" class="nav-hover-desc">Hover and hold a button to load description.</div>
     </aside>
 
@@ -63,7 +64,7 @@
       <!-- DASHBOARD VIEW -->
       <div id="view-dashboard" class="view-panel active">
         <h2>// SYSTEM OVERVIEW</h2>
-        <div class="dashboard-metrics" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px">
+        <div class="dashboard-metrics" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px">
           <div class="op-card" onclick="switchView('operations')">
             <span class="op-icon">📁</span>
             <h3>OPERATIONS</h3>
@@ -78,6 +79,11 @@
             <span class="op-icon">🎯</span>
             <h3>HVI Intel</h3>
             <h1 style="margin: 0" id="hvi-count">0</h1>
+          </div>
+          <div class="op-card" onclick="switchView('contacts')">
+            <span class="op-icon">🤝</span>
+            <h3>CONTACTS</h3>
+            <h1 style="margin: 0" id="contact-count">0</h1>
           </div>
         </div>
         <br />
@@ -351,40 +357,127 @@
       </div>
 
       <div id="view-swissknife" class="view-panel">
-        <h2>// SWISSKNIFE DOWNLOAD SESSIONS</h2>
-        <p>VM-backed downloads. Credentials stay remote on VM via <code>IG_USER</code>/<code>IG_PASS</code> env vars.</p>
-        <div class="add-launch-row"><button class="add-plus-btn" type="button" onclick="openAddPopup('swissknife-create-area')">+</button></div>
-        <div id="swissknife-create-area" class="submission-area add-popup-panel">
-          <button class="add-popup-close" type="button" onclick="closeAllAddPopups()">X</button>
-          <div class="form-group">
-            <label for="swissknife-session-label">Session Label</label>
-            <input class="search-input" id="swissknife-session-label" type="text" placeholder="daily / campaign / op-name" />
+        <div class="swissknife-shell">
+          <div class="swissknife-header">
+            <div class="swissknife-title">// SWISSKNIFE_v1.0 <span class="swissknife-build-tag">BUILD 20260313-SWISSKNIFE-2</span></div>
+            <div class="swissknife-status">
+              CORE: <span class="status-active">ONLINE</span> | REPO: <span class="status-active">LINKED</span> | USER: SLIDER
+            </div>
           </div>
-          <button class="submit-btn" type="button" onclick="createSwissknifeSession()">CREATE SESSION</button>
+          <div class="swissknife-sidebar">
+            <button class="swissknife-nav-btn active" type="button" onclick="switchSwissknifeView('downloads', this)">[01] DOWNLOADS</button>
+            <button class="swissknife-nav-btn" type="button" onclick="switchSwissknifeView('logs', this)">[02] LOGS</button>
+            <button class="swissknife-nav-btn" type="button" onclick="switchSwissknifeView('settings', this)">[03] SETTINGS</button>
+          </div>
+          <div class="swissknife-main">
+            <div id="swissknife-view-downloads" class="swissknife-view active">
+              <h2>// UNIVERSAL DOWNLOADER</h2>
+              <div class="swissknife-block">
+                <h3>// LINKS QUEUE</h3>
+                <div class="swissknife-form-group">
+                  <label for="swissknife-links">LINKS (ONE PER LINE)</label>
+                  <textarea id="swissknife-links" class="swissknife-textarea" rows="5" placeholder="https://www.instagram.com/p/SHORTCODE/"></textarea>
+                </div>
+                <div class="swissknife-grid">
+                  <div class="swissknife-form-group">
+                    <label for="swissknife-source">SOURCE</label>
+                    <select id="swissknife-source" class="search-input">
+                      <option value="instagram">INSTAGRAM (SWISSKNIFE)</option>
+                      <option value="ytdlp">YOUTUBE / TIKTOK (YT-DLP)</option>
+                    </select>
+                  </div>
+                  <div class="swissknife-form-group">
+                    <label for="swissknife-format">TARGET FORMAT</label>
+                    <select id="swissknife-format" class="search-input">
+                      <option value="original">ORIGINAL (INSTALOADER)</option>
+                      <option value="mp4">MP4</option>
+                      <option value="mp3">MP3</option>
+                      <option value="m4a">M4A</option>
+                    </select>
+                  </div>
+                  <div class="swissknife-form-group">
+                    <label for="swissknife-quality">QUALITY</label>
+                    <select id="swissknife-quality" class="search-input">
+                      <option value="highest">HIGHEST</option>
+                      <option value="high">HIGH</option>
+                      <option value="medium">MEDIUM</option>
+                      <option value="low">LOW</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="swissknife-form-group">
+                  <label for="swissknife-output-dir">DOWNLOAD FOLDER (OPTIONAL)</label>
+                  <input class="search-input" id="swissknife-output-dir" type="text" placeholder="e.g. /Users/samuelapata/Downloads/Swissknife" />
+                </div>
+                <div class="swissknife-inline">
+                  <label><input id="swissknife-login" type="checkbox" /> Use IG login (--login)</label>
+                </div>
+                <div class="swissknife-inline">
+                  <label><input id="swissknife-h264" type="checkbox" /> Force H.264 MP4 (may reduce max resolution)</label>
+                </div>
+                <div class="swissknife-inline">
+                  <label><input id="swissknife-force-4k" type="checkbox" /> Force 4K (2160p). Fails if 4K not available.</label>
+                </div>
+                <button class="submit-btn" type="button" onclick="runSwissknifeBatchDownload()">RUN BATCH</button>
+                <div id="swissknife-progress-section" class="swissknife-progress-container">
+                  <div class="swissknife-progress-label">
+                    <span id="swissknife-progress-status">READY</span>
+                    <span id="swissknife-progress-percent">0%</span>
+                  </div>
+                  <div class="swissknife-progress-outer">
+                    <div id="swissknife-progress-bar" class="swissknife-progress-inner"></div>
+                  </div>
+                </div>
+                <div id="swissknife-batch-status" class="swissknife-status-line">Queue idle.</div>
+              </div>
+              <div class="swissknife-block">
+                <h3>// LATEST ACQUISITIONS</h3>
+                <div id="swissknife-recent-downloads" class="swissknife-recent-list">Waiting for input...</div>
+              </div>
+            </div>
+            <div id="swissknife-view-settings" class="swissknife-view">
+              <h2>// SWISSKNIFE SETTINGS</h2>
+              <div class="swissknife-block">
+                <p>Downloads run locally using the Swissknife backend. Set <code>IG_USER</code>/<code>IG_PASS</code> if you enable login.</p>
+                <p>Batch mode will queue each link through the active download pipeline.</p>
+              </div>
+            </div>
+            <div id="swissknife-view-logs" class="swissknife-view">
+              <h2>// SWISSKNIFE LOGS</h2>
+              <div class="swissknife-block">
+                <div class="swissknife-inline" style="justify-content:flex-end;">
+                  <button class="submit-btn" type="button" onclick="copySwissknifeLog()">COPY LOG</button>
+                  <button class="submit-btn" type="button" onclick="clearSwissknifeLog()">CLEAR</button>
+                </div>
+                <textarea id="swissknife-log-output" class="swissknife-textarea" rows="10" placeholder="No failures logged yet."></textarea>
+              </div>
+            </div>
+          </div>
+          <div class="swissknife-footer">
+            <div class="swissknife-status">
+              <span class="status-active">SWISSKNIFE_ENGINE_v1.0</span>
+            </div>
+            <div>TERMINAL_ID: 0x992_SK</div>
+            <div id="swissknife-footer-status">READY FOR MISSION</div>
+          </div>
         </div>
-        <div class="add-launch-row"><button class="add-plus-btn" type="button" onclick="openAddPopup('swissknife-download-area')">+</button></div>
-        <div id="swissknife-download-area" class="submission-area add-popup-panel">
-          <button class="add-popup-close" type="button" onclick="closeAllAddPopups()">X</button>
-          <div class="form-group">
-            <label for="swissknife-session-select">Session</label>
-            <select id="swissknife-session-select"></select>
-          </div>
-          <div class="form-group">
-            <label for="swissknife-url">Instagram URL</label>
-            <input class="search-input" id="swissknife-url" type="text" placeholder="https://www.instagram.com/p/SHORTCODE/" />
-          </div>
-          <div class="form-group">
-            <label><input id="swissknife-login" type="checkbox" /> Use VM IG login (--login)</label>
-          </div>
-          <button class="submit-btn" type="button" onclick="runSwissknifeDownload()">DOWNLOAD TO SESSION</button>
-        </div>
-        <h3>// SESSION HISTORY</h3>
-        <div id="swissknife-session-list" class="manual-view">No sessions yet.</div>
       </div>
 
       <div id="view-settings" class="view-panel">
         <h2>// SETTINGS</h2>
         <div class="settings-grid">
+          <div class="settings-card">
+            <h3>// SYSTEM</h3>
+            <div class="settings-help">Version and build reference for keeping Mac and iPhone aligned.</div>
+            <div class="settings-row">
+              <label>App Version</label>
+              <div class="settings-static" id="app-version-label">v0.0.0</div>
+            </div>
+            <div class="settings-row">
+              <label>Build</label>
+              <div class="settings-static" id="app-build-label">0000-00-00 00:00</div>
+            </div>
+          </div>
           <div class="settings-card" ondblclick="resetNotificationSettings()">
             <h3>// NOTIFICATIONS</h3>
             <div class="settings-help">Global alert controls. On iPhone, enabled alerts can trigger real phone notifications. Click <code>TEST ALERT</code> to verify the local notification path on this device.</div>
@@ -687,7 +780,8 @@ for i in range(3):
         </div>
         <div class="hvi-filter-bar">
           <div class="hvi-filter-grid">
-            <select id="hvi-filter-category" class="search-input" onchange="setHviFilters()">
+            <input id="hvi-filter-category-search" class="search-input" type="text" placeholder="Search categories..." oninput="setHviCategorySearch()" />
+            <select id="hvi-filter-category" class="search-input" multiple onchange="setHviFilters()">
               <option value="">All Categories</option>
             </select>
             <input id="hvi-filter-param" class="search-input" type="text" placeholder="Filter by parameter key/value..." oninput="setHviFilters()" />
@@ -698,6 +792,154 @@ for i in range(3):
         </div>
         <div id="hvi-container">
           <div class="hvi-card"><p>Loading HVI profiles...</p></div>
+        </div>
+      </div>
+
+      <!-- CONTACTS VIEW -->
+      <div id="view-contacts" class="view-panel">
+        <h2>// CONTACTS (Booked / Clients)</h2>
+        <p>Source: <code>OperationDir/CONTACTS_INDEX.json</code></p>
+        <div class="hvi-meta">Contract fields are placeholders for your UK agreement terms (rights, royalties, usage, territory, term).</div>
+        <div class="add-launch-row"><button class="add-plus-btn" type="button" onclick="openAddPopup('contacts-submission-area')">+</button></div>
+        <div id="contacts-submission-area" class="submission-area add-popup-panel" style="margin-top:10px;">
+          <button class="add-popup-close" type="button" onclick="closeAllAddPopups()">X</button>
+          <h3>+ ADD CONTACT</h3>
+          <div class="form-group">
+            <label for="new-contact-name">Name / Handle</label>
+            <input class="search-input" id="new-contact-name" type="text" placeholder="Client name" />
+          </div>
+          <div class="form-group">
+            <label for="new-contact-status">Status</label>
+            <input class="search-input" id="new-contact-status" type="text" placeholder="BOOKED / ACTIVE / CLOSED" />
+          </div>
+          <div class="form-group">
+            <label for="new-contact-number">Number</label>
+            <input class="search-input" id="new-contact-number" type="text" placeholder="+44 ..." />
+          </div>
+          <div class="form-group">
+            <label for="new-contact-email">Email</label>
+            <input class="search-input" id="new-contact-email" type="email" placeholder="client@email.com" />
+          </div>
+          <div class="form-group">
+            <label for="new-contact-project">Project</label>
+            <input class="search-input" id="new-contact-project" type="text" placeholder="Project / campaign" />
+          </div>
+          <div class="form-group">
+            <label for="new-contact-paid">Amount Paid</label>
+            <input class="search-input" id="new-contact-paid" type="text" placeholder="e.g. 1500" />
+          </div>
+          <div class="form-group">
+            <label for="new-contact-currency">Currency</label>
+            <input class="search-input" id="new-contact-currency" type="text" placeholder="GBP" />
+          </div>
+          <div class="form-group">
+            <label for="new-contact-booked">Booked Date</label>
+            <input class="search-input" id="new-contact-booked" type="date" />
+          </div>
+          <div class="form-group">
+            <label for="new-contact-painpoints">Pain Points</label>
+            <textarea class="search-input" id="new-contact-painpoints" rows="3" placeholder="Pain points, needs, blockers..."></textarea>
+          </div>
+          <div class="form-group">
+            <label for="new-contact-notes">Notes</label>
+            <textarea class="search-input" id="new-contact-notes" rows="3" placeholder="Extra context..."></textarea>
+          </div>
+          <div class="form-group">
+            <label for="new-contact-contract-summary">Contract Summary (UK)</label>
+            <textarea class="search-input" id="new-contact-contract-summary" rows="3" placeholder="Rights/royalty summary (fill with your contract terms)."></textarea>
+          </div>
+          <div class="form-group">
+            <label for="new-contact-rights">Rights / Usage</label>
+            <textarea class="search-input" id="new-contact-rights" rows="3" placeholder="Usage rights, territory, term, exclusivity..."></textarea>
+          </div>
+          <div class="form-group">
+            <label for="new-contact-royalty">Royalty Split</label>
+            <input class="search-input" id="new-contact-royalty" type="text" placeholder="e.g. 70/30" />
+          </div>
+          <div class="form-group">
+            <label for="new-contact-master">Master Split</label>
+            <input class="search-input" id="new-contact-master" type="text" placeholder="e.g. 50/50" />
+          </div>
+          <div class="form-group">
+            <label for="new-contact-publishing">Publishing Split</label>
+            <input class="search-input" id="new-contact-publishing" type="text" placeholder="e.g. 50/50" />
+          </div>
+          <div class="form-group">
+            <label for="new-contact-sync">Sync Rights</label>
+            <input class="search-input" id="new-contact-sync" type="text" placeholder="Exclusive / Non-exclusive" />
+          </div>
+          <div class="form-group">
+            <label for="new-contact-mechanical">Mechanical Rights</label>
+            <input class="search-input" id="new-contact-mechanical" type="text" placeholder="Owned / Licensed" />
+          </div>
+          <div class="form-group">
+            <label for="new-contact-performance">Performance Rights</label>
+            <input class="search-input" id="new-contact-performance" type="text" placeholder="PRO / Split" />
+          </div>
+          <div class="form-group">
+            <label for="new-contact-credits">Credits</label>
+            <input class="search-input" id="new-contact-credits" type="text" placeholder="Credits / attribution" />
+          </div>
+          <div class="form-group">
+            <label for="new-contact-ownership">Deliverable Ownership</label>
+            <input class="search-input" id="new-contact-ownership" type="text" placeholder="Client owns / You retain" />
+          </div>
+          <div class="form-group">
+            <label for="new-contact-approval">Approval Rights</label>
+            <input class="search-input" id="new-contact-approval" type="text" placeholder="Approval required? scope" />
+          </div>
+          <div class="form-group">
+            <label for="new-contact-payment-terms">Payment Terms</label>
+            <input class="search-input" id="new-contact-payment-terms" type="text" placeholder="Net 14 / deposit %" />
+          </div>
+          <div class="form-group">
+            <label for="new-contact-kill-fee">Kill Fee</label>
+            <input class="search-input" id="new-contact-kill-fee" type="text" placeholder="e.g. 25%" />
+          </div>
+          <div class="form-group">
+            <label for="new-contact-revisions">Revisions</label>
+            <input class="search-input" id="new-contact-revisions" type="text" placeholder="e.g. 2 rounds" />
+          </div>
+          <div class="form-group">
+            <label for="new-contact-delivery-date">Delivery Date</label>
+            <input class="search-input" id="new-contact-delivery-date" type="date" />
+          </div>
+          <div class="form-group">
+            <label for="new-contact-governing-law">Governing Law</label>
+            <input class="search-input" id="new-contact-governing-law" type="text" placeholder="UK / England & Wales" />
+          </div>
+          <div class="form-group">
+            <label for="new-contact-territory">Territory</label>
+            <input class="search-input" id="new-contact-territory" type="text" placeholder="UK / Worldwide" />
+          </div>
+          <div class="form-group">
+            <label for="new-contact-term">Term</label>
+            <input class="search-input" id="new-contact-term" type="text" placeholder="e.g. 12 months" />
+          </div>
+          <div class="form-group">
+            <label for="new-contact-exclusivity">Exclusivity</label>
+            <input class="search-input" id="new-contact-exclusivity" type="text" placeholder="Exclusive / Non-exclusive" />
+          </div>
+          <div class="form-group">
+            <label for="new-contact-moral-rights">Moral Rights</label>
+            <input class="search-input" id="new-contact-moral-rights" type="text" placeholder="Waived / Reserved" />
+          </div>
+          <div class="form-group">
+            <label for="new-contact-work-type">Work Type</label>
+            <input class="search-input" id="new-contact-work-type" type="text" placeholder="Video / Music / Both" />
+          </div>
+          <div class="form-group">
+            <label for="new-contact-deliverables">Deliverables</label>
+            <input class="search-input" id="new-contact-deliverables" type="text" placeholder="Final outputs, formats..." />
+          </div>
+          <button class="submit-btn" type="button" onclick="submitNewContact()">ADD CONTACT</button>
+        </div>
+        <div class="search-toolbar">
+          <input class="search-input" id="contacts-search-input" type="text" placeholder="Search contacts..." oninput="setContactsSearch()" onkeydown="if(event.key==='Enter') setContactsSearch()" />
+          <button class="submit-btn" type="button" onclick="setContactsSearch()">SEARCH</button>
+        </div>
+        <div id="contacts-container">
+          <div class="hvi-card"><p>Loading contacts...</p></div>
         </div>
       </div>
 
@@ -824,8 +1066,8 @@ for i in range(3):
               <button class="submit-btn" type="button" onclick="copyMissionProbePack()">COPY FULL MISSION + PROBE</button>
               <button class="confirm-btn" type="button" onclick="openDocEditor('OperationDir/Templates/MissionProbeWorkflow.md','// AI BOT INSTRUCTION EDITOR','mission-probe-guide-content')">EDIT AI BOT INSTRUCTION</button>
             </div>
-            <div class="mission-probe-card-body">
-              <textarea id="mission-probe-guide-content" class="template-pack-textarea" readonly>Loading Full Mission + Probe...</textarea>
+            <div class="manual-view mission-probe-guide-preview mission-probe-card-body">
+              <div id="mission-probe-guide-content">Loading Full Mission + Probe...</div>
             </div>
           </section>
           <section id="mission-probe-brief-card" class="mission-probe-card template-detail-card" data-template-section="brief">
@@ -1230,8 +1472,8 @@ for i in range(3):
         <div id="lock-meta" class="lock-meta"></div>
       </div>
     </div>
-    <script src="/assets/managementapp.js?v=20260311-classic-2"></script>
-    <script src="/assets/managementapp-draft.js?v=20260311-classic-2"></script>
+    <script src="/assets/managementapp.js?v=20260313-swissknife-2"></script>
+    <script src="/assets/managementapp-draft.js?v=20260313-swissknife-2"></script>
 
   </body>
 </html>

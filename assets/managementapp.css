@@ -5,6 +5,8 @@
         --term-dim: #004411;
         --alert-red: #ff3333;
         --warning-yellow: #ffcc00;
+        --notice-accent: #00e5ff;
+        --notice-accent-soft: rgba(0, 229, 255, 0.16);
         --font-main: "Courier New", Courier, monospace;
         --font-title: "Courier New", Courier, monospace;
         --font-nav: "Courier New", Courier, monospace;
@@ -969,6 +971,41 @@
         box-shadow: 0 0 30px rgba(0, 255, 65, 0.25);
         padding: 18px;
       }
+      #notice-overlay.confirm-overlay {
+        inset: auto;
+        left: 18px;
+        bottom: 18px;
+        top: auto;
+        right: auto;
+        background: transparent;
+        justify-content: flex-start;
+        align-items: flex-end;
+        pointer-events: none;
+      }
+      #notice-overlay.confirm-overlay.active {
+        display: flex;
+      }
+      #notice-overlay .confirm-modal {
+        width: min(360px, 92vw);
+        border: 1px solid var(--notice-accent);
+        background: radial-gradient(circle at top left, rgba(0, 20, 24, 0.98) 0%, rgba(3, 10, 12, 0.98) 100%);
+        box-shadow: 0 0 22px var(--notice-accent-soft);
+        pointer-events: auto;
+      }
+      #notice-overlay .confirm-title {
+        color: var(--notice-accent);
+      }
+      #notice-overlay .confirm-message {
+        color: #dffcff;
+      }
+      #notice-overlay .confirm-btn {
+        border-color: var(--notice-accent);
+        color: var(--notice-accent);
+      }
+      #notice-overlay .confirm-btn:hover {
+        background: var(--notice-accent);
+        color: #001015;
+      }
       .confirm-title {
         margin: 0 0 12px 0;
         color: var(--warning-yellow);
@@ -1550,6 +1587,53 @@
         text-overflow: ellipsis;
         max-width: 100%;
       }
+      .contact-detail-panel {
+        margin-top: 10px;
+        border-top: 1px solid rgba(0, 255, 65, 0.18);
+        padding-top: 10px;
+        display: none;
+      }
+      .contact-detail-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 10px;
+      }
+      .contact-detail-grid .form-group {
+        margin-bottom: 8px;
+      }
+      .contact-invoice-list {
+        margin-top: 8px;
+        display: grid;
+        gap: 6px;
+      }
+      .contact-invoice-item {
+        border: 1px solid rgba(0, 255, 65, 0.2);
+        padding: 6px 8px;
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        align-items: center;
+        font-size: 0.78rem;
+      }
+      .contact-invoice-item button {
+        padding: 4px 8px;
+      }
+      .contact-invoice-preview {
+        margin-top: 8px;
+        border: 1px solid rgba(0, 255, 65, 0.2);
+        padding: 8px;
+        background: rgba(0, 0, 0, 0.35);
+      }
+      .contact-invoice-preview img {
+        max-width: 100%;
+        height: auto;
+        display: block;
+      }
+      .contact-invoice-preview iframe {
+        width: 100%;
+        min-height: 360px;
+        border: none;
+      }
       .hvi-thumb {
         width: 42px;
         height: 42px;
@@ -1698,6 +1782,13 @@
         gap: 14px;
         align-items: stretch;
       }
+      .op-mission-count {
+        margin-top: 8px;
+        font-size: 0.72rem;
+        letter-spacing: 0.08em;
+        color: var(--warning-yellow);
+        text-transform: uppercase;
+      }
       .mission-probe-card {
         border: 1px solid var(--term-green);
         background: radial-gradient(circle at center, #071707 0%, #020202 100%);
@@ -1705,6 +1796,15 @@
         grid-template-rows: auto 1fr;
         min-height: 58vh;
         min-width: 0;
+      }
+      .mission-probe-guide-preview h1,
+      .mission-probe-guide-preview h2,
+      .mission-probe-guide-preview h3,
+      .mission-probe-guide-preview h4,
+      .mission-probe-guide-preview h5,
+      .mission-probe-guide-preview h6 {
+        color: var(--warning-yellow);
+        text-shadow: 0 0 8px rgba(255, 216, 74, 0.25);
       }
       .templates-summary-grid {
         display: grid;
@@ -4153,6 +4253,33 @@
         grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
         gap: 8px;
       }
+      .mission-profile-pagination {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .mission-profile-page-label {
+        color: var(--term-dim);
+        font-size: 0.72rem;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+      .mission-profile-pages {
+        display: grid;
+        gap: 12px;
+      }
+      .mission-profile-page {
+        display: none;
+        gap: 12px;
+      }
+      .mission-profile-stack[data-page="1"] .mission-profile-page-1 {
+        display: grid;
+      }
+      .mission-profile-stack[data-page="2"] .mission-profile-page-2 {
+        display: grid;
+      }
       .mission-profile-note {
         border: 1px dashed rgba(255, 204, 0, 0.35);
         background: rgba(255, 204, 0, 0.06);
@@ -4216,6 +4343,10 @@
       .mission-section-assumption-log {
         border-color: rgba(255, 204, 0, 0.4);
         background: rgba(255, 204, 0, 0.04);
+      }
+      .mission-dossier-block-outcome {
+        border-color: var(--warning-yellow);
+        background: linear-gradient(180deg, rgba(255, 204, 0, 0.06), rgba(0, 0, 0, 0.3));
       }
       .mission-dossier-block-title {
         border-bottom: 1px solid var(--term-dim);
@@ -4332,6 +4463,219 @@
         font-size: 0.84rem;
         line-height: 1.35;
         overflow-wrap: anywhere;
+      }
+      .swissknife-shell {
+        --sk-bg: #050505;
+        --sk-panel: rgba(0, 20, 0, 0.6);
+        --sk-border: 1px solid var(--term-green);
+        background: var(--sk-bg);
+        color: var(--term-green);
+        font-family: "Courier New", Courier, monospace;
+        padding: 12px;
+        display: grid;
+        grid-template-columns: 220px 1fr;
+        grid-template-rows: 54px 1fr 28px;
+        gap: 12px;
+        min-height: 520px;
+        border: 1px solid var(--term-dim);
+      }
+      .swissknife-header {
+        grid-column: 1 / -1;
+        border-bottom: 2px solid var(--term-green);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 12px;
+        text-shadow: 0 0 10px var(--term-green);
+      }
+      .swissknife-title {
+        font-weight: 700;
+        letter-spacing: 0.08em;
+      }
+      .swissknife-build-tag {
+        display: inline-block;
+        margin-left: 8px;
+        padding: 2px 6px;
+        border: 1px solid var(--term-dim);
+        color: var(--warning-yellow);
+        font-size: 0.68rem;
+        letter-spacing: 0.12em;
+      }
+      .swissknife-status {
+        font-size: 0.78rem;
+        color: var(--term-dim);
+      }
+      .swissknife-sidebar {
+        grid-row: 2 / 3;
+        border: var(--sk-border);
+        padding: 10px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        background: var(--sk-panel);
+      }
+      .swissknife-nav-btn {
+        background: transparent;
+        border: 1px solid var(--term-dim);
+        color: var(--term-green);
+        padding: 12px;
+        text-align: left;
+        cursor: pointer;
+        transition: 0.2s;
+        font-family: inherit;
+        font-weight: bold;
+        text-transform: uppercase;
+      }
+      .swissknife-nav-btn:hover,
+      .swissknife-nav-btn.active {
+        background: var(--term-green);
+        color: black;
+        box-shadow: 0 0 12px var(--term-green);
+      }
+      .swissknife-main {
+        grid-row: 2 / 3;
+        border: var(--sk-border);
+        padding: 16px;
+        overflow-y: auto;
+        background: radial-gradient(circle at center, #0a1a0a 0%, #000 100%);
+      }
+      .swissknife-view {
+        display: none;
+      }
+      .swissknife-view.active {
+        display: block;
+        animation: fadeIn 0.3s ease-in;
+      }
+      .swissknife-block {
+        border: 1px dashed var(--term-green);
+        background: rgba(0, 255, 65, 0.05);
+        padding: 16px;
+        margin-bottom: 16px;
+      }
+      .swissknife-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 12px;
+      }
+      .swissknife-form-group {
+        margin-bottom: 12px;
+      }
+      .swissknife-form-group label {
+        display: block;
+        margin-bottom: 6px;
+        color: var(--term-green);
+        opacity: 0.8;
+      }
+      .swissknife-textarea {
+        width: 100%;
+        padding: 10px;
+        background-color: var(--sk-bg);
+        border: 1px solid var(--term-dim);
+        color: var(--term-green);
+        font-family: inherit;
+        box-sizing: border-box;
+        min-height: 110px;
+      }
+      .swissknife-inline {
+        margin: 10px 0 12px 0;
+        color: var(--term-green);
+        opacity: 0.9;
+      }
+      .swissknife-status-line {
+        margin-top: 10px;
+        font-size: 0.78rem;
+        color: var(--term-dim);
+      }
+      .swissknife-progress-container {
+        margin-top: 14px;
+        display: none;
+      }
+      .swissknife-progress-label {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 6px;
+        font-size: 0.82rem;
+      }
+      .swissknife-progress-outer {
+        height: 20px;
+        border: 1px solid var(--term-green);
+        background: rgba(0, 68, 17, 0.2);
+        position: relative;
+        overflow: hidden;
+      }
+      .swissknife-progress-inner {
+        height: 100%;
+        background: var(--term-green);
+        width: 0%;
+        transition: width 0.3s ease;
+        box-shadow: 0 0 10px var(--term-green);
+      }
+      .swissknife-progress-inner.indeterminate {
+        width: 40%;
+        animation: swissknife-progress-indeterminate 1.2s infinite ease-in-out;
+      }
+      @keyframes swissknife-progress-indeterminate {
+        0% {
+          transform: translateX(-100%);
+        }
+        50% {
+          transform: translateX(60%);
+        }
+        100% {
+          transform: translateX(200%);
+        }
+      }
+      .swissknife-recent-list {
+        display: grid;
+        gap: 8px;
+      }
+      .swissknife-recent-card {
+        border: 1px solid var(--term-dim);
+        padding: 10px 12px;
+        background: rgba(0, 255, 65, 0.02);
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        align-items: center;
+        cursor: pointer;
+      }
+      .swissknife-recent-card:hover {
+        border-color: var(--term-green);
+        background: rgba(0, 255, 65, 0.06);
+      }
+      .swissknife-recent-info {
+        display: grid;
+        gap: 4px;
+      }
+      .swissknife-recent-name {
+        font-weight: 700;
+      }
+      .swissknife-recent-path {
+        font-size: 0.74rem;
+        color: var(--term-dim);
+        word-break: break-all;
+      }
+      .swissknife-footer {
+        grid-column: 1 / -1;
+        border-top: var(--sk-border);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 12px;
+        font-size: 0.78rem;
+      }
+      #swissknife-footer-status {
+        color: var(--term-dim);
+      }
+      @media (max-width: 960px) {
+        .swissknife-shell {
+          grid-template-columns: 1fr;
+          grid-template-rows: auto auto 1fr auto;
+        }
+        .swissknife-sidebar {
+          flex-direction: row;
+          flex-wrap: wrap;
+        }
       }
       @media (max-width: 900px) {
         .mission-intel-textarea {

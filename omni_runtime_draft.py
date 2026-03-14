@@ -18,10 +18,12 @@ MUTABLE_EXACT_PATHS = {
     "MissionDebrief.md",
     "OperationDir/BLACK_BOOK.md",
     "OperationDir/HVI_INDEX.md",
+    "OperationDir/CONTACTS_INDEX.json",
 }
 
 MUTABLE_PREFIX_PATHS = {
     "OperationDir/Operations",
+    "OperationDir/Contacts",
     "SandboxLab",
 }
 
