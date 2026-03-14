@@ -675,6 +675,24 @@ def _apply_backup_sync_action(action):
 
 def _apply_backup_snapshot(snapshot, summary):
     snapshot = snapshot if isinstance(snapshot, dict) else {}
+    files = snapshot.get("files", []) if isinstance(snapshot.get("files", []), list) else []
+    if files:
+        ws = WORKSPACE.resolve()
+        for item in files:
+            if not isinstance(item, dict):
+                continue
+            rel_path = str(item.get("rel_path", "")).strip().lstrip("/")
+            if not rel_path:
+                continue
+            dest = (WORKSPACE / rel_path).resolve()
+            if not str(dest).startswith(str(ws)):
+                continue
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                dest.write_text(str(item.get("content", "")), encoding="utf-8")
+                summary["files"] += 1
+            except Exception:
+                continue
     for op in snapshot.get("operations", []) if isinstance(snapshot.get("operations", []), list) else []:
         clean = _safe_operation_rel(op)
         (_operation_dir_for_rel(clean) / "Missions").mkdir(parents=True, exist_ok=True)
@@ -743,6 +761,7 @@ def import_backup_payload_to_workspace(payload):
         "hvi": 0,
         "contacts": 0,
         "invoices": 0,
+        "files": 0,
         "docs": 0,
     }
     errors = []
@@ -779,6 +798,31 @@ def import_backup_payload_to_workspace(payload):
 
 
 def export_workspace_backup_payload():
+    backup_files = []
+    ws = WORKSPACE.resolve()
+
+    def add_text_file(path: Path):
+        try:
+            if not path.exists() or not path.is_file():
+                return
+            rel = str(path.resolve().relative_to(ws))
+            content = path.read_text(encoding="utf-8", errors="ignore")
+            backup_files.append({"rel_path": rel, "content": content})
+        except Exception:
+            return
+
+    for mission_file in OPERATIONS_DIR.rglob("Missions/*.md"):
+        add_text_file(mission_file)
+    for folder_name in (".brief_versions", ".debrief_versions"):
+        for folder in OPERATIONS_DIR.rglob(folder_name):
+            for file_path in folder.rglob("*"):
+                add_text_file(file_path)
+    add_text_file(WORKSPACE / "MissionBriefing.md")
+    add_text_file(WORKSPACE / "MissionDebrief.md")
+    add_text_file(WORKSPACE / "OperationDir" / "HVI_INDEX.md")
+    add_text_file(WORKSPACE / "OperationDir" / "BLACK_BOOK.md")
+    add_text_file(CONTACTS_INDEX_FILE)
+
     contacts = load_contacts()
     invoice_files = []
     for contact in contacts:
@@ -812,6 +856,7 @@ def export_workspace_backup_payload():
             "origin": "mac-live-server",
         },
         "snapshot": {
+            "files": backup_files,
             "operations": load_operations(),
             "missions": load_missions(),
             "blackbook": load_blackbook(),
