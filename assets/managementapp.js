@@ -1588,7 +1588,7 @@
 
       function collectAppBackupPayload() {
         const ls = {};
-        const includeKey = (k) => /^(managementapp:|operationColors:|operationOrder:|hvi|checklist|routineData|journal|reminder|notification|appearance|performance|tutor|missionPlan:|dashboardSession:|swissknife|omniSync)/i.test(String(k || ""));
+        const includeKey = () => true;
         try {
           for (let i = 0; i < localStorage.length; i += 1) {
             const k = localStorage.key(i);
@@ -1662,6 +1662,10 @@
           } catch (_) {
             payload = null;
           }
+          if (payload && payload.meta) {
+            const localPayload = collectAppBackupPayload();
+            payload.local_storage = localPayload.local_storage || {};
+          }
           const { file, name, text } = payload && payload.meta ? buildBackupFileFromPayload(payload) : buildBackupFile();
           await downloadBackupText(file.name || name, text);
           recordSyncCenterEvent("backup_exported", { message: file.name || name });
@@ -1679,6 +1683,10 @@
             payload = await fetchJsonSmart("/api/backup/export");
           } catch (_) {
             payload = null;
+          }
+          if (payload && payload.meta) {
+            const localPayload = collectAppBackupPayload();
+            payload.local_storage = localPayload.local_storage || {};
           }
           const { file, name, text } = payload && payload.meta ? buildBackupFileFromPayload(payload) : buildBackupFile();
           if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
@@ -1704,7 +1712,7 @@
       }
 
       function backupLocalStorageKeyFilter(key) {
-        return /^(managementapp:|operationColors:|operationOrder:|hvi|checklist|routineData|journal|reminder|notification|appearance|performance|tutor|missionPlan:|dashboardSession:|swissknife|omniSync)/i.test(String(key || ""));
+        return true;
       }
 
       function pendingWorkspaceSyncCount() {
