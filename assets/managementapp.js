@@ -1596,6 +1596,7 @@
             ls[k] = localStorage.getItem(k);
           }
         } catch (_) {}
+        const localSnapshot = buildLocalSnapshot(ls);
         return {
           meta: {
             app: "OMNI",
@@ -1615,6 +1616,74 @@
           },
           sync_queue: cloneSyncData(getOfflineSyncQueue()) || [],
           local_storage: ls,
+          local_snapshot: localSnapshot,
+        };
+      }
+
+      function buildLocalSnapshot(storageMap) {
+        const safeParse = (raw) => {
+          if (!raw || typeof raw !== "string") return null;
+          try {
+            return JSON.parse(raw);
+          } catch (_) {
+            return null;
+          }
+        };
+        const map = storageMap && typeof storageMap === "object" ? storageMap : {};
+        const routine = safeParse(map[routineStorageKey()]);
+        const checklist = safeParse(map[checklistStorageKey()]);
+        const datawells = safeParse(map[datawellsStorageKey()]);
+        const missionLinks = safeParse(map[missionDatawellLinksKey()]);
+        const hviExtras = safeParse(map[hviExtrasStorageKey()]);
+        const hviStats = safeParse(map[hviStatTemplatesKey()]);
+        const appearance = safeParse(map[appearanceSettingsKey()]);
+        const performance = safeParse(map[performanceSettingsKey()]);
+        const calendarSync = safeParse(map[omniCalendarSyncStateKey()]);
+        const notificationSettings = safeParse(map[notificationSettingsKey()]);
+        const notificationHistory = safeParse(map[notificationHistoryKey()]);
+        const firedNotifications = safeParse(map[firedNotificationsKey()]);
+        const viewSorts = safeParse(map[OMNI_VIEW_SORTS_KEY]);
+        const operationColors = safeParse(map[operationColorsKey()]);
+        const operationOrder = safeParse(map[operationOrderKey()]);
+        const hviLayout = map[hviLayoutStorageKey()] || null;
+        const localStorageStats = getLocalStorageBackupStats();
+        return {
+          counts: {
+            datawells: Array.isArray(datawells) ? datawells.length : 0,
+            checklist: Array.isArray(checklist) ? checklist.length : 0,
+            journal: Array.isArray(routine?.journal) ? routine.journal.length : 0,
+            reminders: Array.isArray(routine?.reminders) ? routine.reminders.length : 0,
+            postingTemplate: Array.isArray(routine?.postingTemplate?.items) ? routine.postingTemplate.items.length : 0,
+            routines: ["morning", "night"].reduce((sum, period) => sum + (Array.isArray(routine?.[period]) ? routine[period].length : 0), 0),
+            gymExercises: routine?.catalog && typeof routine.catalog === "object"
+              ? Object.values(routine.catalog).reduce((sum, rows) => sum + (Array.isArray(rows) ? rows.length : 0), 0)
+              : 0,
+            gymSavedSessions: Array.isArray(routine?.savedSessions) ? routine.savedSessions.length : 0,
+            missionDatawellLinks: missionLinks && typeof missionLinks === "object" ? Object.keys(missionLinks).length : 0,
+          },
+          data: {
+            routine,
+            checklist,
+            datawells,
+            mission_links: missionLinks,
+            hvi_extras: hviExtras,
+            hvi_stats: hviStats,
+            appearance,
+            performance,
+            calendar_sync: calendarSync,
+            notification_settings: notificationSettings,
+            notification_history: notificationHistory,
+            fired_notifications: firedNotifications,
+            view_sorts: viewSorts,
+            operation_colors: operationColors,
+            operation_order: operationOrder,
+            hvi_layout: hviLayout,
+          },
+          local_storage_index: {
+            key_count: localStorageStats.keyCount,
+            bytes: localStorageStats.byteCount,
+            keys: localStorageStats.keys,
+          },
         };
       }
 
@@ -1665,6 +1734,7 @@
           if (payload && payload.meta) {
             const localPayload = collectAppBackupPayload();
             payload.local_storage = localPayload.local_storage || {};
+            payload.local_snapshot = localPayload.local_snapshot || null;
           }
           const { file, name, text } = payload && payload.meta ? buildBackupFileFromPayload(payload) : buildBackupFile();
           await downloadBackupText(file.name || name, text);
@@ -1687,6 +1757,7 @@
           if (payload && payload.meta) {
             const localPayload = collectAppBackupPayload();
             payload.local_storage = localPayload.local_storage || {};
+            payload.local_snapshot = localPayload.local_snapshot || null;
           }
           const { file, name, text } = payload && payload.meta ? buildBackupFileFromPayload(payload) : buildBackupFile();
           if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
@@ -1847,6 +1918,9 @@
           const backupLocalStorage = parsed && parsed.local_storage && typeof parsed.local_storage === "object"
             ? parsed.local_storage
             : null;
+          const backupLocalSnapshot = parsed && parsed.local_snapshot && typeof parsed.local_snapshot === "object"
+            ? parsed.local_snapshot
+            : null;
           if (!backupLocalStorage && !hasSnapshot) {
             themedNotice("Backup format not recognized.");
             return;
@@ -1854,7 +1928,7 @@
           if (!(await themedConfirm("Import this backup and replace current OMNI local data?"))) return;
 
           const projectSyncResult = await importProjectBackupToMac(parsed);
-          if (!backupLocalStorage) {
+          if (!backupLocalStorage && !backupLocalSnapshot) {
             const applied = hasSnapshot ? replaceOfflineWorkspaceFromBackupPayload(parsed) : false;
             let notice = applied ? "Snapshot imported." : "Snapshot import failed.";
             if (projectSyncResult && projectSyncResult.ok) {
@@ -1880,11 +1954,37 @@
           }
           toDelete.forEach((k) => localStorage.removeItem(k));
 
-          Object.keys(backupLocalStorage).forEach((k) => {
-            if (!backupLocalStorageKeyFilter(k)) return;
-            const v = backupLocalStorage[k];
-            localStorage.setItem(k, v == null ? "" : String(v));
-          });
+          if (backupLocalStorage) {
+            Object.keys(backupLocalStorage).forEach((k) => {
+              if (!backupLocalStorageKeyFilter(k)) return;
+              const v = backupLocalStorage[k];
+              localStorage.setItem(k, v == null ? "" : String(v));
+            });
+          } else if (backupLocalSnapshot && backupLocalSnapshot.data) {
+            const data = backupLocalSnapshot.data;
+            const setJson = (key, value) => {
+              if (value == null) return;
+              localStorage.setItem(key, JSON.stringify(value));
+            };
+            setJson(routineStorageKey(), data.routine);
+            setJson(checklistStorageKey(), data.checklist);
+            setJson(datawellsStorageKey(), data.datawells);
+            setJson(missionDatawellLinksKey(), data.mission_links);
+            setJson(hviExtrasStorageKey(), data.hvi_extras);
+            setJson(hviStatTemplatesKey(), data.hvi_stats);
+            setJson(appearanceSettingsKey(), data.appearance);
+            setJson(performanceSettingsKey(), data.performance);
+            setJson(omniCalendarSyncStateKey(), data.calendar_sync);
+            setJson(notificationSettingsKey(), data.notification_settings);
+            setJson(notificationHistoryKey(), data.notification_history);
+            setJson(firedNotificationsKey(), data.fired_notifications);
+            setJson(OMNI_VIEW_SORTS_KEY, data.view_sorts);
+            setJson(operationColorsKey(), data.operation_colors);
+            setJson(operationOrderKey(), data.operation_order);
+            if (data.hvi_layout != null) {
+              localStorage.setItem(hviLayoutStorageKey(), String(data.hvi_layout));
+            }
+          }
 
           let notice = "Backup imported.";
           if (projectSyncResult && projectSyncResult.ok) {
