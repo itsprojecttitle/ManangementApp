@@ -94,6 +94,9 @@
       ]);
       let appStarted = false;
       let lockUnlocked = false;
+      let localDataPersistTimer = 0;
+      let localDataPersistInFlight = false;
+      let lastLocalDataPersistHash = "";
       const LOCK_CONFIG_KEY = "managementapp:lock:v1";
       const LOCK_MAGIC = "MANAGEMENT_APP_LOCK_V1";
       const LOCK_KDF_ITERATIONS = 600000;
@@ -1687,6 +1690,99 @@
         };
       }
 
+      function buildLocalDataPersistPayload() {
+        const localPayload = collectAppBackupPayload();
+        return {
+          local_storage: localPayload.local_storage || {},
+          local_snapshot: localPayload.local_snapshot || null,
+        };
+      }
+
+      async function persistLocalDataToMac(reason = "") {
+        if (localDataPersistInFlight) return;
+        const payload = buildLocalDataPersistPayload();
+        const hash = JSON.stringify(payload);
+        if (hash === lastLocalDataPersistHash) return;
+        localDataPersistInFlight = true;
+        try {
+          const res = await fetch("/api/localdata/save", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: hash,
+          });
+          if (res.ok) {
+            lastLocalDataPersistHash = hash;
+          }
+        } catch (_) {
+          // Best-effort only; offline usage should not block the UI.
+        } finally {
+          localDataPersistInFlight = false;
+        }
+      }
+
+      function queueLocalDataPersist(reason = "", delayMs = 1200) {
+        if (localDataPersistTimer) clearTimeout(localDataPersistTimer);
+        localDataPersistTimer = window.setTimeout(() => {
+          localDataPersistTimer = 0;
+          persistLocalDataToMac(reason).catch(() => {});
+        }, Math.max(0, Number(delayMs || 0)));
+      }
+
+      function localDataRecoveryNeeded() {
+        return !localStorage.getItem(routineStorageKey())
+          && !localStorage.getItem(checklistStorageKey())
+          && !localStorage.getItem(datawellsStorageKey());
+      }
+
+      async function recoverLocalDataFromDiskIfMissing() {
+        if (!localDataRecoveryNeeded()) return false;
+        try {
+          const res = await fetch("/api/localdata/load");
+          if (!res.ok) return false;
+          const payload = await res.json();
+          const localStorageData = payload?.local_storage && typeof payload.local_storage === "object"
+            ? payload.local_storage
+            : null;
+          const snapshot = payload?.local_snapshot && typeof payload.local_snapshot === "object"
+            ? payload.local_snapshot
+            : null;
+          if (localStorageData) {
+            Object.keys(localStorageData).forEach((k) => {
+              const v = localStorageData[k];
+              localStorage.setItem(k, v == null ? "" : String(v));
+            });
+            return true;
+          }
+          if (snapshot?.data) {
+            const data = snapshot.data;
+            const setJson = (key, value) => {
+              if (value == null) return;
+              localStorage.setItem(key, JSON.stringify(value));
+            };
+            setJson(routineStorageKey(), data.routine);
+            setJson(checklistStorageKey(), data.checklist);
+            setJson(datawellsStorageKey(), data.datawells);
+            setJson(missionDatawellLinksKey(), data.mission_links);
+            setJson(hviExtrasStorageKey(), data.hvi_extras);
+            setJson(hviStatTemplatesKey(), data.hvi_stats);
+            setJson(appearanceSettingsKey(), data.appearance);
+            setJson(performanceSettingsKey(), data.performance);
+            setJson(omniCalendarSyncStateKey(), data.calendar_sync);
+            setJson(notificationSettingsKey(), data.notification_settings);
+            setJson(notificationHistoryKey(), data.notification_history);
+            setJson(firedNotificationsKey(), data.fired_notifications);
+            setJson(OMNI_VIEW_SORTS_KEY, data.view_sorts);
+            setJson(operationColorsKey(), data.operation_colors);
+            setJson(operationOrderKey(), data.operation_order);
+            if (data.hvi_layout != null) {
+              localStorage.setItem(hviLayoutStorageKey(), String(data.hvi_layout));
+            }
+            return true;
+          }
+        } catch (_) {}
+        return false;
+      }
+
       function buildBackupFile() {
         const payload = collectAppBackupPayload();
         const text = JSON.stringify(payload, null, 2);
@@ -2633,6 +2729,7 @@
         };
         localStorage.setItem(privacySettingsKey(), JSON.stringify(privacySettings));
         if (currentView === "settings") renderSyncCenter();
+        queueLocalDataPersist("privacy_settings");
         themedNotice("Privacy settings saved.");
       }
 
@@ -3601,6 +3698,7 @@
 
       function saveViewSortModes() {
         localStorage.setItem(OMNI_VIEW_SORTS_KEY, JSON.stringify(normalizeViewSortState(viewSortModes)));
+        queueLocalDataPersist("view_sorts");
       }
 
       function getViewSortMode(pageKey) {
@@ -4046,6 +4144,7 @@
           renderMissionIntelEditor();
         }
         if (!silent) recordSyncCenterEvent("datawell_links_saved", { message: "Mission/Datawell links updated." });
+        queueLocalDataPersist("mission_links");
       }
 
       function getWorkflowLinkedDatawellIds() {
@@ -4712,6 +4811,7 @@
         if (currentView === "settings") renderSyncCenter();
         if (currentView === "global-search") renderGlobalSearch();
         if (!silent) recordSyncCenterEvent("datawells_saved", { message: `${allDatawells.length} source(s) stored.` });
+        queueLocalDataPersist("datawells");
       }
 
       function clearDatawellForm() {
@@ -9560,6 +9660,7 @@
         localStorage.setItem(routineStorageKey(), JSON.stringify(routineData));
         queueNativeNotificationRefresh(250, { prompt: false });
         queueOmniCalendarSync(250, { prompt: false });
+        queueLocalDataPersist("routine");
       }
 
       function loadRoutineData() {
@@ -12891,6 +12992,7 @@
         performanceMode = ["fast", "balanced", "light", "manual"].includes(mode) ? mode : "balanced";
         localStorage.setItem(performanceSettingsKey(), JSON.stringify({ mode: performanceMode }));
         scheduleFetchDataPolling();
+        queueLocalDataPersist("performance");
       }
 
       function resetPerformanceSettings() {
@@ -13014,6 +13116,7 @@
         };
         localStorage.setItem(appearanceSettingsKey(), JSON.stringify(settings));
         applyAppearanceSettings(settings);
+        queueLocalDataPersist("appearance");
       }
 
       function resetAppearanceField(field) {
@@ -13138,6 +13241,7 @@
         localStorage.setItem(notificationSettingsKey(), JSON.stringify(notificationSettings));
         queueNativeNotificationRefresh(100, { prompt: true });
         if (currentView === "settings") renderSyncCenter();
+        queueLocalDataPersist("notifications");
       }
 
       function resetNotificationField(field) {
@@ -14166,6 +14270,7 @@
         checklistItems = (Array.isArray(checklistItems) ? checklistItems : []).map((item, index) => normalizeChecklistItem(item, index));
         localStorage.setItem(checklistStorageKey(), JSON.stringify(checklistItems));
         queueNativeNotificationRefresh(250, { prompt: false });
+        queueLocalDataPersist("checklist");
       }
 
       function addChecklistItem() {
@@ -15957,6 +16062,7 @@
 
       function saveOperationColors() {
         localStorage.setItem(operationColorsKey(), JSON.stringify(operationColors));
+        queueLocalDataPersist("operation_colors");
       }
 
       function getOperationColor(op) {
@@ -16010,6 +16116,7 @@
 
       function saveOperationOrder() {
         localStorage.setItem(operationOrderKey(), JSON.stringify(operationOrder));
+        queueLocalDataPersist("operation_order");
       }
 
       function syncOperationOrder() {
@@ -17794,6 +17901,7 @@
       function saveMissionPlan(opDay, plan) {
         localStorage.setItem(missionPlanKey(opDay), JSON.stringify(plan));
         queueNativeNotificationRefresh(250, { prompt: false });
+        queueLocalDataPersist("mission_plan");
       }
 
       async function resetDashboardSession() {
@@ -18082,6 +18190,7 @@
         try {
           localStorage.setItem(hviLayoutStorageKey(), hviLayoutTemplate);
         } catch (_) {}
+        queueLocalDataPersist("hvi_layout");
       }
 
       function setHviLayoutTemplate(value) {
@@ -18200,6 +18309,7 @@
 
       function saveHviStatTemplates() {
         localStorage.setItem(hviStatTemplatesKey(), JSON.stringify(hviStatTemplates));
+        queueLocalDataPersist("hvi_stats");
       }
 
       function ensureHviStatTemplate(key) {
@@ -18224,6 +18334,7 @@
 
       function saveHviProfileExtras() {
         localStorage.setItem(hviExtrasStorageKey(), JSON.stringify(hviProfileExtras));
+        queueLocalDataPersist("hvi_extras");
       }
 
       function normalizeList(v) {
@@ -19140,13 +19251,14 @@
         }
       }
 
-      function startAppOnce() {
+      async function startAppOnce() {
         if (appStarted) return;
         appStarted = true;
         window.alert = (message) => themedNotice(message);
         initTerminalAppTitle();
         initMatrixRain();
         window.addEventListener("resize", initMatrixRain);
+        await recoverLocalDataFromDiskIfMissing();
         loadGymPhotoManifest().catch(() => {});
         if ("serviceWorker" in navigator) {
           navigator.serviceWorker.getRegistrations().then((regs) => {
@@ -19255,6 +19367,10 @@
         });
         setInterval(() => queueNativeNotificationRefresh(0, { prompt: false }), 15 * 60 * 1000);
         setInterval(() => queueOmniCalendarSync(0, { prompt: false }), 15 * 60 * 1000);
+        setInterval(() => queueLocalDataPersist("interval", 0), 2 * 60 * 1000);
+        window.addEventListener("beforeunload", () => {
+          persistLocalDataToMac("unload").catch(() => {});
+        });
         switchView('dashboard');
       }
 

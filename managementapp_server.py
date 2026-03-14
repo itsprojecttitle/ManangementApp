@@ -35,6 +35,9 @@ HVI_INDEX_FILE = WORKSPACE / "OperationDir" / "HVI_INDEX.md"
 CONTACTS_INDEX_FILE = WORKSPACE / "OperationDir" / "CONTACTS_INDEX.json"
 CONTACTS_DIR = WORKSPACE / "OperationDir" / "Contacts"
 CONTACTS_INVOICE_DIR = CONTACTS_DIR / "Invoices"
+LOCALDATA_DIR = WORKSPACE / "OperationDir" / "LocalData"
+LOCALDATA_STORAGE_FILE = LOCALDATA_DIR / "local_storage.json"
+LOCALDATA_SNAPSHOT_FILE = LOCALDATA_DIR / "local_snapshot.json"
 MANUEL_DIR = WORKSPACE / "OperationDir" / "Manuel"
 TEMPLATES_DIR = WORKSPACE / "OperationDir" / "Templates"
 EDITABLE_DOC_FILES = {
@@ -822,6 +825,8 @@ def export_workspace_backup_payload():
     add_text_file(WORKSPACE / "OperationDir" / "HVI_INDEX.md")
     add_text_file(WORKSPACE / "OperationDir" / "BLACK_BOOK.md")
     add_text_file(CONTACTS_INDEX_FILE)
+    add_text_file(LOCALDATA_STORAGE_FILE)
+    add_text_file(LOCALDATA_SNAPSHOT_FILE)
 
     contacts = load_contacts()
     invoice_files = []
@@ -1868,6 +1873,42 @@ def save_contacts(rows):
         "contacts": rows,
     }
     CONTACTS_INDEX_FILE.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+
+def save_localdata_payload(payload: dict):
+    payload = payload if isinstance(payload, dict) else {}
+    saved_at = datetime.now(timezone.utc).isoformat()
+    LOCALDATA_DIR.mkdir(parents=True, exist_ok=True)
+    summary = {"ok": True, "saved_at": saved_at, "files": []}
+    if isinstance(payload.get("local_storage"), dict):
+        data = {"saved_at": saved_at, "local_storage": payload.get("local_storage")}
+        LOCALDATA_STORAGE_FILE.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        summary["files"].append(str(LOCALDATA_STORAGE_FILE))
+    if isinstance(payload.get("local_snapshot"), dict):
+        data = {"saved_at": saved_at, "local_snapshot": payload.get("local_snapshot")}
+        LOCALDATA_SNAPSHOT_FILE.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        summary["files"].append(str(LOCALDATA_SNAPSHOT_FILE))
+    if not summary["files"]:
+        summary["ok"] = False
+        summary["error"] = "No local data provided."
+    return summary
+
+
+def load_localdata_payload():
+    payload = {"ok": True}
+    if LOCALDATA_STORAGE_FILE.exists():
+        try:
+            payload["local_storage"] = json.loads(LOCALDATA_STORAGE_FILE.read_text(encoding="utf-8", errors="ignore")).get("local_storage", {})
+        except Exception:
+            payload["local_storage"] = {}
+    if LOCALDATA_SNAPSHOT_FILE.exists():
+        try:
+            payload["local_snapshot"] = json.loads(LOCALDATA_SNAPSHOT_FILE.read_text(encoding="utf-8", errors="ignore")).get("local_snapshot", {})
+        except Exception:
+            payload["local_snapshot"] = {}
+    payload["has_storage"] = bool(payload.get("local_storage"))
+    payload["has_snapshot"] = bool(payload.get("local_snapshot"))
+    return payload
 
 
 def upsert_contact(name: str, fields: dict):
@@ -2967,6 +3008,8 @@ class Handler(SimpleHTTPRequestHandler):
             return _json_response(self, payload, 200)
         if path == "/api/backup/export":
             return _json_response(self, export_workspace_backup_payload(), 200)
+        if path == "/api/localdata/load":
+            return _json_response(self, load_localdata_payload(), 200)
         if path == "/api/mission/brief":
             mission_path = (query.get("mission_path", [""])[0] or "").strip()
             payload = get_mission_brief_payload(mission_path)
@@ -3228,6 +3271,11 @@ class Handler(SimpleHTTPRequestHandler):
         if path == "/api/backup/import":
             result = import_backup_payload_to_workspace(body)
             return _json_response(self, result, 200)
+
+        if path == "/api/localdata/save":
+            result = save_localdata_payload(body)
+            status = 200 if result.get("ok") else 400
+            return _json_response(self, result, status)
 
         if path == "/api/sandbox/python":
             try:
