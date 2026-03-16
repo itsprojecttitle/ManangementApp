@@ -4566,6 +4566,14 @@
         color: var(--term-green);
         opacity: 0.8;
       }
+      .swissknife-dir-row {
+        display: flex;
+        gap: 10px;
+        align-items: stretch;
+      }
+      .swissknife-dir-row .search-input {
+        flex: 1;
+      }
       .swissknife-textarea {
         width: 100%;
         padding: 10px;
@@ -4581,14 +4589,42 @@
         color: var(--term-green);
         opacity: 0.9;
       }
+      .swissknife-inline-split {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px 18px;
+        align-items: center;
+      }
       .swissknife-status-line {
         margin-top: 10px;
         font-size: 0.78rem;
         color: var(--term-dim);
       }
+      .swissknife-convert-history {
+        display: grid;
+        gap: 10px;
+      }
+      .swissknife-convert-card {
+        border: 1px solid var(--term-dim);
+        padding: 10px 12px;
+        background: rgba(0, 255, 65, 0.04);
+        display: grid;
+        gap: 6px;
+      }
+      .swissknife-convert-card.success {
+        border-left: 3px solid var(--term-green);
+      }
+      .swissknife-convert-card.fail {
+        border-left: 3px solid #ff3b30;
+      }
+      .swissknife-convert-meta {
+        font-size: 0.75rem;
+        color: var(--term-dim);
+        word-break: break-all;
+      }
       .swissknife-progress-container {
         margin-top: 14px;
-        display: none;
+        display: block;
       }
       .swissknife-progress-label {
         display: flex;
@@ -4638,6 +4674,37 @@
         gap: 12px;
         align-items: center;
         cursor: pointer;
+      }
+      .swissknife-recent-card.recent-latest {
+        border-top: 3px solid var(--term-green);
+      }
+      .swissknife-recent-card.recent-previous {
+        border-top: 3px solid #f5c542;
+      }
+      .swissknife-recent-card.recent-older {
+        border-top: 3px solid #ff3b30;
+      }
+      .swissknife-recent-preview {
+        width: 92px;
+        height: 62px;
+        border: 1px solid var(--term-dim);
+        background: rgba(0, 255, 65, 0.08);
+        display: grid;
+        place-items: center;
+        overflow: hidden;
+        flex: 0 0 auto;
+      }
+      .swissknife-recent-preview img,
+      .swissknife-recent-preview video {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+      }
+      .swissknife-audio-preview {
+        font-size: 0.7rem;
+        letter-spacing: 0.12em;
+        color: var(--term-dim);
       }
       .swissknife-recent-card:hover {
         border-color: var(--term-green);

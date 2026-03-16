@@ -31,6 +31,69 @@ def _next_available_path(target: Path) -> Path:
 
 
 class OmniDesktopBridge:
+    def swissknife_download(self, payload: dict):
+        try:
+            import managementapp_server as mod
+            url = str(payload.get("url", "")).strip()
+            if not url:
+                return {"ok": False, "error": "url is required"}
+            result = mod.swissknife_download_to_session(
+                payload.get("session_id", ""),
+                url,
+                bool(payload.get("login", False)),
+                payload.get("format", ""),
+                payload.get("quality", ""),
+                payload.get("source", ""),
+                payload.get("output_dir", ""),
+                bool(payload.get("compat_h264", False)),
+                bool(payload.get("force_4k", False)),
+            )
+            return {"ok": True, "result": result}
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
+
+    def swissknife_batch_download(self, payload: dict):
+        try:
+            import managementapp_server as mod
+            urls = payload.get("urls") or []
+            if not isinstance(urls, list) or not urls:
+                return {"ok": False, "error": "urls is required"}
+            results = []
+            for url in urls:
+                url = str(url or "").strip()
+                if not url:
+                    continue
+                result = mod.swissknife_download_to_session(
+                    payload.get("session_id", ""),
+                    url,
+                    bool(payload.get("login", False)),
+                    payload.get("format", ""),
+                    payload.get("quality", ""),
+                    payload.get("source", ""),
+                    payload.get("output_dir", ""),
+                    bool(payload.get("compat_h264", False)),
+                    bool(payload.get("force_4k", False)),
+                )
+                results.append({"url": url, "result": result})
+            return {"ok": True, "results": results}
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
+
+    def swissknife_convert(self, payload: dict):
+        try:
+            import managementapp_server as mod
+            result = mod.swissknife_convert_file(
+                payload.get("source_path", ""),
+                payload.get("target_format", ""),
+                payload.get("output_dir", ""),
+                payload.get("profile", ""),
+                bool(payload.get("force_4k", False)),
+                payload.get("image_quality", ""),
+            )
+            return {"ok": True, "result": result}
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
+
     def copy_text(self, text: str):
         try:
             subprocess.run(["pbcopy"], input=str(text or "").encode("utf-8"), check=True)

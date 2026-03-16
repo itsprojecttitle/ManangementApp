@@ -105,6 +105,7 @@
       let booksCatalog = [];
       let swissknifeSessions = [];
       let selectedSwissknifeSession = "";
+      let swissknifeConvertHistory = [];
       let reminderCalendarSelectedDate = "";
       let reminderCalendarMonthCursor = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
       let viewSortModes = {};
@@ -206,6 +207,7 @@
       const OMNI_APP_VERSION_KEY = "omniAppVersion";
       const OMNI_APP_BUILD_KEY = "omniAppBuild";
       const SWISSKNIFE_LOG_KEY = "swissknifeFailLog:v1";
+      const SWISSKNIFE_CONVERT_HISTORY_KEY = "swissknifeConvertHistory:v1";
       let swissknifeFailLog = [];
       const OMNI_NOTIFICATION_THREAD_ID = "omni-alerts";
       const OMNI_PINNED_REMINDER_SPECS = [
@@ -273,6 +275,59 @@
         saveSwissknifeFailLog();
         renderSwissknifeLog();
         themedNotice("Swissknife log cleared.");
+      }
+
+      function loadSwissknifeConvertHistory() {
+        try {
+          const raw = localStorage.getItem(SWISSKNIFE_CONVERT_HISTORY_KEY);
+          const parsed = raw ? JSON.parse(raw) : [];
+          swissknifeConvertHistory = Array.isArray(parsed) ? parsed.slice(-200) : [];
+        } catch {
+          swissknifeConvertHistory = [];
+        }
+      }
+
+      function saveSwissknifeConvertHistory() {
+        localStorage.setItem(
+          SWISSKNIFE_CONVERT_HISTORY_KEY,
+          JSON.stringify((swissknifeConvertHistory || []).slice(-200))
+        );
+      }
+
+      function addSwissknifeConvertHistory(entry) {
+        swissknifeConvertHistory.push({
+          ts: new Date().toISOString(),
+          status: "ok",
+          ...entry,
+        });
+        saveSwissknifeConvertHistory();
+      }
+
+      function renderSwissknifeConvertHistory() {
+        const host = document.getElementById("swissknife-convert-history");
+        if (!host) return;
+        const rows = (swissknifeConvertHistory || []).slice().reverse().map((row) => {
+          const status = String(row.status || "").toLowerCase() === "ok" ? "success" : "fail";
+          const title = status === "success" ? "CONVERTED" : "FAILED";
+          const meta = [
+            row.ts || "",
+            row.format ? `format: ${row.format}` : "",
+            row.profile ? `profile: ${row.profile}` : "",
+            row.force_4k ? "force_4k" : "",
+            row.image_quality ? `img_q:${row.image_quality}` : "",
+          ].filter(Boolean).join(" | ");
+          const output = row.output || row.output_path || "";
+          const clickAttr = output ? `onclick="openSwissknifePath('${escapeJsString(output)}')"` : "";
+          return `
+            <div class="swissknife-convert-card ${status}" ${clickAttr}>
+              <div><strong>${title}</strong> ${escapeHtmlAttr(row.source || "")}</div>
+              <div class="swissknife-convert-meta">Output: ${escapeHtmlAttr(output || "N/A")}</div>
+              <div class="swissknife-convert-meta">${escapeHtmlAttr(meta || "")}</div>
+              ${row.error ? `<div class="swissknife-convert-meta">Error: ${escapeHtmlAttr(row.error)}</div>` : ""}
+            </div>
+          `;
+        }).join("");
+        host.innerHTML = rows || "No conversions yet.";
       }
 
       function deriveVersionBaseFromIso(iso) {
@@ -5432,12 +5487,17 @@
         const sel = document.getElementById("swissknife-session-select");
         const list = document.getElementById("swissknife-session-list");
         const outputEl = document.getElementById("swissknife-output-dir");
+        const convertOutputEl = document.getElementById("swissknife-convert-output-dir");
         if (outputEl && !outputEl.value) {
           outputEl.value = localStorage.getItem("swissknife_output_dir") || "";
+        }
+        if (convertOutputEl && !convertOutputEl.value) {
+          convertOutputEl.value = localStorage.getItem("swissknife_convert_output_dir") || "";
         }
         if (!sel || !list) {
           renderSwissknifeRecentDownloads(Array.isArray(swissknifeSessions) ? swissknifeSessions : []);
           renderSwissknifeLog();
+          renderSwissknifeConvertHistory();
           return;
         }
         ensureViewSortBar("swissknife-sort-slot", "swissknife", list);
@@ -5489,6 +5549,7 @@
         };
         renderSwissknifeRecentDownloads(sessions);
         renderSwissknifeLog();
+        renderSwissknifeConvertHistory();
       }
 
       function renderSwissknifeRecentDownloads(sessions) {
@@ -5501,14 +5562,17 @@
           });
         });
         recent.sort((a, b) => toSortDateMs(b?.downloaded_at || "") - toSortDateMs(a?.downloaded_at || ""));
-        const rows = recent.slice(0, 6).map((d) => {
+        const rows = recent.slice(0, 6).map((d, idx) => {
           const label = d?.shortcode || d?.owner_username || d?.url || "Download";
           const path = d?.download_dir || d?.manifest?.download_dir || "";
           const openPath = pickSwissknifeFilePath(d);
           const source = d?.source ? `Source: ${String(d.source).toUpperCase()}` : "";
           const clickAttr = openPath ? `onclick="openSwissknifePath('${escapeJsString(openPath)}')"` : "";
+          const preview = buildSwissknifePreview(d);
+          const statusClass = idx === 0 ? "recent-latest" : (idx === 1 ? "recent-previous" : "recent-older");
           return `
-            <div class="swissknife-recent-card" ${clickAttr} title="${escapeHtmlAttr(openPath || "")}">
+            <div class="swissknife-recent-card ${statusClass}" ${clickAttr} title="${escapeHtmlAttr(openPath || "")}">
+              ${preview}
               <div class="swissknife-recent-info">
                 <div class="swissknife-recent-name">${escapeHtmlAttr(label)}</div>
                 <div class="swissknife-recent-path">${escapeHtmlAttr(path || "No download path recorded.")}</div>
@@ -5520,6 +5584,25 @@
         host.innerHTML = rows || "Waiting for input...";
       }
 
+      function buildSwissknifePreview(download) {
+        const openPath = pickSwissknifeFilePath(download);
+        if (!openPath) return "";
+        const url = filePathToUrl(openPath);
+        const ext = (openPath.split(".").pop() || "").toLowerCase();
+        if (["png", "jpg", "jpeg", "gif", "webp"].includes(ext)) {
+          return `<div class="swissknife-recent-preview"><img src="${escapeHtmlAttr(url)}" alt="preview" /></div>`;
+        }
+        if (["mp4", "mov", "webm", "mkv"].includes(ext)) {
+          return `<div class="swissknife-recent-preview"><video src="${escapeHtmlAttr(url)}" muted playsinline preload="metadata"></video></div>`;
+        }
+        return `<div class="swissknife-recent-preview swissknife-audio-preview">AUDIO</div>`;
+      }
+
+      function filePathToUrl(path) {
+        const cleaned = String(path || "").replace(/^file:\/\//i, "");
+        return `file://${encodeURI(cleaned)}`;
+      }
+
       function pickSwissknifeFilePath(download) {
         const files = Array.isArray(download?.manifest?.files) ? download.manifest.files : [];
         const usable = files.filter((f) => !String(f || "").endsWith(".part"));
@@ -5527,7 +5610,7 @@
         const preferred =
           usable.find((f) => /_h264_2160\.mp4$/i.test(String(f || ""))) ||
           usable.find((f) => /compat_.*\.mp4$/i.test(String(f || ""))) ||
-          usable.find((f) => /\.(mp4|m4a|mp3|mov|webm)$/i.test(String(f || "")));
+          usable.find((f) => /\.(mp4|m4a|mp3|mov|webm|mkv)$/i.test(String(f || "")));
         return String(preferred || usable[0] || "");
       }
 
@@ -5550,6 +5633,60 @@
         }
       }
 
+      async function pickSwissknifeOutputDir() {
+        const outputEl = document.getElementById("swissknife-output-dir");
+        try {
+          const res = await fetch("/api/system/pick-folder", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({}),
+          });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({ error: "Failed to pick folder." }));
+            throw new Error(err.error || "Failed to pick folder.");
+          }
+          const payload = await res.json().catch(() => ({}));
+          const path = String(payload?.path || "").trim();
+          if (path && outputEl) {
+            outputEl.value = path;
+            localStorage.setItem("swissknife_output_dir", path);
+          }
+        } catch (e) {
+          themedNotice("Folder pick failed: " + e.message);
+        }
+      }
+
+      async function pickSwissknifeConvertOutputDir() {
+        const outputEl = document.getElementById("swissknife-convert-output-dir");
+        try {
+          const res = await fetch("/api/system/pick-folder", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({}),
+          });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({ error: "Failed to pick folder." }));
+            throw new Error(err.error || "Failed to pick folder.");
+          }
+          const payload = await res.json().catch(() => ({}));
+          const path = String(payload?.path || "").trim();
+          if (path && outputEl) {
+            outputEl.value = path;
+            localStorage.setItem("swissknife_convert_output_dir", path);
+          }
+        } catch (e) {
+          themedNotice("Folder pick failed: " + e.message);
+        }
+      }
+
+      function resolveSwissknife4kFlags(format, quality) {
+        const fmt = String(format || "").trim().toLowerCase();
+        const q = String(quality || "").trim().toLowerCase();
+        const is4k = ["4k", "2160", "2160p", "4k-h264", "4k-qt", "4k_qt", "qt4k"].includes(q);
+        const compat_h264 = fmt === "mp4" && ["4k-h264", "4k-qt", "4k_qt", "qt4k"].includes(q);
+        return { compat_h264, force_4k: is4k };
+      }
+
       function switchSwissknifeView(viewId, btn) {
         const root = document.getElementById("view-swissknife");
         if (!root) return;
@@ -5561,29 +5698,49 @@
         if (btn && btn.classList) btn.classList.add("active");
       }
 
+      function inferSwissknifeSource(url) {
+        const raw = String(url || "").toLowerCase();
+        if (!raw) return "instagram";
+        if (raw.startsWith("ig:") || raw.includes("instagram.com") || raw.includes("instagr.am")) {
+          return "instagram";
+        }
+        if (raw.includes("tiktok.com") || raw.includes("youtube.com") || raw.includes("youtu.be")) {
+          return "ytdlp";
+        }
+        return "ytdlp";
+      }
+
+      function finalizeSwissknifeProgress() {
+        const progressSection = document.getElementById("swissknife-progress-section");
+        const progressBar = document.getElementById("swissknife-progress-bar");
+        setTimeout(() => {
+          if (progressSection) progressSection.style.display = "none";
+          if (progressBar) progressBar.style.width = "0%";
+          if (progressBar) progressBar.classList.remove("indeterminate");
+        }, 600);
+      }
+
       async function runSwissknifeBatchDownload() {
         const linksEl = document.getElementById("swissknife-links");
         const statusEl = document.getElementById("swissknife-batch-status");
         const sel = document.getElementById("swissknife-session-select");
         const loginEl = document.getElementById("swissknife-login");
-        const sourceEl = document.getElementById("swissknife-source");
         const formatEl = document.getElementById("swissknife-format");
         const qualityEl = document.getElementById("swissknife-quality");
+        const audioQualityEl = document.getElementById("swissknife-audio-quality");
         const outputEl = document.getElementById("swissknife-output-dir");
-        const h264El = document.getElementById("swissknife-h264");
-        const force4kEl = document.getElementById("swissknife-force-4k");
         const progressSection = document.getElementById("swissknife-progress-section");
         const progressBar = document.getElementById("swissknife-progress-bar");
         const statusLabel = document.getElementById("swissknife-progress-status");
         const percentLabel = document.getElementById("swissknife-progress-percent");
         const sessionId = (sel?.value || selectedSwissknifeSession || "").trim();
         const login = !!(loginEl && loginEl.checked);
-        const source = (sourceEl?.value || "").trim();
         const format = (formatEl?.value || "").trim();
-        const quality = (qualityEl?.value || "").trim();
+        const videoQuality = (qualityEl?.value || "").trim();
+        const audioQuality = (audioQualityEl?.value || "").trim();
+        const quality = ["mp3", "m4a", "wav"].includes(format) ? (audioQuality || videoQuality) : videoQuality;
         const output_dir = (outputEl?.value || localStorage.getItem("swissknife_output_dir") || "").trim();
-        const compat_h264 = !!(h264El && h264El.checked);
-        const force_4k = !!(force4kEl && force4kEl.checked);
+        const { compat_h264, force_4k } = resolveSwissknife4kFlags(format, quality);
         if (outputEl) localStorage.setItem("swissknife_output_dir", output_dir);
         const raw = String(linksEl?.value || "");
         const urls = raw.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
@@ -5595,30 +5752,45 @@
           await startSwissknifeAcquisition();
           return;
         }
-        const finalizeProgress = () => {
-          setTimeout(() => {
-            if (progressSection) progressSection.style.display = "none";
-            if (progressBar) progressBar.style.width = "0%";
-            if (progressBar) progressBar.classList.remove("indeterminate");
-          }, 600);
-        };
-        const pollJob = async (jobId, onUpdate) => {
-          let finished = false;
-          while (!finished) {
-            const statusRes = await fetch(`/api/swissknife/progress?job_id=${encodeURIComponent(jobId)}`);
-            if (!statusRes.ok) {
-              throw new Error("Failed to read download progress.");
+        const runSyncDownload = async (url, source) => {
+          if (window.pywebview && window.pywebview.api && window.pywebview.api.swissknife_download) {
+            const res = await window.pywebview.api.swissknife_download({
+              session_id: sessionId,
+              url,
+              login: source === "instagram" ? login : false,
+              format,
+              quality,
+              source,
+              output_dir,
+              compat_h264,
+              force_4k,
+            });
+            if (!res || !res.ok) {
+              throw new Error(res?.error || "Swissknife download failed.");
             }
-            const statusPayload = await statusRes.json().catch(() => ({}));
-            const job = statusPayload?.job || {};
-            onUpdate(job);
-            if (job.status === "complete" || job.status === "failed") {
-              finished = true;
-              return job;
-            }
-            await new Promise((resolve) => setTimeout(resolve, 600));
+            return res.result || {};
           }
-          return {};
+          const res = await fetch("/api/swissknife/download", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              session_id: sessionId,
+              url,
+              login: source === "instagram" ? login : false,
+              format,
+              quality,
+              source,
+              output_dir,
+              compat_h264,
+              force_4k,
+              async: false,
+            }),
+          });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({ error: "Swissknife download failed." }));
+            throw new Error(err.error || "Swissknife download failed.");
+          }
+          return res.json().catch(() => ({}));
         };
         let completed = 0;
         let failed = 0;
@@ -5628,54 +5800,19 @@
         if (percentLabel) percentLabel.textContent = "0%";
         if (statusLabel) statusLabel.textContent = "STARTING BATCH...";
         for (const url of urls) {
+          const source = inferSwissknifeSource(url);
           if (statusEl) statusEl.textContent = `Downloading ${completed + failed + 1}/${urls.length}`;
           try {
             if (progressBar) progressBar.classList.add("indeterminate");
-            const res = await fetch("/api/swissknife/download", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                session_id: sessionId,
-                url,
-                login,
-                format,
-                quality,
-                source,
-                output_dir,
-                compat_h264,
-                force_4k,
-                async: true,
-              }),
-            });
-            if (!res.ok) {
-              const err = await res.json().catch(() => ({ error: "Swissknife download failed." }));
-              throw new Error(err.error || "Swissknife download failed.");
-            }
-            const payload = await res.json().catch(() => ({}));
-            const jobId = payload?.job_id;
-            if (!jobId) {
-              throw new Error("Swissknife did not return a job id.");
-            }
-            const job = await pollJob(jobId, (job) => {
-              const stage = String(job.stage || job.status || "DOWNLOADING").toUpperCase();
-              if (statusLabel) statusLabel.textContent = `${stage} (${completed + failed + 1}/${urls.length})`;
-              const pctRaw = Number(job.percent);
-              if (Number.isFinite(pctRaw)) {
-                const clamped = Math.max(0, Math.min(100, pctRaw));
-                if (progressBar) {
-                  progressBar.classList.remove("indeterminate");
-                  progressBar.style.width = `${clamped}%`;
-                }
-                if (percentLabel) percentLabel.textContent = `${job.estimated ? "~" : ""}${Math.round(clamped)}%`;
-              } else {
-                if (progressBar) progressBar.classList.add("indeterminate");
-                if (percentLabel) percentLabel.textContent = "—";
-              }
-            });
-            if (job.status === "failed") {
-              throw new Error(job.error || "Swissknife download failed.");
-            }
+            if (statusLabel) statusLabel.textContent = `DOWNLOADING (${completed + failed + 1}/${urls.length})`;
+            await runSyncDownload(url, source);
             completed += 1;
+            const pct = Math.round((completed / Math.max(1, urls.length)) * 100);
+            if (progressBar) {
+              progressBar.classList.remove("indeterminate");
+              progressBar.style.width = `${pct}%`;
+            }
+            if (percentLabel) percentLabel.textContent = `${pct}%`;
           } catch (e) {
             failed += 1;
             if (progressBar) progressBar.classList.remove("indeterminate");
@@ -5698,7 +5835,7 @@
         if (progressBar) progressBar.style.width = "100%";
         if (percentLabel) percentLabel.textContent = "100%";
         if (statusLabel) statusLabel.textContent = "BATCH COMPLETE.";
-        finalizeProgress();
+        finalizeSwissknifeProgress();
       }
 
       async function deleteSwissknifeSession(sessionId) {
@@ -5724,9 +5861,8 @@
 
       async function createSwissknifeSession() {
         const labelEl = document.getElementById("swissknife-session-label");
-        const sourceEl = document.getElementById("swissknife-source");
         const label = (labelEl?.value || "").trim() || "daily";
-        const source = (sourceEl?.value || "").trim();
+        const source = "";
         try {
           const res = await fetch("/api/swissknife/session", {
             method: "POST",
@@ -5750,21 +5886,20 @@
         const sel = document.getElementById("swissknife-session-select");
         const urlEl = document.getElementById("swissknife-url");
         const loginEl = document.getElementById("swissknife-login");
-        const sourceEl = document.getElementById("swissknife-source");
         const formatEl = document.getElementById("swissknife-format");
         const qualityEl = document.getElementById("swissknife-quality");
+        const audioQualityEl = document.getElementById("swissknife-audio-quality");
         const outputEl = document.getElementById("swissknife-output-dir");
-        const h264El = document.getElementById("swissknife-h264");
-        const force4kEl = document.getElementById("swissknife-force-4k");
         const sessionId = (sel?.value || selectedSwissknifeSession || "").trim();
         const url = (options.url || urlEl?.value || "").trim();
         const login = !!(loginEl && loginEl.checked);
-        const source = (sourceEl?.value || "").trim();
+        const source = inferSwissknifeSource(url);
         const format = (formatEl?.value || "").trim();
-        const quality = (qualityEl?.value || "").trim();
+        const videoQuality = (qualityEl?.value || "").trim();
+        const audioQuality = (audioQualityEl?.value || "").trim();
+        const quality = ["mp3", "m4a", "wav"].includes(format) ? (audioQuality || videoQuality) : videoQuality;
         const output_dir = (outputEl?.value || localStorage.getItem("swissknife_output_dir") || "").trim();
-        const compat_h264 = !!(h264El && h264El.checked);
-        const force_4k = !!(force4kEl && force4kEl.checked);
+        const { compat_h264, force_4k } = resolveSwissknife4kFlags(format, quality);
         if (outputEl) localStorage.setItem("swissknife_output_dir", output_dir);
         if (!url) {
           themedNotice("Enter a target URL.");
@@ -5778,10 +5913,42 @@
           }, 600);
         };
         try {
+          if (window.pywebview && window.pywebview.api && window.pywebview.api.swissknife_download) {
+            const res = await window.pywebview.api.swissknife_download({
+              session_id: sessionId,
+              url,
+              login: source === "instagram" ? login : false,
+              format,
+              quality,
+              source,
+              output_dir,
+              compat_h264,
+              force_4k,
+            });
+            if (!res || !res.ok) {
+              throw new Error(res?.error || "Swissknife download failed.");
+            }
+            if (urlEl && !options.preserveUrl) urlEl.value = "";
+            await fetchData();
+            closeAllAddPopups();
+            themedNotice("Download complete and saved to session.");
+            return;
+          }
           const res = await fetch("/api/swissknife/download", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ session_id: sessionId, url, login, format, quality, source, output_dir, compat_h264, force_4k }),
+            body: JSON.stringify({
+              session_id: sessionId,
+              url,
+              login: source === "instagram" ? login : false,
+              format,
+              quality,
+              source,
+              output_dir,
+              compat_h264,
+              force_4k,
+              async: false,
+            }),
           });
           if (!res.ok) {
             const err = await res.json().catch(() => ({ error: "Swissknife download failed." }));
@@ -5810,12 +5977,10 @@
         const linksEl = document.getElementById("swissknife-links");
         const sel = document.getElementById("swissknife-session-select");
         const loginEl = document.getElementById("swissknife-login");
-        const sourceEl = document.getElementById("swissknife-source");
         const formatEl = document.getElementById("swissknife-format");
         const qualityEl = document.getElementById("swissknife-quality");
+        const audioQualityEl = document.getElementById("swissknife-audio-quality");
         const outputEl = document.getElementById("swissknife-output-dir");
-        const h264El = document.getElementById("swissknife-h264");
-        const force4kEl = document.getElementById("swissknife-force-4k");
         const progressSection = document.getElementById("swissknife-progress-section");
         const progressBar = document.getElementById("swissknife-progress-bar");
         const statusLabel = document.getElementById("swissknife-progress-status");
@@ -5825,12 +5990,13 @@
         const url = urls[0] || "";
         const sessionId = (sel?.value || selectedSwissknifeSession || "").trim();
         const login = !!(loginEl && loginEl.checked);
-        const source = (sourceEl?.value || "").trim();
+        const source = inferSwissknifeSource(url);
         const format = (formatEl?.value || "").trim();
-        const quality = (qualityEl?.value || "").trim();
+        const videoQuality = (qualityEl?.value || "").trim();
+        const audioQuality = (audioQualityEl?.value || "").trim();
+        const quality = ["mp3", "m4a", "wav"].includes(format) ? (audioQuality || videoQuality) : videoQuality;
         const output_dir = (outputEl?.value || localStorage.getItem("swissknife_output_dir") || "").trim();
-        const compat_h264 = !!(h264El && h264El.checked);
-        const force_4k = !!(force4kEl && force4kEl.checked);
+        const { compat_h264, force_4k } = resolveSwissknife4kFlags(format, quality);
         if (outputEl) localStorage.setItem("swissknife_output_dir", output_dir);
         if (!url) {
           themedNotice("Enter a target URL.");
@@ -5843,105 +6009,113 @@
         if (progressSection) progressSection.style.display = "block";
         if (progressBar) progressBar.style.width = "0%";
         if (percentLabel) percentLabel.textContent = "0%";
-        if (statusLabel) statusLabel.textContent = "STARTING DOWNLOAD...";
+        if (statusLabel) statusLabel.textContent = "DOWNLOADING...";
         if (progressBar) progressBar.classList.add("indeterminate");
         try {
-          const res = await fetch("/api/swissknife/download", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              session_id: sessionId,
-              url,
-              login,
-              source,
-              format,
-              quality,
-              output_dir,
-              compat_h264,
-              force_4k,
-              async: true,
-            }),
-          });
-          if (!res.ok) {
-            const err = await res.json().catch(() => ({ error: "Swissknife download failed." }));
-            throw new Error(err.error || "Swissknife download failed.");
+          await runSwissknifeDownload({ url, preserveUrl: true });
+          if (progressBar) {
+            progressBar.classList.remove("indeterminate");
+            progressBar.style.width = "100%";
           }
-          const payload = await res.json().catch(() => ({}));
-          const jobId = payload?.job_id;
-          if (!jobId) {
-            throw new Error("Swissknife did not return a job id.");
-          }
-          let finished = false;
-          const poll = async () => {
-            if (finished) return;
-            try {
-              const statusRes = await fetch(`/api/swissknife/progress?job_id=${encodeURIComponent(jobId)}`);
-              if (!statusRes.ok) {
-                throw new Error("Failed to read download progress.");
-              }
-              const statusPayload = await statusRes.json().catch(() => ({}));
-              const job = statusPayload?.job || {};
-              const stage = String(job.stage || job.status || "DOWNLOADING").toUpperCase();
-              if (statusLabel) statusLabel.textContent = stage;
-              const pctRaw = Number(job.percent);
-              if (Number.isFinite(pctRaw)) {
-                const clamped = Math.max(0, Math.min(100, pctRaw));
-                if (progressBar) {
-                  progressBar.classList.remove("indeterminate");
-                  progressBar.style.width = `${clamped}%`;
-                }
-                if (percentLabel) percentLabel.textContent = `${job.estimated ? "~" : ""}${Math.round(clamped)}%`;
-              } else {
-                if (progressBar) progressBar.classList.add("indeterminate");
-                if (percentLabel) percentLabel.textContent = "—";
-              }
-              if (job.status === "complete") {
-                finished = true;
-                if (progressBar) {
-                  progressBar.classList.remove("indeterminate");
-                  progressBar.style.width = "100%";
-                }
-                if (percentLabel) percentLabel.textContent = "100%";
-                if (statusLabel) statusLabel.textContent = "COMPLETE.";
-                if (linksEl) linksEl.value = "";
-                await fetchData();
-                closeAllAddPopups();
-                themedNotice("Download complete and saved to session.");
-                finalizeProgress();
-              } else if (job.status === "failed") {
-                finished = true;
-                if (progressBar) progressBar.classList.remove("indeterminate");
-                if (statusLabel) statusLabel.textContent = "FAILED.";
-                const errMsg = job.error || "Swissknife download failed.";
-                themedNotice("Download failed: " + errMsg);
-                logSwissknifeFail("Swissknife download failed.", {
-                  url,
-                  source,
-                  format,
-                  quality,
-                  output_dir,
-                  compat_h264,
-                  force_4k,
-                  error: errMsg,
-                });
-                finalizeProgress();
-              }
-            } catch (e) {
-              finished = true;
-              if (progressBar) progressBar.classList.remove("indeterminate");
-              themedNotice("Download failed: " + e.message);
-              finalizeProgress();
-            }
-          };
-          const interval = setInterval(async () => {
-            await poll();
-            if (finished) clearInterval(interval);
-          }, 600);
-          await poll();
+          if (percentLabel) percentLabel.textContent = "100%";
+          if (statusLabel) statusLabel.textContent = "COMPLETE.";
+          if (linksEl) linksEl.value = "";
+          await fetchData();
+          closeAllAddPopups();
+          themedNotice("Download complete and saved to session.");
+          finalizeSwissknifeProgress();
         } catch (e) {
           if (progressBar) progressBar.classList.remove("indeterminate");
           themedNotice("Download failed: " + e.message);
-          finalizeProgress();
+          finalizeSwissknifeProgress();
+        }
+      }
+
+      async function runSwissknifeConvert() {
+        const sourceEl = document.getElementById("swissknife-convert-source");
+        const formatEl = document.getElementById("swissknife-convert-format");
+        const outputEl = document.getElementById("swissknife-convert-output-dir");
+        const imageQualityEl = document.getElementById("swissknife-convert-image-quality");
+        const qtEl = document.getElementById("swissknife-convert-qt");
+        const force4kEl = document.getElementById("swissknife-convert-4k");
+        const statusEl = document.getElementById("swissknife-convert-status");
+        const source_path = (sourceEl?.value || "").trim();
+        const target_format = (formatEl?.value || "").trim();
+        const image_quality = (imageQualityEl?.value || "").trim();
+        const output_dir = (outputEl?.value || localStorage.getItem("swissknife_convert_output_dir") || "").trim();
+        const profile = qtEl && qtEl.checked ? "quicktime" : "";
+        const force_4k = !!(force4kEl && force4kEl.checked);
+        if (outputEl) localStorage.setItem("swissknife_convert_output_dir", output_dir);
+        if (!source_path) {
+          themedNotice("Enter a source file path.");
+          return;
+        }
+        if (!target_format) {
+          themedNotice("Select a target format.");
+          return;
+        }
+        if (statusEl) statusEl.textContent = "Converting...";
+        try {
+          let payload = null;
+          if (window.pywebview && window.pywebview.api && window.pywebview.api.swissknife_convert) {
+            payload = await window.pywebview.api.swissknife_convert({
+              source_path,
+              target_format,
+              output_dir,
+              profile,
+              force_4k,
+              image_quality,
+            });
+            if (!payload || !payload.ok) {
+              throw new Error(payload?.error || "Swissknife conversion failed.");
+            }
+            payload = payload.result || payload;
+          } else {
+            const res = await fetch("/api/swissknife/convert", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                source_path,
+                target_format,
+                output_dir,
+                profile,
+                force_4k,
+                image_quality,
+              }),
+            });
+            if (!res.ok) {
+              const err = await res.json().catch(() => ({ error: "Swissknife conversion failed." }));
+              throw new Error(err.error || "Swissknife conversion failed.");
+            }
+            payload = await res.json().catch(() => ({}));
+          }
+          const outputPath = payload?.output || payload?.output_path || "";
+          addSwissknifeConvertHistory({
+            source: source_path,
+            output: outputPath,
+            format: target_format,
+            profile,
+            force_4k,
+            image_quality,
+            status: "ok",
+          });
+          renderSwissknifeConvertHistory();
+          if (statusEl) statusEl.textContent = outputPath ? `Complete: ${outputPath}` : "Conversion complete.";
+          themedNotice("Conversion complete.");
+        } catch (e) {
+          addSwissknifeConvertHistory({
+            source: source_path,
+            output: "",
+            format: target_format,
+            profile,
+            force_4k,
+            image_quality,
+            status: "fail",
+            error: e?.message || String(e),
+          });
+          renderSwissknifeConvertHistory();
+          if (statusEl) statusEl.textContent = "Conversion failed.";
+          themedNotice("Conversion failed: " + e.message);
         }
       }
 
@@ -19280,6 +19454,7 @@
         loadPerformanceSettings();
         loadPrivacySettings();
         loadSwissknifeFailLog();
+        loadSwissknifeConvertHistory();
         initMobileMenuGestures();
         initLiveDevReload();
         refreshRuntimeModeState().catch(() => {});

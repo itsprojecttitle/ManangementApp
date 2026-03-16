@@ -81,6 +81,9 @@ def _files_match(src_path: Path, dst_path: Path) -> bool:
     try:
         src_stat = src_path.stat()
         dst_stat = dst_path.stat()
+    except PermissionError:
+        # If the app bundle isn't readable, skip comparisons to avoid crash.
+        return True
     except OSError:
         return False
 

@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'mgmtapp-v20260313-swissknife-1';
+const CACHE_VERSION = 'mgmtapp-v20260316-swissknife-4k-2';
 const SHELL_CACHE = `shell-${CACHE_VERSION}`;
 const DATA_CACHE = `data-${CACHE_VERSION}`;
 

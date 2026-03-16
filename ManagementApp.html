@@ -20,8 +20,8 @@
         }
       })();
     </script>
-    <link rel="stylesheet" href="/assets/managementapp.css?v=20260313-swissknife-2" />
-    <link rel="stylesheet" href="/assets/managementapp-draft.css?v=20260313-swissknife-2" />
+    <link rel="stylesheet" href="/assets/managementapp.css?v=20260316-swissknife-4k-2" />
+    <link rel="stylesheet" href="/assets/managementapp-draft.css?v=20260316-swissknife-4k-2" />
 
   </head>
   <body>
@@ -359,15 +359,16 @@
       <div id="view-swissknife" class="view-panel">
         <div class="swissknife-shell">
           <div class="swissknife-header">
-            <div class="swissknife-title">// SWISSKNIFE_v1.0 <span class="swissknife-build-tag">BUILD 20260313-SWISSKNIFE-2</span></div>
+            <div class="swissknife-title">// SWISSKNIFE_v1.0 <span class="swissknife-build-tag">BUILD 20260316-SWISSKNIFE-4K-2</span></div>
             <div class="swissknife-status">
               CORE: <span class="status-active">ONLINE</span> | REPO: <span class="status-active">LINKED</span> | USER: SLIDER
             </div>
           </div>
           <div class="swissknife-sidebar">
             <button class="swissknife-nav-btn active" type="button" onclick="switchSwissknifeView('downloads', this)">[01] DOWNLOADS</button>
-            <button class="swissknife-nav-btn" type="button" onclick="switchSwissknifeView('logs', this)">[02] LOGS</button>
-            <button class="swissknife-nav-btn" type="button" onclick="switchSwissknifeView('settings', this)">[03] SETTINGS</button>
+            <button class="swissknife-nav-btn" type="button" onclick="switchSwissknifeView('converter', this)">[02] CONVERTER</button>
+            <button class="swissknife-nav-btn" type="button" onclick="switchSwissknifeView('logs', this)">[03] LOGS</button>
+            <button class="swissknife-nav-btn" type="button" onclick="switchSwissknifeView('settings', this)">[04] SETTINGS</button>
           </div>
           <div class="swissknife-main">
             <div id="swissknife-view-downloads" class="swissknife-view active">
@@ -380,43 +381,53 @@
                 </div>
                 <div class="swissknife-grid">
                   <div class="swissknife-form-group">
-                    <label for="swissknife-source">SOURCE</label>
-                    <select id="swissknife-source" class="search-input">
-                      <option value="instagram">INSTAGRAM (SWISSKNIFE)</option>
-                      <option value="ytdlp">YOUTUBE / TIKTOK (YT-DLP)</option>
-                    </select>
-                  </div>
-                  <div class="swissknife-form-group">
                     <label for="swissknife-format">TARGET FORMAT</label>
                     <select id="swissknife-format" class="search-input">
                       <option value="original">ORIGINAL (INSTALOADER)</option>
                       <option value="mp4">MP4</option>
                       <option value="mp3">MP3</option>
+                      <option value="wav">WAV</option>
                       <option value="m4a">M4A</option>
                     </select>
                   </div>
                   <div class="swissknife-form-group">
-                    <label for="swissknife-quality">QUALITY</label>
+                    <label for="swissknife-quality">VIDEO / PHOTO QUALITY</label>
                     <select id="swissknife-quality" class="search-input">
                       <option value="highest">HIGHEST</option>
-                      <option value="high">HIGH</option>
-                      <option value="medium">MEDIUM</option>
-                      <option value="low">LOW</option>
+                      <option value="4k-h264">4K (H.264 / QUICKTIME)</option>
+                      <option value="4k">4K (2160P)</option>
+                      <option value="1440">1440P</option>
+                      <option value="high">1080P (HIGH)</option>
+                      <option value="medium">720P (MEDIUM)</option>
+                      <option value="low">480P (LOW)</option>
+                      <option value="360">360P</option>
+                      <option value="320">320P</option>
+                      <option value="240">240P</option>
+                      <option value="144">144P</option>
+                    </select>
+                  </div>
+                  <div class="swissknife-form-group">
+                    <label for="swissknife-audio-quality">AUDIO QUALITY</label>
+                    <select id="swissknife-audio-quality" class="search-input">
+                      <option value="320">320 KBPS</option>
+                      <option value="256">256 KBPS</option>
+                      <option value="192">192 KBPS</option>
+                      <option value="160">160 KBPS</option>
+                      <option value="128">128 KBPS</option>
+                      <option value="96">96 KBPS</option>
+                      <option value="64">64 KBPS</option>
                     </select>
                   </div>
                 </div>
                 <div class="swissknife-form-group">
                   <label for="swissknife-output-dir">DOWNLOAD FOLDER (OPTIONAL)</label>
-                  <input class="search-input" id="swissknife-output-dir" type="text" placeholder="e.g. /Users/samuelapata/Downloads/Swissknife" />
+                  <div class="swissknife-dir-row">
+                    <input class="search-input" id="swissknife-output-dir" type="text" placeholder="e.g. /Users/samuelapata/Downloads/Swissknife" />
+                    <button class="submit-btn" type="button" onclick="pickSwissknifeOutputDir()">CHOOSE</button>
+                  </div>
                 </div>
                 <div class="swissknife-inline">
-                  <label><input id="swissknife-login" type="checkbox" /> Use IG login (--login)</label>
-                </div>
-                <div class="swissknife-inline">
-                  <label><input id="swissknife-h264" type="checkbox" /> Force H.264 MP4 (may reduce max resolution)</label>
-                </div>
-                <div class="swissknife-inline">
-                  <label><input id="swissknife-force-4k" type="checkbox" /> Force 4K (2160p). Fails if 4K not available.</label>
+                  <label><input id="swissknife-login" type="checkbox" checked /> Use IG login (--login)</label>
                 </div>
                 <button class="submit-btn" type="button" onclick="runSwissknifeBatchDownload()">RUN BATCH</button>
                 <div id="swissknife-progress-section" class="swissknife-progress-container">
@@ -433,6 +444,82 @@
               <div class="swissknife-block">
                 <h3>// LATEST ACQUISITIONS</h3>
                 <div id="swissknife-recent-downloads" class="swissknife-recent-list">Waiting for input...</div>
+              </div>
+            </div>
+            <div id="swissknife-view-converter" class="swissknife-view">
+              <h2>// UNIVERSAL CONVERTER</h2>
+              <div class="swissknife-block">
+                <h3>// SOURCE</h3>
+                <div class="swissknife-form-group">
+                  <label for="swissknife-convert-source">SOURCE FILE PATH</label>
+                  <input id="swissknife-convert-source" class="search-input" type="text" placeholder="/Users/samuelapata/Downloads/source.mov" />
+                </div>
+                <div class="swissknife-grid">
+                  <div class="swissknife-form-group">
+                    <label for="swissknife-convert-format">TARGET FORMAT</label>
+                    <select id="swissknife-convert-format" class="search-input">
+                      <option value="mp4">MP4 (H.264/AAC)</option>
+                      <option value="mov">MOV (QUICKTIME)</option>
+                      <option value="mkv">MKV</option>
+                      <option value="webm">WEBM (VP9/OPUS)</option>
+                      <option value="pdf">PDF</option>
+                      <option value="docx">DOCX</option>
+                      <option value="rtf">RTF</option>
+                      <option value="odt">ODT</option>
+                      <option value="md">MD</option>
+                      <option value="txt">TXT</option>
+                      <option value="html">HTML</option>
+                      <option value="epub">EPUB</option>
+                      <option value="rst">RST</option>
+                      <option value="mp3">MP3</option>
+                      <option value="wav">WAV</option>
+                      <option value="m4a">M4A (AAC)</option>
+                      <option value="flac">FLAC</option>
+                      <option value="aac">AAC</option>
+                      <option value="opus">OPUS</option>
+                      <option value="png">PNG</option>
+                      <option value="jpg">JPG</option>
+                      <option value="webp">WEBP</option>
+                      <option value="gif">GIF</option>
+                      <option value="tiff">TIFF</option>
+                      <option value="bmp">BMP</option>
+                    </select>
+                  </div>
+                  <div class="swissknife-form-group">
+                    <label for="swissknife-convert-image-quality">IMAGE QUALITY (WEB)</label>
+                    <select id="swissknife-convert-image-quality" class="search-input">
+                      <option value="">UNCHANGED</option>
+                      <option value="85">85 (WEB)</option>
+                      <option value="75">75 (COMPRESSED)</option>
+                      <option value="65">65 (SMALL)</option>
+                      <option value="50">50 (AGGRESSIVE)</option>
+                    </select>
+                  </div>
+                  <div class="swissknife-form-group">
+                    <label for="swissknife-convert-output-dir">OUTPUT FOLDER (OPTIONAL)</label>
+                    <div class="swissknife-dir-row">
+                      <input class="search-input" id="swissknife-convert-output-dir" type="text" placeholder="e.g. /Users/samuelapata/Downloads/Swissknife" />
+                      <button class="submit-btn" type="button" onclick="pickSwissknifeConvertOutputDir()">CHOOSE</button>
+                    </div>
+                  </div>
+                </div>
+                <div class="swissknife-inline swissknife-inline-split">
+                  <label><input id="swissknife-convert-qt" type="checkbox" checked /> QuickTime friendly (H.264/AAC)</label>
+                  <label><input id="swissknife-convert-4k" type="checkbox" /> Force 4K (2160p)</label>
+                </div>
+                <button class="submit-btn" type="button" onclick="runSwissknifeConvert()">RUN CONVERSION</button>
+                <div id="swissknife-convert-status" class="swissknife-status-line">Ready for conversion.</div>
+              </div>
+              <div class="swissknife-block">
+                <h3>// CONVERSION OUTPUT</h3>
+                <div id="swissknife-convert-history" class="swissknife-convert-history">No conversions yet.</div>
+              </div>
+              <div class="swissknife-block">
+                <h3>// SUPPORTED FORMATS</h3>
+                <p>Video: <code>mp4</code>, <code>mov</code>, <code>mkv</code>, <code>webm</code></p>
+                <p>Docs: <code>pdf</code>, <code>docx</code>, <code>rtf</code>, <code>odt</code>, <code>md</code>, <code>txt</code>, <code>html</code>, <code>epub</code>, <code>rst</code></p>
+                <p>Audio: <code>mp3</code>, <code>wav</code>, <code>m4a</code>, <code>flac</code>, <code>aac</code>, <code>opus</code></p>
+                <p>Images: <code>png</code>, <code>jpg</code>, <code>webp</code>, <code>gif</code>, <code>tiff</code>, <code>bmp</code></p>
               </div>
             </div>
             <div id="swissknife-view-settings" class="swissknife-view">
@@ -1472,8 +1559,8 @@ for i in range(3):
         <div id="lock-meta" class="lock-meta"></div>
       </div>
     </div>
-    <script src="/assets/managementapp.js?v=20260313-swissknife-2"></script>
-    <script src="/assets/managementapp-draft.js?v=20260313-swissknife-2"></script>
+    <script src="/assets/managementapp.js?v=20260316-swissknife-4k-2"></script>
+    <script src="/assets/managementapp-draft.js?v=20260316-swissknife-4k-2"></script>
 
   </body>
 </html>

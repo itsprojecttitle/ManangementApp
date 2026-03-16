@@ -40,13 +40,22 @@ def create_server(mod):
 def main():
     import managementapp_server as mod
 
-    server, port = create_server(mod)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
     bridge = OmniDesktopBridge()
+    server = None
+    port = None
+    try:
+        server, port = create_server(mod)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+    except Exception as exc:
+        print(f"[omni_desktop] Server start failed: {exc}")
 
     time.sleep(0.2)
-    url = f"http://127.0.0.1:{port}/ManagementApp.html?v=20260311-classic-2"
+    if port:
+        url = f"http://127.0.0.1:{port}/ManagementApp.html?v=20260311-classic-2"
+    else:
+        runtime_root = ensure_runtime_root()
+        url = f"file://{(runtime_root / 'ManagementApp.html').resolve()}"
 
     webview.create_window(APP_NAME, url, width=1440, height=900, min_size=(1200, 780), js_api=bridge)
 
@@ -57,8 +66,9 @@ def main():
         except Exception:
             pass
         try:
-            server.shutdown()
-            server.server_close()
+            if server:
+                server.shutdown()
+                server.server_close()
         except Exception:
             pass
 

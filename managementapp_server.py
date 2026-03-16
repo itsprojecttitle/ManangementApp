@@ -11,6 +11,7 @@ import shlex
 import subprocess
 import uuid
 import sys
+import tempfile
 from threading import Lock, Thread
 from collections import deque
 from datetime import datetime, timezone
@@ -2141,19 +2142,49 @@ def swissknife_create_session(label: str, source: str = ""):
 
 def _ytdlp_quality_height(quality: str) -> str:
     q = str(quality or "").strip().lower()
+    if not q:
+        return ""
     if q == "4k":
         return "2160"
-    if q == "high":
+    if q in ("2160", "2160p"):
+        return "2160"
+    if q in ("1440", "1440p", "2k"):
+        return "1440"
+    if q == "high" or q in ("1080", "1080p"):
         return "1080"
-    if q == "medium":
+    if q == "medium" or q in ("720", "720p"):
         return "720"
-    if q == "low":
+    if q == "low" or q in ("480", "480p"):
         return "480"
+    if q in ("360", "360p"):
+        return "360"
+    if q in ("320", "320p"):
+        return "320"
+    if q in ("240", "240p"):
+        return "240"
+    if q in ("144", "144p"):
+        return "144"
+    if q.isdigit():
+        return q
     return ""
 
 
 def _ytdlp_audio_quality(quality: str) -> str:
     q = str(quality or "").strip().lower()
+    if q in ("320", "320k", "320kb", "320kbps"):
+        return "320K"
+    if q in ("256", "256k", "256kb", "256kbps"):
+        return "256K"
+    if q in ("192", "192k", "192kb", "192kbps"):
+        return "192K"
+    if q in ("160", "160k", "160kb", "160kbps"):
+        return "160K"
+    if q in ("128", "128k", "128kb", "128kbps"):
+        return "128K"
+    if q in ("96", "96k", "96kb", "96kbps"):
+        return "96K"
+    if q in ("64", "64k", "64kb", "64kbps"):
+        return "64K"
     if q == "high":
         return "1"
     if q == "medium":
@@ -2189,6 +2220,79 @@ def _ffprobe_video_info(path: Path) -> Dict[str, Any]:
     except Exception:
         pass
     return {}
+
+
+def _ffprobe_stream_types(path: Path) -> Dict[str, bool]:
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-show_entries",
+                "stream=codec_type",
+                "-of",
+                "json",
+                str(path),
+            ],
+            text=True,
+            capture_output=True,
+            timeout=15,
+        )
+        data = json.loads(result.stdout or "{}")
+        streams = data.get("streams") if isinstance(data, dict) else []
+        types = {s.get("codec_type") for s in streams if isinstance(s, dict)}
+        return {
+            "audio": "audio" in types,
+            "video": "video" in types,
+        }
+    except Exception:
+        return {"audio": False, "video": False}
+
+
+def _merge_ytdlp_streams(files: List[str], out_dir: Path) -> List[str]:
+    if not files:
+        return files
+    entries = []
+    for path in files:
+        p = Path(path)
+        if not p.exists() or p.name.endswith(".part"):
+            continue
+        streams = _ffprobe_stream_types(p)
+        entries.append((p, streams))
+    if not entries:
+        return files
+    if any(info.get("audio") and info.get("video") for _, info in entries):
+        return files
+    video_only = next((p for p, info in entries if info.get("video") and not info.get("audio")), None)
+    audio_only = next((p for p, info in entries if info.get("audio") and not info.get("video")), None)
+    if not video_only or not audio_only:
+        return files
+    merged_mp4 = out_dir / f"{video_only.stem}_merged.mp4"
+    merge_cmd = [
+        "ffmpeg",
+        "-y",
+        "-i",
+        str(video_only),
+        "-i",
+        str(audio_only),
+        "-c",
+        "copy",
+        str(merged_mp4),
+    ]
+    try:
+        subprocess.run(merge_cmd, check=True, capture_output=True, text=True)
+        merged_path = str(merged_mp4.resolve())
+        return [merged_path] + [f for f in files if f != merged_path]
+    except Exception:
+        merged_mkv = out_dir / f"{video_only.stem}_merged.mkv"
+        merge_cmd[-1] = str(merged_mkv)
+        try:
+            subprocess.run(merge_cmd, check=True, capture_output=True, text=True)
+            merged_path = str(merged_mkv.resolve())
+            return [merged_path] + [f for f in files if f != merged_path]
+        except Exception:
+            return files
 
 
 def _pick_video_file(files: List[str], out_dir: Path) -> Path:
@@ -2227,6 +2331,158 @@ def _transcode_h264_4k(src: Path, dest: Path) -> None:
         str(dest),
     ]
     subprocess.run(cmd, check=True)
+
+
+def _next_available_output(dest: Path) -> Path:
+    if not dest.exists():
+        return dest
+    stem = dest.stem
+    suffix = dest.suffix
+    parent = dest.parent
+    for idx in range(2, 1000):
+        candidate = parent / f"{stem}_converted_{idx}{suffix}"
+        if not candidate.exists():
+            return candidate
+    return parent / f"{stem}_converted_{uuid.uuid4().hex}{suffix}"
+
+
+def _pandoc_pdf_engine() -> str:
+    for candidate in ("xelatex", "pdflatex", "lualatex", "tectonic", "wkhtmltopdf", "weasyprint"):
+        if shutil.which(candidate):
+            return candidate
+    return ""
+
+
+def _pandoc_convert(src: Path, dest: Path, from_format: str = "", to_format: str = "") -> None:
+    cmd = ["pandoc", str(src), "-o", str(dest)]
+    if from_format:
+        cmd += ["-f", from_format]
+    if to_format:
+        cmd += ["-t", to_format]
+    if dest.suffix.lower() == ".pdf":
+        engine = _pandoc_pdf_engine()
+        if not engine:
+            raise RuntimeError("PDF output requires a PDF engine (xelatex/pdflatex/tectonic/wkhtmltopdf/weasyprint).")
+        cmd += ["--pdf-engine", engine]
+    subprocess.run(cmd, check=True)
+
+
+def _pdftotext(src: Path, dest: Path) -> None:
+    cmd = ["pdftotext", "-layout", str(src), str(dest)]
+    subprocess.run(cmd, check=True)
+
+
+def _pandoc_format_name(fmt: str) -> str:
+    norm = str(fmt or "").strip().lower()
+    if norm in {"md", "markdown"}:
+        return "markdown"
+    if norm in {"txt", "text", "plain"}:
+        return "plain"
+    return norm
+
+
+def swissknife_convert_file(
+    source_path: str,
+    target_format: str,
+    output_dir: str = "",
+    profile: str = "",
+    force_4k: bool = False,
+    image_quality: str = "",
+) -> Dict[str, Any]:
+    src = Path(source_path).expanduser().resolve()
+    if not src.exists():
+        raise RuntimeError("Source file not found.")
+    fmt = str(target_format or "").strip().lower().lstrip(".")
+    if not fmt:
+        raise RuntimeError("Target format is required.")
+    output_root = Path(output_dir).expanduser().resolve() if output_dir else src.parent
+    output_root.mkdir(parents=True, exist_ok=True)
+    dest = _next_available_output(output_root / f"{src.stem}.{fmt}")
+
+    video_formats = {"mp4", "mov", "mkv", "webm"}
+    audio_formats = {"mp3", "wav", "m4a", "flac", "aac", "opus"}
+    image_formats = {"png", "jpg", "jpeg", "webp", "gif", "tiff", "bmp"}
+    doc_formats = {"pdf", "docx", "rtf", "odt", "md", "txt", "html", "epub", "rst"}
+    streams = _ffprobe_stream_types(src)
+    source_suffix = src.suffix.lower().lstrip(".")
+    image_q_value = None
+    if str(image_quality or "").strip().isdigit():
+        image_q_value = max(1, min(100, int(image_quality)))
+
+    if fmt in image_formats:
+        cmd = ["ffmpeg", "-y", "-i", str(src), "-frames:v", "1"]
+        if image_q_value is not None:
+            if fmt in {"jpg", "jpeg"}:
+                q = max(2, min(31, round(31 - (image_q_value / 100.0) * 29)))
+                cmd += ["-q:v", str(q)]
+            elif fmt == "webp":
+                cmd += ["-q:v", str(image_q_value)]
+        cmd.append(str(dest))
+    elif fmt in audio_formats:
+        if not streams.get("audio"):
+            raise RuntimeError("Source has no audio stream.")
+        audio_codec_map = {
+            "mp3": "libmp3lame",
+            "wav": "pcm_s16le",
+            "m4a": "aac",
+            "flac": "flac",
+            "aac": "aac",
+            "opus": "libopus",
+        }
+        cmd = [
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(src),
+            "-vn",
+            "-c:a",
+            audio_codec_map.get(fmt, "aac"),
+            str(dest),
+        ]
+    elif fmt in doc_formats:
+        if source_suffix == "pdf":
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                tmp_txt = Path(tmp_dir) / "pdf.txt"
+                _pdftotext(src, tmp_txt)
+                if fmt in {"txt", "md"}:
+                    dest.write_text(tmp_txt.read_text(encoding="utf-8", errors="ignore"), encoding="utf-8")
+                else:
+                    _pandoc_convert(tmp_txt, dest, from_format="plain", to_format=_pandoc_format_name(fmt))
+        else:
+            _pandoc_convert(src, dest, to_format=_pandoc_format_name(fmt))
+    elif fmt in video_formats:
+        if not streams.get("video"):
+            raise RuntimeError("Source has no video stream.")
+        profile_norm = str(profile or "").strip().lower()
+        if fmt == "webm":
+            vcodec = "libvpx-vp9"
+            acodec = "libopus"
+            extra = []
+        else:
+            vcodec = "libx264"
+            acodec = "aac"
+            extra = ["-preset", "medium", "-crf", "18", "-pix_fmt", "yuv420p"]
+            if profile_norm == "quicktime":
+                extra += ["-movflags", "+faststart"]
+        if force_4k:
+            extra += ["-vf", "scale=-2:2160"]
+        audio_args = ["-c:a", acodec] if streams.get("audio") else ["-an"]
+        cmd = [
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(src),
+            "-c:v",
+            vcodec,
+            *audio_args,
+            *extra,
+            str(dest),
+        ]
+    else:
+        raise RuntimeError("Unsupported target format.")
+
+    subprocess.run(cmd, check=True)
+    return {"source": str(src), "output": str(dest), "format": fmt}
 
 
 def _parse_ytdlp_progress_line(line: str) -> Dict[str, Any]:
@@ -2297,6 +2553,8 @@ def _run_ytdlp_download(
         cmd += ["-x", "--audio-format", "mp3", "--audio-quality", audio_q]
     elif fmt == "m4a":
         cmd += ["-x", "--audio-format", "m4a", "--audio-quality", audio_q]
+    elif fmt == "wav":
+        cmd += ["-x", "--audio-format", "wav", "--audio-quality", audio_q]
     elif fmt == "mp4":
         if force_4k and compat_h264:
             cmd += ["-f", "bestvideo[height=2160]+bestaudio/best", "--merge-output-format", "mp4"]
@@ -2307,8 +2565,8 @@ def _run_ytdlp_download(
                 cmd += ["-f", "bestvideo[vcodec^=avc][ext=mp4]+bestaudio[ext=m4a]/bestvideo[vcodec^=avc][ext=mp4]+bestaudio/best[ext=mp4][vcodec^=avc]/best[vcodec^=avc]", "--merge-output-format", "mp4"]
         else:
             if height:
-                if force_4k:
-                    cmd += ["-f", f"bestvideo[height=2160]+bestaudio/best", "--merge-output-format", "mp4"]
+                if force_4k or height == "2160":
+                    cmd += ["-f", f"bestvideo[height=2160]+bestaudio/best", "--merge-output-format", "mkv"]
                 else:
                     cmd += ["-f", f"bestvideo[height<={height}]+bestaudio/best", "--merge-output-format", "mp4"]
             else:
@@ -2316,6 +2574,8 @@ def _run_ytdlp_download(
     else:
         if height:
             cmd += ["-f", f"bestvideo[height<={height}]+bestaudio/best"]
+            if height == "2160":
+                cmd += ["--merge-output-format", "mkv"]
         else:
             cmd += ["-f", "bestvideo+bestaudio/best"]
     cmd += [
@@ -2402,6 +2662,7 @@ def _run_ytdlp_download(
     after = sorted({p for p in out_dir.glob("*")} , key=lambda p: p.name)
     new_names = sorted({p.name for p in after} - before)
     files = [str((out_dir / name).resolve()) for name in new_names] if new_names else [str(p.resolve()) for p in after]
+    files = _merge_ytdlp_streams(files, out_dir)
     if compat_h264 and force_4k:
         try:
             src = _pick_video_file(files, out_dir)
@@ -2415,7 +2676,7 @@ def _run_ytdlp_download(
     return {"files": files}
 
 
-def _run_instagram_download(out_dir: Path, url: str, do_login: bool) -> Dict[str, Any]:
+def _run_instagram_download(out_dir: Path, url: str, do_login: bool, quality_hint: str = "", force_4k: bool = False) -> Dict[str, Any]:
     out_dir.mkdir(parents=True, exist_ok=True)
     script = Path("/Users/samuelapata/.codex/skills/swissknife-backend/scripts/ig_download_post.py")
     if not script.exists():
@@ -2423,6 +2684,11 @@ def _run_instagram_download(out_dir: Path, url: str, do_login: bool) -> Dict[str
     cmd = ["python3", str(script), url, "--out", str(out_dir)]
     if do_login:
         cmd.append("--login")
+    quality = str(quality_hint or "").strip().lower()
+    if quality:
+        cmd += ["--quality", quality]
+    if force_4k:
+        cmd.append("--force-4k")
     output = subprocess.check_output(cmd, text=True)
     try:
         data = json.loads(output)
@@ -2438,6 +2704,12 @@ def swissknife_download_to_session(session_id: str, url: str, do_login: bool, fo
     url = str(url or "").strip()
     if not url:
         raise RuntimeError("url is required")
+
+    quality_norm = str(quality_hint or "").strip().lower()
+    if quality_norm in ("4k", "2160", "2160p", "4k-h264", "4k-qt", "4k_qt", "qt4k"):
+        force_4k = True
+    if quality_norm in ("4k-h264", "4k-qt", "4k_qt", "qt4k"):
+        compat_h264 = True
 
     rows = _load_swissknife_sessions()
     source = str(source or "").strip().lower() or "instagram"
@@ -2480,7 +2752,7 @@ def swissknife_download_to_session(session_id: str, url: str, do_login: bool, fo
             rows[idx]["remote_path"] = resolved_output
             _save_swissknife_sessions(rows)
         try:
-            parsed = _run_instagram_download(Path(download_dir), url, do_login)
+            parsed = _run_instagram_download(Path(download_dir), url, do_login, quality_norm, force_4k)
         except Exception as exc:
             raise RuntimeError(str(exc))
 
@@ -2493,7 +2765,7 @@ def swissknife_download_to_session(session_id: str, url: str, do_login: bool, fo
         "file_count": len(parsed.get("files", [])) if isinstance(parsed.get("files", []), list) else 0,
         "manifest": parsed,
         "format": str(format_hint or "").strip(),
-        "quality": str(quality_hint or "").strip(),
+        "quality": str(quality_norm or "").strip(),
         "source": source,
         "compat_h264": bool(compat_h264),
         "force_4k": bool(force_4k),
@@ -2642,6 +2914,30 @@ def open_system_path(path: str, reveal: bool = False):
     cmd.append(str(p))
     subprocess.run(cmd, check=False)
     return {"ok": True}
+
+
+def pick_system_folder() -> Dict[str, Any]:
+    try:
+        result = subprocess.run(
+            [
+                "osascript",
+                "-e",
+                'set theFolder to choose folder with prompt "Select download folder"\nPOSIX path of theFolder',
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except subprocess.TimeoutExpired:
+        raise RuntimeError("Folder picker timed out.")
+    if result.returncode != 0:
+        err = (result.stderr or "").strip()
+        # User cancelled or AppleScript error.
+        raise RuntimeError(err or "Folder picker cancelled.")
+    path = (result.stdout or "").strip()
+    if not path:
+        raise RuntimeError("No folder selected.")
+    return {"ok": True, "path": path}
 
 
 def _validate_bash_script(source: str):
@@ -3063,6 +3359,14 @@ class Handler(SimpleHTTPRequestHandler):
             except Exception as exc:
                 return _json_response(self, {"error": str(exc)}, 400)
             return _json_response(self, payload, 200)
+        if path == "/api/system/pick-folder":
+            if not self._is_loopback_client():
+                return self._forbidden("Loopback access only")
+            try:
+                payload = pick_system_folder()
+            except Exception as exc:
+                return _json_response(self, {"error": str(exc)}, 400)
+            return _json_response(self, payload, 200)
 
         if path == "/api/iphone/live/on":
             if not self._is_loopback_client():
@@ -3182,6 +3486,20 @@ class Handler(SimpleHTTPRequestHandler):
                         bool(body.get("compat_h264", False)),
                         bool(body.get("force_4k", False)),
                     )
+            except Exception as exc:
+                return _json_response(self, {"error": str(exc)}, 400)
+            return _json_response(self, {"ok": True, **result}, 200)
+
+        if path == "/api/swissknife/convert":
+            try:
+                result = swissknife_convert_file(
+                    body.get("source_path", ""),
+                    body.get("target_format", ""),
+                    body.get("output_dir", ""),
+                    body.get("profile", ""),
+                    bool(body.get("force_4k", False)),
+                    body.get("image_quality", ""),
+                )
             except Exception as exc:
                 return _json_response(self, {"error": str(exc)}, 400)
             return _json_response(self, {"ok": True, **result}, 200)
