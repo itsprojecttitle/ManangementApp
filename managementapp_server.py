@@ -12,6 +12,7 @@ import subprocess
 import uuid
 import sys
 import tempfile
+import mimetypes
 from threading import Lock, Thread
 from collections import deque
 from datetime import datetime, timezone
@@ -65,6 +66,7 @@ GCLOUD_SSH_BASE = [
     "--command",
 ]
 MISSION_STATUSES = {"PENDING", "IN_PROGRESS", "COMPLETE", "BLOCKED"}
+MISSION_TYPES = {"Probe/Index", "SpecialOps"}
 ALLOWED_HOSTS = {"127.0.0.1:8099", "localhost:8099"}
 ALLOW_LAN = os.environ.get("ALLOW_LAN", "").strip().lower() in {"1", "true", "yes", "on"}
 RATE_LIMIT_WINDOW_SEC = 60
@@ -83,6 +85,49 @@ BLOCKED_UA_PATTERNS = (
     "selenium",
     "phantomjs",
 )
+
+
+def _path_within(target: Path, root: Path) -> bool:
+    try:
+        target.relative_to(root)
+        return True
+    except Exception:
+        return False
+
+
+def _serve_file(handler, target: Path):
+    ctype = mimetypes.guess_type(str(target))[0] or "application/octet-stream"
+    size = target.stat().st_size
+    range_header = handler.headers.get("Range")
+    if range_header:
+        m = re.match(r"bytes=(\d+)-(\d*)", range_header)
+        if m:
+            start = int(m.group(1))
+            end = int(m.group(2)) if m.group(2) else size - 1
+            end = min(end, size - 1)
+            if start > end:
+                handler.send_response(416)
+                handler.send_header("Content-Range", f"bytes */{size}")
+                handler.end_headers()
+                return
+            length = end - start + 1
+            handler.send_response(206)
+            handler.send_header("Content-Type", ctype)
+            handler.send_header("Content-Range", f"bytes {start}-{end}/{size}")
+            handler.send_header("Content-Length", str(length))
+            handler.send_header("Accept-Ranges", "bytes")
+            handler.end_headers()
+            with open(target, "rb") as fh:
+                fh.seek(start)
+                handler.wfile.write(fh.read(length))
+            return
+    handler.send_response(200)
+    handler.send_header("Content-Type", ctype)
+    handler.send_header("Content-Length", str(size))
+    handler.send_header("Accept-Ranges", "bytes")
+    handler.end_headers()
+    with open(target, "rb") as fh:
+        shutil.copyfileobj(fh, handler.wfile)
 _RATE_BUCKETS = {}
 _RATE_LOCK = Lock()
 DEV_WATCH_FILES = (
@@ -533,7 +578,7 @@ def _ensure_sync_mission_path(payload, default_status="PENDING"):
     if status not in MISSION_STATUSES:
         status = "PENDING"
     if not mission_path.exists():
-        mission_path.write_text(_build_mission_file_content(mission_display, status, "", _mission_created_fallback(mission_path)), encoding="utf-8")
+        mission_path.write_text(_build_mission_file_content(mission_display, status, "", _mission_created_fallback(mission_path), "Probe/Index", "Unassigned"), encoding="utf-8")
     else:
         update_mission_status(str(mission_path), status)
     ensure_mission_file_metadata(mission_path, mission_name=mission_display, status=status)
@@ -964,19 +1009,31 @@ def _strip_mission_header_lines(text: str) -> str:
         lines = lines[1:]
     filtered = []
     for line in lines:
-        if re.match(r"^\s*(Mission ID|Created|Mission Name|Status):\s*.*$", line):
+        if re.match(r"^\s*(Mission ID|Created|Mission Name|Status|Type|Task):\s*.*$", line):
             continue
         filtered.append(line.rstrip())
     return "\n".join(filtered).strip("\n").strip()
 
+def _normalize_mission_type(value: str) -> str:
+    raw = str(value or "").strip().lower()
+    if raw in {"specialops", "special ops", "special-ops", "special_op", "special_ops"}:
+        return "SpecialOps"
+    if raw in {"probe", "index", "probe/index", "probe & index", "probe and index", "execution"}:
+        return "Probe/Index"
+    return "Probe/Index"
 
-def _build_mission_file_content(mission_name: str, status: str, mission_id: str, created_at: str, body: str = "") -> str:
+
+def _build_mission_file_content(mission_name: str, status: str, mission_id: str, created_at: str, mission_type: str, mission_task: str, body: str = "") -> str:
+    normalized_type = _normalize_mission_type(mission_type)
+    normalized_task = str(mission_task or "").strip()
     header = [
         f"# {mission_name}",
         "",
         f"Mission ID: {mission_id}",
         f"Created: {created_at}",
         f"Mission Name: {mission_name}",
+        f"Type: {normalized_type}",
+        f"Task: {normalized_task or 'Unassigned'}",
         f"Status: {status}",
     ]
     content = "\n".join(header)
@@ -992,12 +1049,16 @@ def _read_mission_file_state(path: Path):
     status = "PENDING"
     mission_id = ""
     created_at = _mission_created_fallback(p)
+    mission_type = "Probe/Index"
+    mission_task = "Unassigned"
     body = ""
     try:
         text = p.read_text(encoding="utf-8", errors="ignore")
         mission_name = _extract_mission_line_value(text, "Mission Name") or _extract_mission_heading(text) or mission_name
         mission_id = _extract_mission_line_value(text, "Mission ID")
         created_at = _extract_mission_line_value(text, "Created") or created_at
+        mission_type = _normalize_mission_type(_extract_mission_line_value(text, "Type") or mission_type)
+        mission_task = _extract_mission_line_value(text, "Task") or mission_task
         raw_status = _extract_mission_line_value(text, "Status")
         if raw_status in MISSION_STATUSES:
             status = raw_status
@@ -1009,22 +1070,26 @@ def _read_mission_file_state(path: Path):
         "mission_name": mission_name,
         "mission_id": mission_id,
         "created_at": created_at,
+        "mission_type": mission_type,
+        "mission_task": mission_task,
         "status": status,
         "body": body,
     }
 
 
-def ensure_mission_file_metadata(path: Path, mission_id: str = "", created_at: str = "", mission_name: str = "", status: str = "", body: str = None):
+def ensure_mission_file_metadata(path: Path, mission_id: str = "", created_at: str = "", mission_name: str = "", status: str = "", mission_type: str = "", mission_task: str = "", body: str = None):
     p = Path(path)
     state = _read_mission_file_state(p)
     next_name = str(mission_name or state["mission_name"] or p.stem.replace("_", " ")).strip() or p.stem.replace("_", " ")
     next_status = str(status or state["status"] or "PENDING").strip().upper()
     if next_status not in MISSION_STATUSES:
         next_status = "PENDING"
+    next_type = _normalize_mission_type(mission_type or state.get("mission_type") or "Probe/Index")
+    next_task = str(mission_task or state.get("mission_task") or "Unassigned").strip() or "Unassigned"
     next_created = str(created_at or state["created_at"] or _mission_created_fallback(p)).strip() or _mission_created_fallback(p)
     next_id = str(mission_id or state["mission_id"] or "").strip()
     next_body = state["body"] if body is None else str(body or "").strip()
-    content = _build_mission_file_content(next_name, next_status, next_id, next_created, next_body)
+    content = _build_mission_file_content(next_name, next_status, next_id, next_created, next_type, next_task, next_body)
     current = ""
     try:
         current = p.read_text(encoding="utf-8", errors="ignore")
@@ -1037,6 +1102,8 @@ def ensure_mission_file_metadata(path: Path, mission_id: str = "", created_at: s
         "mission_name": next_name,
         "mission_id": next_id,
         "created_at": next_created,
+        "mission_type": next_type,
+        "mission_task": next_task,
         "status": next_status,
         "body": next_body,
     }
@@ -1082,6 +1149,8 @@ def load_missions():
             "mission_id": row.get("mission_id", ""),
             "operation": row.get("operation", ""),
             "name": row.get("mission_name", ""),
+            "mission_type": row.get("mission_type", "Probe/Index"),
+            "mission_task": row.get("mission_task", "Unassigned"),
             "status": row.get("status", "PENDING"),
             "path": str(row.get("path", "")),
         })
@@ -1567,14 +1636,36 @@ def save_mission_brief_version(mission_path_str: str, phase: int, content: str, 
     return {"version": version, "hvi_updated": updated_handles}
 
 
-def load_blackbook():
-    if BLACKBOOK_JSON_FILE.exists():
-        try:
-            rows = json.loads(BLACKBOOK_JSON_FILE.read_text(encoding="utf-8"))
+def _load_blackbook_json(path: Path):
+    try:
+        if path.exists():
+            rows = json.loads(path.read_text(encoding="utf-8"))
             if isinstance(rows, list):
                 return rows
-        except Exception:
-            pass
+    except Exception:
+        pass
+    return None
+
+
+def load_blackbook():
+    rows = _load_blackbook_json(BLACKBOOK_JSON_FILE)
+    if isinstance(rows, list) and rows:
+        return rows
+    if rows is None or rows == []:
+        fallback_candidates = [
+            PROJECT_ROOT / "data" / "blackbook.json",
+            Path(__file__).resolve().parent / "www" / "data" / "blackbook.json",
+            Path(__file__).resolve().parent / "data" / "blackbook.json",
+        ]
+        for fallback in fallback_candidates:
+            fb_rows = _load_blackbook_json(fallback)
+            if isinstance(fb_rows, list) and fb_rows:
+                if rows == []:
+                    try:
+                        save_blackbook(fb_rows)
+                    except Exception:
+                        pass
+                return fb_rows
 
     if BLACKBOOK_MD_FILE.exists():
         lines = BLACKBOOK_MD_FILE.read_text(encoding="utf-8", errors="ignore").splitlines()
@@ -3285,6 +3376,28 @@ class Handler(SimpleHTTPRequestHandler):
             if not job:
                 return _json_response(self, {"error": "job not found"}, 404)
             return _json_response(self, {"ok": True, "job": job}, 200)
+        if path == "/api/system/file":
+            if not self._is_loopback_client():
+                return self._forbidden("Loopback access only")
+            raw = (query.get("path", [""])[0] or "").strip()
+            if not raw:
+                return _json_response(self, {"error": "path is required"}, 400)
+            target = Path(raw).expanduser().resolve()
+            allowed_roots = [
+                WORKSPACE.resolve(),
+                Path.home().resolve() / "Downloads",
+                Path.home().resolve() / "Desktop",
+                Path.home().resolve() / "Documents",
+                Path.home().resolve() / "Movies",
+                Path.home().resolve() / "Pictures",
+                Path.home().resolve() / "Library" / "Application Support" / "OMNI",
+                Path("/tmp").resolve(),
+            ]
+            if not any(_path_within(target, root) for root in allowed_roots):
+                return self._forbidden("Path not allowed")
+            if not target.exists() or not target.is_file():
+                return _json_response(self, {"error": "file not found"}, 404)
+            return _serve_file(self, target)
         if path == "/api/dev/version":
             return _json_response(self, load_dev_build_meta())
         if path == "/api/dev/paths":
@@ -3410,6 +3523,8 @@ class Handler(SimpleHTTPRequestHandler):
             op = _safe_operation_rel(body.get("operation", "ProjectTitle"))
             name = _safe_name(body.get("name", "NEW_MISSION"))
             status = str(body.get("status") or "PENDING").strip()
+            mission_type = _normalize_mission_type(body.get("mission_type", "Probe/Index"))
+            mission_task = str(body.get("mission_task", "Unassigned") or "Unassigned").strip()
             if status not in MISSION_STATUSES:
                 status = "PENDING"
             missions_dir = _operation_dir_for_rel(op) / "Missions"
@@ -3417,10 +3532,10 @@ class Handler(SimpleHTTPRequestHandler):
             f = missions_dir / f"{name}.md"
             if not f.exists():
                 display_name = name.replace("_", " ")
-                f.write_text(_build_mission_file_content(display_name, status, "", _mission_created_fallback(f)), encoding="utf-8")
+                f.write_text(_build_mission_file_content(display_name, status, "", _mission_created_fallback(f), mission_type, mission_task), encoding="utf-8")
             else:
                 update_mission_status(str(f), status)
-            ensure_mission_file_metadata(f, mission_name=name.replace("_", " "), status=status)
+            ensure_mission_file_metadata(f, mission_name=name.replace("_", " "), status=status, mission_type=mission_type, mission_task=mission_task)
             reindex_all_mission_metadata()
             meta = _read_mission_file_state(f)
             meta["status"] = _derive_mission_status(f, meta.get("status", "PENDING"))

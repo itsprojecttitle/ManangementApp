@@ -4,6 +4,9 @@ UNIVERSAL MISSION-TO-EXECUTION TEMPLATE
 
 New Mission:
 
+Mission Type: [Probe/Index (Execution) | SpecialOps (Planning/Treatments)]
+Task: [SpecialOps Planning/Treatments | Poster + Indexing Tracking | Style + Pain-point 5 Posts | Sales & PR DM | Probing/Indexing/Engagement | Debrief & Replanning]
+
 Datawell Present: [YES / NO]
 Datawell Name: [EXACT DATAWELL TITLE / EXACT DATAWELL TITLES, COMMA-SEPARATED / CREATED BY ME / N/A]
 Datawell Relation: [CONNECTED TO / PART OF / HAVE / SOURCED FROM]

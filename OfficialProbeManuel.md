@@ -33,6 +33,9 @@ Loop: **Model → Probe → Measure → Update → Repeat**
 - **Mission**: long-term objective (why).
 - **Operation**: a campaign composed of multiple probes (how).
 - **Protocol**: repeatable SOP (rules that keep quality/safety).
+- **Mission Type**:
+  - **Probe/Index** = Execution (measurement + delivery)
+  - **SpecialOps** = Planning + treatments (prep, recovery, repositioning)
 
 ## 2) The 3 Layers of Probing (The Funnel)
 

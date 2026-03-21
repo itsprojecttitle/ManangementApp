@@ -3,6 +3,8 @@
 Mission ID: MIS-012
 Created: 2026-03-11 18:04
 Mission Name: Mission Brief: Operation ProjectTitle Mission sales - Event Recognition
+Type: Probe/Index
+Task: Unassigned
 Status: PENDING
 
 ## (Understanding Audience Appreciation for UK Underground Event Lineups)

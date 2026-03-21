@@ -2,6 +2,7 @@
       let currentView = "dashboard";
       let viewHistoryStack = [];
       let suppressViewHistory = false;
+      const OFFLINE_ONLY = true;
       let selectedOperation = null;
       let allMissions = [];
       let allOps = [];
@@ -10,6 +11,17 @@
       let globalSearchResults = [];
       let searchQuery = "";
       let missionSearchQuery = "";
+      let missionTypeFilter = "";
+      let missionTaskFilter = "";
+      let missionTaskTemplates = [];
+      const DEFAULT_MISSION_TASK_TEMPLATES = [
+        "SpecialOps for planning and executing non posting probes (boxing treatments)",
+        "Poster and indexing for tracking",
+        "Using Style and Pain-point 5 Posts",
+        "Sales & PR DM",
+        "Probing & Indexing & Engagement",
+        "Debrief & Replanning",
+      ];
       let operationSearchQuery = "";
       let blueprintSearchQuery = "";
       let bookSearchQuery = "";
@@ -138,6 +150,7 @@
         probe: "OperationDir/Templates/ProbeSkill.md",
         manual: "OperationDir/Templates/OfficialProbeManuel.md",
         datawell: "OperationDir/Templates/DatawellDiscovery.md",
+        pns: "OperationDir/Templates/PNS.md",
       };
       const EDITABLE_DOC_PATHS = new Set([
         "MissionBriefing.md",
@@ -147,6 +160,7 @@
         TEMPLATE_DOC_PATHS.probe,
         TEMPLATE_DOC_PATHS.manual,
         TEMPLATE_DOC_PATHS.datawell,
+        TEMPLATE_DOC_PATHS.pns,
       ]);
       let notificationSettings = {
         enabled: true,
@@ -208,7 +222,21 @@
       const OMNI_APP_BUILD_KEY = "omniAppBuild";
       const SWISSKNIFE_LOG_KEY = "swissknifeFailLog:v1";
       const SWISSKNIFE_CONVERT_HISTORY_KEY = "swissknifeConvertHistory:v1";
+      const SWISSKNIFE_POSTER_SCRIPT_PATH = "/swissknife/render_psd_poster.py";
       let swissknifeFailLog = [];
+      let swissknifePosterScriptLoaded = false;
+      const simpleCanvasState = {
+        initialized: false,
+        isDrawing: false,
+        lastX: 0,
+        lastY: 0,
+        mode: "draw",
+        brushSize: 8,
+        opacity: 0.9,
+        color: "#ffffff",
+        bg: "transparent",
+        dpr: 1,
+      };
       const OMNI_NOTIFICATION_THREAD_ID = "omni-alerts";
       const OMNI_PINNED_REMINDER_SPECS = [
         {
@@ -275,6 +303,251 @@
         saveSwissknifeFailLog();
         renderSwissknifeLog();
         themedNotice("Swissknife log cleared.");
+      }
+
+      function setSimpleCanvasStatus(message) {
+        const status = document.getElementById("simplecanvas-status");
+        if (status) status.textContent = message;
+      }
+
+      function getSimpleCanvasElements() {
+        return {
+          canvas: document.getElementById("simplecanvas-canvas"),
+          stage: document.querySelector("#swissknife-view-simplecanvas .simplecanvas-stage"),
+          size: document.getElementById("simplecanvas-size"),
+          opacity: document.getElementById("simplecanvas-opacity"),
+          color: document.getElementById("simplecanvas-color"),
+          bg: document.getElementById("simplecanvas-bg"),
+          btnDraw: document.getElementById("simplecanvas-mode-draw"),
+          btnErase: document.getElementById("simplecanvas-mode-erase"),
+          btnApplyBg: document.getElementById("simplecanvas-apply-bg"),
+          btnClear: document.getElementById("simplecanvas-clear"),
+          btnFit: document.getElementById("simplecanvas-fit"),
+          btnDownload: document.getElementById("simplecanvas-download"),
+        };
+      }
+
+      function updateSimpleCanvasModeButtons() {
+        const { btnDraw, btnErase } = getSimpleCanvasElements();
+        if (btnDraw) btnDraw.classList.toggle("active", simpleCanvasState.mode === "draw");
+        if (btnErase) btnErase.classList.toggle("active", simpleCanvasState.mode === "erase");
+      }
+
+      function resizeSimpleCanvas(preserve = true) {
+        const { canvas, stage } = getSimpleCanvasElements();
+        if (!canvas || !stage) return;
+        const rect = stage.getBoundingClientRect();
+        const width = Math.max(1, Math.floor(rect.width));
+        const height = Math.max(1, Math.floor(rect.height));
+        const dpr = window.devicePixelRatio || 1;
+        simpleCanvasState.dpr = dpr;
+        let snapshot = null;
+        if (preserve && canvas.width && canvas.height) {
+          snapshot = canvas.toDataURL("image/png");
+        }
+        canvas.width = Math.floor(width * dpr);
+        canvas.height = Math.floor(height * dpr);
+        const ctx = canvas.getContext("2d");
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+        if (snapshot) {
+          const img = new Image();
+          img.onload = () => {
+            ctx.clearRect(0, 0, width, height);
+            ctx.drawImage(img, 0, 0, width, height);
+          };
+          img.src = snapshot;
+        }
+      }
+
+      function applySimpleCanvasBackground() {
+        const { canvas, bg } = getSimpleCanvasElements();
+        if (!canvas || !bg) return;
+        const ctx = canvas.getContext("2d");
+        const rect = canvas.getBoundingClientRect();
+        const width = Math.max(1, Math.floor(rect.width));
+        const height = Math.max(1, Math.floor(rect.height));
+        const value = String(bg.value || "transparent");
+        simpleCanvasState.bg = value;
+        if (value === "transparent") {
+          setSimpleCanvasStatus("BACKGROUND CLEARED.");
+          return;
+        }
+        ctx.save();
+        ctx.globalCompositeOperation = "destination-over";
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = value === "black" ? "#000000" : "#ffffff";
+        ctx.fillRect(0, 0, width, height);
+        ctx.restore();
+        setSimpleCanvasStatus(`BACKGROUND SET: ${value.toUpperCase()}.`);
+      }
+
+      function clearSimpleCanvas() {
+        const { canvas } = getSimpleCanvasElements();
+        if (!canvas) return;
+        const ctx = canvas.getContext("2d");
+        const rect = canvas.getBoundingClientRect();
+        ctx.clearRect(0, 0, rect.width, rect.height);
+        setSimpleCanvasStatus("CLEARED.");
+      }
+
+      function getSimpleCanvasPoint(evt, canvas) {
+        const rect = canvas.getBoundingClientRect();
+        return {
+          x: evt.clientX - rect.left,
+          y: evt.clientY - rect.top,
+        };
+      }
+
+      function startSimpleCanvasStroke(evt) {
+        const { canvas } = getSimpleCanvasElements();
+        if (!canvas) return;
+        const ctx = canvas.getContext("2d");
+        const point = getSimpleCanvasPoint(evt, canvas);
+        simpleCanvasState.isDrawing = true;
+        simpleCanvasState.lastX = point.x;
+        simpleCanvasState.lastY = point.y;
+        ctx.beginPath();
+        ctx.moveTo(point.x, point.y);
+      }
+
+      function drawSimpleCanvasStroke(evt) {
+        if (!simpleCanvasState.isDrawing) return;
+        const { canvas } = getSimpleCanvasElements();
+        if (!canvas) return;
+        const ctx = canvas.getContext("2d");
+        const point = getSimpleCanvasPoint(evt, canvas);
+        ctx.lineWidth = simpleCanvasState.brushSize;
+        ctx.globalAlpha = simpleCanvasState.opacity;
+        ctx.globalCompositeOperation = simpleCanvasState.mode === "erase" ? "destination-out" : "source-over";
+        ctx.strokeStyle = simpleCanvasState.color;
+        ctx.lineTo(point.x, point.y);
+        ctx.stroke();
+        simpleCanvasState.lastX = point.x;
+        simpleCanvasState.lastY = point.y;
+      }
+
+      function endSimpleCanvasStroke() {
+        simpleCanvasState.isDrawing = false;
+      }
+
+      function downloadSimpleCanvas() {
+        const { canvas } = getSimpleCanvasElements();
+        if (!canvas) return;
+        const link = document.createElement("a");
+        link.href = canvas.toDataURL("image/png");
+        link.download = `simplecanvas_${new Date().toISOString().replace(/[:.]/g, "-")}.png`;
+        link.click();
+        setSimpleCanvasStatus("DOWNLOADED PNG.");
+      }
+
+      function initSwissknifeSimpleCanvas() {
+        if (simpleCanvasState.initialized) return;
+        const {
+          canvas,
+          size,
+          opacity,
+          color,
+          bg,
+          btnDraw,
+          btnErase,
+          btnApplyBg,
+          btnClear,
+          btnFit,
+          btnDownload,
+        } = getSimpleCanvasElements();
+        if (!canvas) return;
+        simpleCanvasState.initialized = true;
+        canvas.addEventListener("pointerdown", (evt) => {
+          canvas.setPointerCapture(evt.pointerId);
+          startSimpleCanvasStroke(evt);
+        });
+        canvas.addEventListener("pointermove", drawSimpleCanvasStroke);
+        canvas.addEventListener("pointerup", endSimpleCanvasStroke);
+        canvas.addEventListener("pointercancel", endSimpleCanvasStroke);
+        if (size) {
+          size.addEventListener("input", () => {
+            simpleCanvasState.brushSize = Number(size.value || 8);
+          });
+        }
+        if (opacity) {
+          opacity.addEventListener("input", () => {
+            simpleCanvasState.opacity = Number(opacity.value || 0.9);
+          });
+        }
+        if (color) {
+          color.addEventListener("input", () => {
+            simpleCanvasState.color = String(color.value || "#ffffff");
+          });
+        }
+        if (btnDraw) {
+          btnDraw.addEventListener("click", () => {
+            simpleCanvasState.mode = "draw";
+            updateSimpleCanvasModeButtons();
+          });
+        }
+        if (btnErase) {
+          btnErase.addEventListener("click", () => {
+            simpleCanvasState.mode = "erase";
+            updateSimpleCanvasModeButtons();
+          });
+        }
+        if (btnApplyBg) btnApplyBg.addEventListener("click", applySimpleCanvasBackground);
+        if (btnClear) btnClear.addEventListener("click", clearSimpleCanvas);
+        if (btnFit) btnFit.addEventListener("click", () => resizeSimpleCanvas(true));
+        if (btnDownload) btnDownload.addEventListener("click", downloadSimpleCanvas);
+        if (bg) {
+          bg.addEventListener("change", () => {
+            simpleCanvasState.bg = String(bg.value || "transparent");
+          });
+        }
+        window.addEventListener("resize", () => resizeSimpleCanvas(true));
+        updateSimpleCanvasModeButtons();
+        resizeSimpleCanvas(false);
+        setSimpleCanvasStatus("READY.");
+      }
+
+      function setSwissknifePosterStatus(message) {
+        const status = document.getElementById("swissknife-poster-status");
+        if (status) status.textContent = message;
+      }
+
+      async function loadSwissknifePosterScript(force = false) {
+        const host = document.getElementById("swissknife-poster-script");
+        if (!host) return;
+        if (swissknifePosterScriptLoaded && !force) return;
+        setSwissknifePosterStatus("LOADING...");
+        try {
+          const res = await fetch(SWISSKNIFE_POSTER_SCRIPT_PATH, { cache: "no-store" });
+          if (!res.ok) {
+            throw new Error(`HTTP ${res.status}`);
+          }
+          const text = await res.text();
+          host.value = text;
+          swissknifePosterScriptLoaded = true;
+          const lineCount = text ? text.split(\"\\n\").length : 0;
+          setSwissknifePosterStatus(`LOADED (${lineCount} LINES)`);
+        } catch (e) {
+          setSwissknifePosterStatus("LOAD FAILED");
+          themedNotice(\"Poster script load failed: \" + (e?.message || String(e)));
+        }
+      }
+
+      function reloadSwissknifePosterScript() {
+        swissknifePosterScriptLoaded = false;
+        loadSwissknifePosterScript(true);
+      }
+
+      async function copySwissknifePosterScript() {
+        const host = document.getElementById(\"swissknife-poster-script\");
+        const text = String(host?.value || \"\").trim();
+        if (!text) {
+          themedNotice(\"No poster script loaded.\");
+          return;
+        }
+        const result = await copyTextWithFallback(text, \"POSTER SCRIPT\");
+        themedNotice(result === \"manual\" ? \"Clipboard blocked. Manual copy view opened.\" : \"Poster script copied.\");
       }
 
       function loadSwissknifeConvertHistory() {
@@ -1670,6 +1943,7 @@
             contacts: Array.isArray(allContacts) ? allContacts : [],
             blueprints: Array.isArray(blueprintCatalog) ? blueprintCatalog : [],
             books: Array.isArray(booksCatalog) ? booksCatalog : [],
+            manuels: Array.isArray(booksCatalog) ? booksCatalog : [],
             swissknife_sessions: Array.isArray(swissknifeSessions) ? swissknifeSessions : [],
           },
           sync_queue: cloneSyncData(getOfflineSyncQueue()) || [],
@@ -1694,6 +1968,7 @@
         const missionLinks = safeParse(map[missionDatawellLinksKey()]);
         const hviExtras = safeParse(map[hviExtrasStorageKey()]);
         const hviStats = safeParse(map[hviStatTemplatesKey()]);
+        const missionTasks = safeParse(map[missionTaskTemplatesKey()]);
         const appearance = safeParse(map[appearanceSettingsKey()]);
         const performance = safeParse(map[performanceSettingsKey()]);
         const calendarSync = safeParse(map[omniCalendarSyncStateKey()]);
@@ -1726,6 +2001,7 @@
             mission_links: missionLinks,
             hvi_extras: hviExtras,
             hvi_stats: hviStats,
+            mission_task_templates: missionTasks,
             appearance,
             performance,
             calendar_sync: calendarSync,
@@ -1754,6 +2030,7 @@
       }
 
       async function persistLocalDataToMac(reason = "") {
+        if (OFFLINE_ONLY && !isDesktopLocalServerSession()) return;
         if (localDataPersistInFlight) return;
         const payload = buildLocalDataPersistPayload();
         const hash = JSON.stringify(payload);
@@ -1790,6 +2067,7 @@
       }
 
       async function recoverLocalDataFromDiskIfMissing() {
+        if (OFFLINE_ONLY && !isDesktopLocalServerSession()) return false;
         if (!localDataRecoveryNeeded()) return false;
         try {
           const res = await fetch("/api/localdata/load");
@@ -1820,6 +2098,7 @@
             setJson(missionDatawellLinksKey(), data.mission_links);
             setJson(hviExtrasStorageKey(), data.hvi_extras);
             setJson(hviStatTemplatesKey(), data.hvi_stats);
+            setJson(missionTaskTemplatesKey(), data.mission_task_templates);
             setJson(appearanceSettingsKey(), data.appearance);
             setJson(performanceSettingsKey(), data.performance);
             setJson(omniCalendarSyncStateKey(), data.calendar_sync);
@@ -1877,10 +2156,12 @@
       async function exportAllDataBackup() {
         try {
           let payload = null;
-          try {
-            payload = await fetchJsonSmart("/api/backup/export");
-          } catch (_) {
-            payload = null;
+          if (!OFFLINE_ONLY || isDesktopLocalServerSession()) {
+            try {
+              payload = await fetchJsonSmart("/api/backup/export");
+            } catch (_) {
+              payload = null;
+            }
           }
           if (payload && payload.meta) {
             const localPayload = collectAppBackupPayload();
@@ -1900,10 +2181,12 @@
       async function shareAllDataBackup() {
         try {
           let payload = null;
-          try {
-            payload = await fetchJsonSmart("/api/backup/export");
-          } catch (_) {
-            payload = null;
+          if (!OFFLINE_ONLY || isDesktopLocalServerSession()) {
+            try {
+              payload = await fetchJsonSmart("/api/backup/export");
+            } catch (_) {
+              payload = null;
+            }
           }
           if (payload && payload.meta) {
             const localPayload = collectAppBackupPayload();
@@ -1952,6 +2235,18 @@
         shadow.blackbook = Array.isArray(snapshot.blackbook) ? cloneSyncData(snapshot.blackbook) : [];
         shadow.hvi = Array.isArray(snapshot.hvi) ? cloneSyncData(snapshot.hvi) : [];
         allContacts = Array.isArray(snapshot.contacts) ? cloneSyncData(snapshot.contacts) : [];
+        if (Array.isArray(snapshot.blueprints)) {
+          applyBlueprintCatalog(snapshot.blueprints);
+        }
+        if (Array.isArray(snapshot.books)) {
+          applyBooksCatalog(snapshot.books);
+        }
+        if (Array.isArray(snapshot.manuels)) {
+          applyBooksCatalog(snapshot.manuels);
+        }
+        if (Array.isArray(snapshot.swissknife_sessions)) {
+          applySwissknifeSessionsData(snapshot.swissknife_sessions);
+        }
         shadow.seeded = true;
         shadow.dirty = false;
         reindexShadowMissions(shadow);
@@ -2032,6 +2327,7 @@
       }
 
       async function importProjectBackupToMac(parsed) {
+        if (OFFLINE_ONLY && !isDesktopLocalServerSession()) return null;
         if (shouldPreferOfflineSnapshots()) return null;
         if (!parsed || typeof parsed !== "object") return null;
         const hasProjectPayload = (Array.isArray(parsed.sync_queue) && parsed.sync_queue.length)
@@ -2625,7 +2921,7 @@
           privacySettings.lockOnLaunch ? "LAUNCH LOCK" : "",
           privacySettings.autoLockOnBackground ? "BG LOCK" : "",
         ].filter(Boolean).join(" • ") || "UNLOCKED ON START";
-        const macIphoneLiveControls = canControlIphoneLiveFromMac()
+        const macIphoneLiveControls = OFFLINE_ONLY ? "" : (canControlIphoneLiveFromMac()
           ? `
               <div class="sync-center-list">
                 <div class="sync-center-list-title">Mac iPhone Live Control</div>
@@ -2646,8 +2942,10 @@
                 ${macIphoneLiveState?.lastError ? `<div class="routine-ex-note" style="color:var(--warning-yellow);">${escapeHtmlAttr(macIphoneLiveState.lastError)}</div>` : ""}
               </div>
             `
-          : "";
-        const runtimeActions = runtimeModeState?.remoteCapable
+          : "");
+        const runtimeActions = OFFLINE_ONLY
+          ? `<div class="routine-ex-note">Offline-only mode enabled. Live server controls disabled.</div>`
+          : (runtimeModeState?.remoteCapable
           ? `
               <div class="settings-actions">
                 <button class="confirm-btn" type="button" onclick="switchOmniRuntimeMode('bundled')">DISCONNECT</button>
@@ -2656,7 +2954,7 @@
             `
           : (isNativeRuntime()
               ? `<div class="routine-ex-note">This build only has bundled/offline runtime available.</div>`
-              : "");
+              : ""));
 
         summaryHost.innerHTML = `
           <div class="mission-profile-highlights">
@@ -3450,6 +3748,7 @@
           ensureMarkdownLoaded(`/${TEMPLATE_DOC_PATHS.probe}`, "mission-probe-skill-content", "Failed to load ProbeSkill.md");
           ensureMarkdownLoaded(`/${TEMPLATE_DOC_PATHS.manual}`, "mission-probe-manual-content", "Failed to load OfficialProbeManuel.md");
           ensureMarkdownLoaded(`/${TEMPLATE_DOC_PATHS.datawell}`, "mission-probe-datawell-prompt-content", "Failed to load DatawellDiscovery.md");
+          ensureMarkdownLoaded(`/${TEMPLATE_DOC_PATHS.pns}`, "mission-probe-pns-content", "Failed to load PNS.md");
           renderPostingTemplate();
           renderMissionProbePackPreview();
           renderTemplatesWorkspace();
@@ -3562,7 +3861,7 @@
 
       function normalizeTemplatesSection(section = "") {
         const key = String(section || "").trim().toLowerCase();
-        return ["workflow", "brief", "skill", "manual", "datawell", "posting"].includes(key) ? key : "brief";
+        return ["workflow", "brief", "skill", "manual", "datawell", "posting", "pns"].includes(key) ? key : "brief";
       }
 
       function setTemplatesActiveSection(section = "") {
@@ -3699,6 +3998,165 @@
         const el = document.getElementById("mission-search-input");
         missionSearchQuery = (el ? el.value : "").toLowerCase().trim();
         renderMissions();
+      }
+
+      function setMissionTypeFilter() {
+        const el = document.getElementById("mission-type-filter");
+        missionTypeFilter = (el ? el.value : "").trim();
+        renderMissions();
+      }
+
+      function clearMissionTypeFilter() {
+        const el = document.getElementById("mission-type-filter");
+        if (el) el.value = "";
+        missionTypeFilter = "";
+        renderMissions();
+      }
+
+      function setMissionTaskFilter(el) {
+        const target = el || document.querySelector(".mission-task-filter");
+        const value = (target ? target.value : "").trim();
+        missionTaskFilter = value;
+        syncMissionTaskFilterInputs(value);
+        renderMissions();
+      }
+
+      function clearMissionTaskFilter() {
+        syncMissionTaskFilterInputs("");
+        missionTaskFilter = "";
+        renderMissions();
+      }
+
+      function syncMissionTaskFilterInputs(value) {
+        document.querySelectorAll(".mission-task-filter").forEach((el) => {
+          el.value = value || "";
+        });
+      }
+
+      function missionTaskTemplatesKey() {
+        return "missionTaskTemplates:v1";
+      }
+
+      function normalizeMissionTaskList(list) {
+        const seen = new Set();
+        const out = [];
+        (Array.isArray(list) ? list : []).forEach((item) => {
+          const value = String(item || "").trim();
+          if (!value) return;
+          const key = value.toLowerCase();
+          if (seen.has(key)) return;
+          seen.add(key);
+          out.push(value);
+        });
+        return out;
+      }
+
+      function loadMissionTaskTemplates() {
+        let stored = [];
+        try {
+          const raw = localStorage.getItem(missionTaskTemplatesKey());
+          const parsed = raw ? JSON.parse(raw) : [];
+          stored = Array.isArray(parsed) ? parsed : [];
+        } catch (_) {
+          stored = [];
+        }
+        missionTaskTemplates = normalizeMissionTaskList([...DEFAULT_MISSION_TASK_TEMPLATES, ...stored]);
+      }
+
+      function saveMissionTaskTemplates() {
+        localStorage.setItem(missionTaskTemplatesKey(), JSON.stringify(missionTaskTemplates));
+        queueLocalDataPersist("mission_tasks");
+      }
+
+      function ensureMissionTaskTemplate(taskLabel) {
+        const value = String(taskLabel || "").trim();
+        if (!value || value.toLowerCase() === "unassigned") return;
+        const exists = missionTaskTemplates.some((t) => String(t || "").trim().toLowerCase() === value.toLowerCase());
+        if (!exists) {
+          missionTaskTemplates = normalizeMissionTaskList([...missionTaskTemplates, value]);
+          saveMissionTaskTemplates();
+          refreshMissionTaskSelectors();
+        }
+      }
+
+      function refreshMissionTaskSelectors() {
+        const taskSelect = document.getElementById("new-mission-task");
+        const filterSelects = document.querySelectorAll(".mission-task-filter");
+        const normalized = normalizeMissionTaskList(missionTaskTemplates);
+        const taskOptions = ["Unassigned", ...normalized.filter((t) => t.toLowerCase() !== "unassigned")];
+
+        if (taskSelect) {
+          const current = String(taskSelect.value || "");
+          taskSelect.innerHTML = taskOptions.map((task) => (
+            `<option value="${escapeHtmlAttr(task)}">${escapeHtmlAttr(task)}</option>`
+          )).join("");
+          if (taskOptions.some((t) => t.toLowerCase() === current.toLowerCase())) {
+            taskSelect.value = current;
+          } else {
+            taskSelect.value = "Unassigned";
+          }
+        }
+
+        filterSelects.forEach((filterSelect) => {
+          const current = String(filterSelect.value || "");
+          const options = ['<option value="">ALL TASKS</option>', ...taskOptions.map((task) => (
+            `<option value="${escapeHtmlAttr(task)}">${escapeHtmlAttr(task)}</option>`
+          ))];
+          filterSelect.innerHTML = options.join("");
+          if (current && taskOptions.some((t) => t.toLowerCase() === current.toLowerCase())) {
+            filterSelect.value = current;
+          } else if (missionTaskFilter && taskOptions.some((t) => t.toLowerCase() === missionTaskFilter.toLowerCase())) {
+            filterSelect.value = missionTaskFilter;
+          } else {
+            filterSelect.value = "";
+          }
+        });
+      }
+
+      function addMissionTaskTemplate(btn = null) {
+        const scope = btn ? btn.closest(".search-toolbar") : null;
+        const input = scope ? scope.querySelector(".mission-task-new") : document.querySelector(".mission-task-new");
+        const value = String(input?.value || "").trim();
+        if (!value) {
+          themedNotice("Enter a task name first.");
+          return;
+        }
+        ensureMissionTaskTemplate(value);
+        document.querySelectorAll(".mission-task-new").forEach((el) => {
+          el.value = "";
+        });
+        themedNotice("Task added.");
+      }
+
+      async function editMissionTaskTemplates() {
+        const current = normalizeMissionTaskList(missionTaskTemplates);
+        const baseText = current.length ? current.join("\n") : DEFAULT_MISSION_TASK_TEMPLATES.join("\n");
+        const next = await themedPrompt("Edit tasks (one per line)", baseText);
+        if (next == null) return;
+        const lines = String(next || "")
+          .split(/\r?\n/)
+          .map((line) => line.trim())
+          .filter(Boolean);
+        missionTaskTemplates = normalizeMissionTaskList(lines.length ? lines : DEFAULT_MISSION_TASK_TEMPLATES);
+        saveMissionTaskTemplates();
+        refreshMissionTaskSelectors();
+        renderOperationFocus();
+        themedNotice("Tasks updated.");
+      }
+
+      function syncMissionTaskTemplatesFromMissions(missions) {
+        const discovered = [];
+        (Array.isArray(missions) ? missions : []).forEach((m) => {
+          const value = String(m?.mission_task || "").trim();
+          if (!value || value.toLowerCase() === "unassigned") return;
+          discovered.push(value);
+        });
+        const merged = normalizeMissionTaskList([...missionTaskTemplates, ...discovered]);
+        if (merged.join("\u0000") !== missionTaskTemplates.join("\u0000")) {
+          missionTaskTemplates = merged;
+          saveMissionTaskTemplates();
+        }
+        refreshMissionTaskSelectors();
       }
 
       function setOperationSearch() {
@@ -5600,12 +6058,20 @@
 
       function filePathToUrl(path) {
         const cleaned = String(path || "").replace(/^file:\/\//i, "");
-        return `file://${encodeURI(cleaned)}`;
+        return `/api/system/file?path=${encodeURIComponent(cleaned)}`;
       }
 
       function pickSwissknifeFilePath(download) {
+        const directCandidates = [
+          download?.output_path,
+          download?.file_path,
+          download?.download_path,
+          download?.path,
+          download?.manifest?.output_path,
+          download?.manifest?.file_path,
+        ].map((v) => String(v || "").trim()).filter(Boolean);
         const files = Array.isArray(download?.manifest?.files) ? download.manifest.files : [];
-        const usable = files.filter((f) => !String(f || "").endsWith(".part"));
+        const usable = [...directCandidates, ...files].filter((f) => !String(f || "").endsWith(".part"));
         if (!usable.length) return "";
         const preferred =
           usable.find((f) => /_h264_2160\.mp4$/i.test(String(f || ""))) ||
@@ -5696,6 +6162,13 @@
         if (target) target.classList.add("active");
         root.querySelectorAll(".swissknife-nav-btn").forEach((el) => el.classList.remove("active"));
         if (btn && btn.classList) btn.classList.add("active");
+        if (String(viewId || "").trim() === "poster-script") {
+          loadSwissknifePosterScript();
+        }
+        if (String(viewId || "").trim() === "simplecanvas") {
+          initSwissknifeSimpleCanvas();
+          resizeSimpleCanvas(true);
+        }
       }
 
       function inferSwissknifeSource(url) {
@@ -6417,6 +6890,20 @@
         try {
           const result = await copyTextWithFallback(text, "MISSION BRIEF PROMPT");
           themedNotice(result === "manual" ? "Clipboard blocked. Manual copy view opened." : "Mission Brief prompt copied.");
+        } catch (e) {
+          themedNotice("Copy failed: " + e.message);
+        }
+      }
+
+      async function copyPnsTemplate() {
+        const text = await readTextForPack(`/${TEMPLATE_DOC_PATHS.pns}`, "mission-probe-pns-content");
+        if (!text) {
+          themedNotice("PNS content is empty.");
+          return;
+        }
+        try {
+          const result = await copyTextWithFallback(text, "PNS TEMPLATE");
+          themedNotice(result === "manual" ? "Clipboard blocked. Manual copy view opened." : "PNS template copied.");
         } catch (e) {
           themedNotice("Copy failed: " + e.message);
         }
@@ -14002,7 +14489,7 @@
       function runOfflineBash(code) {
         const startedAt = Date.now();
         const env = { PWD: "/omni", USER: "omni", SHELL: "/bin/bash" };
-        const files = ["OperationDir", "OperationDir/Templates", "assets", "data", "ManagementApp.html", "MissionBriefing.md", "ProbeSkill.md", "OfficialProbeManuel.md"];
+        const files = ["OperationDir", "OperationDir/Templates", "assets", "data", "ManagementApp.html", "MissionBriefing.md", "ProbeSkill.md", "OfficialProbeManuel.md", "PNS.md"];
         const stdout = [];
         const stderr = [];
         const lines = String(code || "").split(/\r?\n/);
@@ -15881,6 +16368,57 @@
         return payload;
       }
 
+      async function syncIntelFromBriefs(options = {}) {
+        const missions = Array.isArray(allMissions) ? allMissions : [];
+        if (!missions.length) {
+          themedNotice("No missions found to scan.");
+          return;
+        }
+        const syncHvi = Boolean(options?.syncHvi);
+        let scanned = 0;
+        let datawellTouched = 0;
+        let blackbookTouched = 0;
+        let hviTouched = 0;
+        let errors = 0;
+        themedNotice("Syncing from briefs...");
+        for (const mission of missions) {
+          const missionPath = String(mission?.path || "").trim();
+          if (!missionPath) continue;
+          try {
+            const res = await fetch(`/api/mission/brief?mission_path=${encodeURIComponent(missionPath)}`, { cache: "no-store" });
+            if (!res.ok) continue;
+            const data = await res.json().catch(() => ({}));
+            const content = String(data?.content || "").trim();
+            if (!content) continue;
+            scanned += 1;
+            const datawellResult = syncMissionBriefDatawells(missionPath, content, { silent: true });
+            if (datawellResult.created || datawellResult.updated) {
+              datawellTouched += (datawellResult.created + datawellResult.updated);
+            }
+            try {
+              await syncBlackbookFromMissionBrief(missionPath, content, { status: mission?.status || "IN_PROGRESS" });
+              blackbookTouched += 1;
+            } catch (_) {
+              errors += 1;
+            }
+            if (syncHvi) {
+              try {
+                const hviRes = await syncHviFromMissionBrief(missionPath, content, { silent: true });
+                hviTouched += hviRes?.updated ? 1 : 0;
+              } catch (_) {
+                errors += 1;
+              }
+            }
+          } catch (_) {
+            errors += 1;
+          }
+        }
+        await fetchData();
+        if (currentView === "datawells") renderDatawells();
+        if (currentView === "operations" || currentView === "blackbook") renderBlackbook();
+        themedNotice(`Brief sync: ${scanned} brief(s), ${datawellTouched} datawell updates, ${blackbookTouched} blackbook rows${syncHvi ? `, ${hviTouched} HVI updates` : ""}${errors ? `, ${errors} error(s)` : ""}.`);
+      }
+
       function onBriefOperationFilterChange() {
         renderBriefMissionOptions();
       }
@@ -16031,6 +16569,8 @@
         const nameInput = document.getElementById("new-mission-name");
         const opInput = document.getElementById("new-mission-op");
         const statusSelect = document.getElementById("new-mission-status");
+        const typeSelect = document.getElementById("new-mission-type");
+        const taskSelect = document.getElementById("new-mission-task");
         const briefInput = document.getElementById("new-mission-brief");
         const debriefInput = document.getElementById("new-mission-debrief");
         const msgEl = document.getElementById("submission-message");
@@ -16057,16 +16597,21 @@
           return;
         }
         const lifecycleStatus = debriefContent ? "COMPLETE" : (briefContent ? "IN_PROGRESS" : (statusSelect?.value || "PENDING"));
+        const missionType = (typeSelect?.value || "Probe/Index").trim();
+        const missionTask = String(taskSelect?.value || "Unassigned").trim() || "Unassigned";
+        ensureMissionTaskTemplate(missionTask);
 
         try {
           const res = await fetch("/api/mission", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              name: nameInput.value.trim(),
-              operation: opInput.value.trim(),
-              status: lifecycleStatus
-            })
+              body: JSON.stringify({
+                name: nameInput.value.trim(),
+                operation: opInput.value.trim(),
+                status: lifecycleStatus,
+                mission_type: missionType,
+                mission_task: missionTask
+              })
           });
           if (res.ok) {
             const data = await res.json().catch(() => ({}));
@@ -17345,13 +17890,21 @@
         if (selectedOperation) {
           filtered = filtered.filter(m => m.operation === selectedOperation || m.operation.startsWith(`${selectedOperation}/`));
         }
+        if (missionTypeFilter) {
+          filtered = filtered.filter((m) => String(m?.mission_type || "").toLowerCase() === String(missionTypeFilter).toLowerCase());
+        }
+        if (missionTaskFilter) {
+          filtered = filtered.filter((m) => String(m?.mission_task || "").toLowerCase() === String(missionTaskFilter).toLowerCase());
+        }
         if (missionSearchQuery) {
           filtered = filtered.filter(m => 
             m.name.toLowerCase().includes(missionSearchQuery) ||
             (m.mission_id || "").toLowerCase().includes(missionSearchQuery) ||
             m.operation.toLowerCase().includes(missionSearchQuery) ||
             (m.created_at || m.date || "").toLowerCase().includes(missionSearchQuery) ||
-            (m.status || "").toLowerCase().includes(missionSearchQuery)
+            (m.status || "").toLowerCase().includes(missionSearchQuery) ||
+            (m.mission_type || "").toLowerCase().includes(missionSearchQuery) ||
+            (m.mission_task || "").toLowerCase().includes(missionSearchQuery)
           );
         }
         filtered = sortCollectionForView(
@@ -17364,6 +17917,17 @@
           })
         );
 
+        const missionTypeClass = (value) => {
+          const raw = String(value || "").toLowerCase();
+          if (raw.includes("special")) return "mission-type-special";
+          return "mission-type-probe";
+        };
+        const missionTypeLabel = (value) => {
+          const raw = String(value || "").toLowerCase();
+          return raw.includes("special") ? "SPECIALOPS" : "PROBE/INDEX";
+        };
+
+        const taskLabel = (value) => String(value || "Unassigned");
         tbody.innerHTML = filtered.map(m => `
           <tr ondblclick="openMissionEditor('${escapeJsString(m.path)}')" title="Double-click to open mission brief">
             <td data-label="Created">${escapeHtmlAttr(normalizeMissionCreatedAt(m.created_at || m.date || ""))}</td>
@@ -17371,6 +17935,12 @@
             <td data-label="Mission">
               <span class="mission-entry-meta">${escapeHtmlAttr(m.mission_id || "MIS-000")}</span>
               <span class="mission-link status-${String(m.status || "PENDING").toLowerCase().replace(/_/g, "-")}" onclick="openMissionEditor('${escapeJsString(m.path)}')" title="Open full mission brief">${m.name}</span>
+            </td>
+            <td data-label="Type">
+              <span class="mission-type-pill ${missionTypeClass(m.mission_type)}">${missionTypeLabel(m.mission_type)}</span>
+            </td>
+            <td data-label="Task">
+              <span class="mission-task-pill">${escapeHtmlAttr(taskLabel(m.mission_task))}</span>
             </td>
             <td data-label="Status">
               <select class="${missionStatusClass(m.status)}" onchange="onMissionStatusChange(this, '${escapeJsString(m.path)}')">
@@ -17387,7 +17957,7 @@
               </div>
             </td>
           </tr>
-        `).join("") || "<tr><td colspan='5'>No missions found.</td></tr>";
+        `).join("") || "<tr><td colspan='7'>No missions found.</td></tr>";
       }
 
       function renderOperations() {
@@ -18140,7 +18710,7 @@
         const cur = plan[quarterNum][slotNum];
         if (!cur || typeof cur !== "object") {
           const missionPath = typeof cur === "string" ? cur : "";
-          plan[quarterNum][slotNum] = { operation: "", missionPath, recoveryTask: "" };
+          plan[quarterNum][slotNum] = { operation: "", missionPath, recoveryTask: "", missionTask: "" };
         }
         return plan[quarterNum][slotNum];
       }
@@ -18181,6 +18751,16 @@
         renderOperationFocus();
       }
 
+      function setMissionPlanTask(opDay, quarterNum, slotNum, taskValue) {
+        const before = loadMissionPlan(opDay);
+        const plan = deepCloneJson(before);
+        const slot = ensureMissionPlanSlot(plan, quarterNum, slotNum);
+        slot.missionTask = taskValue || "";
+        if (!plansEqual(before, plan)) pushMissionPlanUndo(opDay, before);
+        saveMissionPlan(opDay, plan);
+        renderOperationFocus();
+      }
+
       function setRecoveryTask(opDay, quarterNum, slotNum, task) {
         const before = loadMissionPlan(opDay);
         const plan = deepCloneJson(before);
@@ -18188,6 +18768,7 @@
         slot.recoveryTask = task || "";
         slot.operation = "";
         slot.missionPath = "";
+        slot.missionTask = "";
         if (!plansEqual(before, plan)) pushMissionPlanUndo(opDay, before);
         saveMissionPlan(opDay, plan);
         renderOperationFocus();
@@ -19001,6 +19582,8 @@
           ...allOps,
           ...allMissions.map((m) => m.operation).filter(Boolean),
         ])].sort((a, b) => a.localeCompare(b));
+        const taskOptions = normalizeMissionTaskList(missionTaskTemplates);
+        const taskRows = [{ value: "", label: "UNASSIGNED" }, ...taskOptions.map((t) => ({ value: t, label: t }))];
         const plan = loadMissionPlan(opDay);
         const dayLine = `OPERATION DAY: ${opDay}`;
         const quarterLine = `Q${quarter.quarterIndex}/${DASHBOARD_QUARTER_COUNT} H${quarter.hourInQuarter}/3: [${formatUkHm(now)}]`;
@@ -19063,6 +19646,7 @@
             const selectedMissionPath = typeof rawSlot === "string" ? rawSlot : (rawSlot.missionPath || "");
             let selectedOperation = typeof rawSlot === "string" ? "" : (rawSlot.operation || "");
             const selectedRecoveryTask = typeof rawSlot === "string" ? "" : (rawSlot.recoveryTask || "");
+            const selectedMissionTask = typeof rawSlot === "string" ? "" : (rawSlot.missionTask || "");
             if (!selectedOperation && selectedMissionPath) {
               const selectedMission = allMissions.find((m) => m.path === selectedMissionPath);
               if (selectedMission) selectedOperation = selectedMission.operation || "";
@@ -19070,6 +19654,12 @@
             const filteredMissions = allMissions
               .filter((m) => !selectedOperation || m.operation === selectedOperation)
               .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+            const taskDropdownHtml = (def.kind === "mission" && sNum <= 3) ? buildMatrixDropdown({
+              placeholder: "-- Select Task --",
+              selectedValue: selectedMissionTask,
+              rows: taskRows,
+              onSelectJs: (value) => `setMissionPlanTask('${escapeJsString(opDay)}', ${qNum}, ${sNum}, '${escapeJsString(value)}')`,
+            }) : "";
             const operationDropdownHtml = buildMatrixDropdown({
               placeholder: "-- Select Operation --",
               selectedValue: selectedOperation,
@@ -19095,6 +19685,7 @@
               onSelectJs: (value) => `setRecoveryTask('${escapeJsString(opDay)}', ${qNum}, ${sNum}, '${escapeJsString(value)}')`,
             });
             const inner = def.kind === "mission" ? `
+              ${taskDropdownHtml ? `<div class="slot-label">Task</div>${taskDropdownHtml}` : ""}
               <div class="slot-label">Operation</div>
               ${operationDropdownHtml}
               <div class="slot-label">Mission</div>
@@ -19198,12 +19789,14 @@
       }
 
       function isNativeLanDevSession() {
+        if (OFFLINE_ONLY) return false;
         const protocol = String(window.location?.protocol || "");
         const port = String(window.location?.port || "");
         return isNativeRuntime() && (protocol === "http:" || protocol === "https:") && port === "8099";
       }
 
       function shouldPreferOfflineSnapshots() {
+        if (OFFLINE_ONLY && !isDesktopLocalServerSession()) return true;
         if (isNativeLanDevSession()) return false;
         const protocol = String(window.location?.protocol || "");
         return Boolean(window.Capacitor) || protocol === "capacitor:" || protocol === "file:";
@@ -19337,6 +19930,7 @@
             if (!missionsData.length) {
               clearMissionWorkspaceCaches();
             }
+            syncMissionTaskTemplatesFromMissions(missionsData);
           }
 
           if (Array.isArray(blackbookData)) {
@@ -19444,6 +20038,8 @@
         loadViewSortModes();
         loadHviProfileExtras();
         loadHviStatTemplates();
+        loadMissionTaskTemplates();
+        refreshMissionTaskSelectors();
         loadChecklistItems();
         loadRoutineData();
         loadDatawells();
@@ -19464,6 +20060,7 @@
         refreshHviTimeMeta();
         setInterval(refreshHviTimeMeta, 60000);
         initNavHoverDescriptions();
+        initSwissknifeSimpleCanvas();
         refreshAppBuildLabels();
         const missionOverlay = document.getElementById("mission-editor-overlay");
         if (missionOverlay) {

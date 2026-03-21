@@ -3,6 +3,8 @@
 Mission ID: MIS-006
 Created: 2026-03-11 18:04
 Mission Name: Mission Brief: Operation Bellator - US/UK Boxing Collaboration
+Type: Probe/Index
+Task: Unassigned
 Status: PENDING
 
 ## (Community Growth, Network & Outreach via Geographic Boxing Collaboration)

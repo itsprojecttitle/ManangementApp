@@ -3,4 +3,6 @@
 Mission ID: MIS-008
 Created: 2026-03-11 18:04
 Mission Name: TEST_CREATE_MISSION
+Type: Probe/Index
+Task: Unassigned
 Status: PENDING

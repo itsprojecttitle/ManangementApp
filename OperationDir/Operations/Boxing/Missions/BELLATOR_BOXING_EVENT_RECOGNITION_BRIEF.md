@@ -3,6 +3,8 @@
 Mission ID: MIS-005
 Created: 2026-03-11 18:04
 Mission Name: Mission Brief: Operation Bellator - Boxing Event Recognition
+Type: Probe/Index
+Task: Unassigned
 Status: PENDING
 
 ## (Understanding Audience Appreciation for UK Boxing Event Lineups)

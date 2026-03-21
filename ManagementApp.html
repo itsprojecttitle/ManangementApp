@@ -20,8 +20,8 @@
         }
       })();
     </script>
-    <link rel="stylesheet" href="/assets/managementapp.css?v=20260316-swissknife-4k-2" />
-    <link rel="stylesheet" href="/assets/managementapp-draft.css?v=20260316-swissknife-4k-2" />
+    <link rel="stylesheet" href="/assets/managementapp.css?v=20260316-task-3" />
+    <link rel="stylesheet" href="/assets/managementapp-draft.css?v=20260316-task-3" />
 
   </head>
   <body>
@@ -92,6 +92,7 @@
           <button id="notify-history-toggle-btn" class="confirm-btn" type="button" onclick="toggleNotificationHistoryPanel()">NOTIFICATION HISTORY</button>
           <button class="confirm-btn" type="button" onclick="applyOperationDayFocus()">APPLY ASSIGNMENTS</button>
           <button class="confirm-btn" type="button" onclick="resetDashboardSession()">RESET DASHBOARD SESSION</button>
+          <button class="confirm-btn" type="button" onclick="editMissionTaskTemplates()">EDIT TASKS</button>
         </div>
         <div id="notify-history-box" class="notify-history-box sticky-top hidden">
           <div class="notify-history-head">
@@ -216,7 +217,23 @@
           <input class="search-input" id="mission-search-input" type="text" placeholder="Search missions or operation..." oninput="setMissionSearch()" onkeydown="if(event.key==='Enter') setMissionSearch()" />
           <button class="submit-btn" type="button" onclick="setMissionSearch()">SEARCH</button>
         </div>
-
+        <div class="search-toolbar">
+          <select id="mission-type-filter" class="search-input" onchange="setMissionTypeFilter()">
+            <option value="">ALL TYPES</option>
+            <option value="Probe/Index">PROBE & INDEX (EXECUTION)</option>
+            <option value="SpecialOps">SPECIALOPS (PLANNING/TREATMENTS)</option>
+          </select>
+          <button class="submit-btn" type="button" onclick="clearMissionTypeFilter()">CLEAR TYPE</button>
+        </div>
+        <div class="search-toolbar">
+          <select class="search-input mission-task-filter" onchange="setMissionTaskFilter(this)">
+            <option value="">ALL TASKS</option>
+          </select>
+          <button class="submit-btn" type="button" onclick="clearMissionTaskFilter()">CLEAR TASK</button>
+          <input class="search-input mission-task-new" type="text" placeholder="Add new task..." />
+          <button class="submit-btn" type="button" onclick="addMissionTaskTemplate(this)">ADD TASK</button>
+          <button class="submit-btn" type="button" onclick="editMissionTaskTemplates()">EDIT TASKS</button>
+        </div>
         <div class="add-launch-row"><button class="add-plus-btn" type="button" onclick="openAddPopup('mission-submission-area')">+</button></div>
         <div id="mission-submission-area" class="submission-area add-popup-panel">
           <button class="add-popup-close" type="button" onclick="closeAllAddPopups()">X</button>
@@ -239,6 +256,19 @@
             </select>
           </div>
           <div class="form-group">
+            <label for="new-mission-type">Mission Type:</label>
+            <select id="new-mission-type" class="matrix-select">
+              <option value="Probe/Index">PROBE & INDEX (EXECUTION)</option>
+              <option value="SpecialOps">SPECIALOPS (PLANNING/TREATMENTS)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="new-mission-task">Task:</label>
+            <select id="new-mission-task" class="matrix-select">
+              <option value="Unassigned">Unassigned</option>
+            </select>
+          </div>
+          <div class="form-group">
             <label for="new-mission-brief">Mission Brief (Studio Inline):</label>
             <textarea id="new-mission-brief" rows="8" placeholder="Paste full mission brief content here..."></textarea>
           </div>
@@ -256,12 +286,14 @@
               <th>CREATED</th>
               <th>OPERATION</th>
               <th>MISSION</th>
+              <th>TYPE</th>
+              <th>TASK</th>
               <th>STATUS</th>
               <th style="width: 120px;">ACTIONS</th>
             </tr>
           </thead>
           <tbody>
-            <tr><td colspan="5">Loading missions...</td></tr>
+            <tr><td colspan="7">Loading missions...</td></tr>
           </tbody>
         </table>
       </div>
@@ -269,7 +301,16 @@
       <!-- OPERATIONS VIEW -->
       <div id="view-operations" class="view-panel">
         <h2>// ACTIVE THEATERS</h2>
-        
+        <div class="search-toolbar">
+          <select class="search-input mission-task-filter" onchange="setMissionTaskFilter(this)">
+            <option value="">ALL TASKS</option>
+          </select>
+          <button class="submit-btn" type="button" onclick="clearMissionTaskFilter()">CLEAR TASK</button>
+          <input class="search-input mission-task-new" type="text" placeholder="Add new task..." />
+          <button class="submit-btn" type="button" onclick="addMissionTaskTemplate(this)">ADD TASK</button>
+          <button class="submit-btn" type="button" onclick="editMissionTaskTemplates()">EDIT TASKS</button>
+        </div>
+
         <div class="add-launch-row"><button class="add-plus-btn" type="button" onclick="openAddPopup('operation-submission-area')">+</button></div>
         <div id="operation-submission-area" class="submission-area add-popup-panel">
           <button class="add-popup-close" type="button" onclick="closeAllAddPopups()">X</button>
@@ -292,6 +333,7 @@
         <div class="search-toolbar">
           <input class="search-input" id="blackbook-search-input-ops" type="text" placeholder="Search black book..." oninput="setBlackbookSearch(this)" onkeydown="if(event.key==='Enter') setBlackbookSearch(this)" />
           <button class="submit-btn" type="button" onclick="setBlackbookSearch(document.getElementById('blackbook-search-input-ops'))">SEARCH</button>
+          <button class="submit-btn" type="button" onclick="syncIntelFromBriefs()">SYNC FROM BRIEFS</button>
         </div>
         <div class="ops-blackbook-reference">
           <table class="blackbook-table">
@@ -318,6 +360,7 @@
         <div class="search-toolbar">
           <input class="search-input" id="blackbook-search-input" type="text" placeholder="Search black book..." oninput="setBlackbookSearch(this)" onkeydown="if(event.key==='Enter') setBlackbookSearch(this)" />
           <button class="submit-btn" type="button" onclick="setBlackbookSearch(document.getElementById('blackbook-search-input'))">SEARCH</button>
+          <button class="submit-btn" type="button" onclick="syncIntelFromBriefs()">SYNC FROM BRIEFS</button>
         </div>
         <table class="blackbook-table">
           <thead>
@@ -369,6 +412,7 @@
             <button class="swissknife-nav-btn" type="button" onclick="switchSwissknifeView('converter', this)">[02] CONVERTER</button>
             <button class="swissknife-nav-btn" type="button" onclick="switchSwissknifeView('logs', this)">[03] LOGS</button>
             <button class="swissknife-nav-btn" type="button" onclick="switchSwissknifeView('settings', this)">[04] SETTINGS</button>
+            <button class="swissknife-nav-btn" type="button" onclick="switchSwissknifeView('simplecanvas', this)">[06] SIMPLECANVAS</button>
           </div>
           <div class="swissknife-main">
             <div id="swissknife-view-downloads" class="swissknife-view active">
@@ -441,7 +485,7 @@
                 </div>
                 <div id="swissknife-batch-status" class="swissknife-status-line">Queue idle.</div>
               </div>
-              <div class="swissknife-block">
+              <div class="swissknife-block swissknife-bordered">
                 <h3>// LATEST ACQUISITIONS</h3>
                 <div id="swissknife-recent-downloads" class="swissknife-recent-list">Waiting for input...</div>
               </div>
@@ -528,6 +572,45 @@
                 <p>Downloads run locally using the Swissknife backend. Set <code>IG_USER</code>/<code>IG_PASS</code> if you enable login.</p>
                 <p>Batch mode will queue each link through the active download pipeline.</p>
               </div>
+            </div>
+            <div id="swissknife-view-simplecanvas" class="swissknife-view">
+              <h2>// SIMPLECANVAS EDITOR</h2>
+              <div class="swissknife-block">
+                <div class="simplecanvas-toolbar">
+                  <div class="simplecanvas-tool-group">
+                    <label for="simplecanvas-size">BRUSH</label>
+                    <input id="simplecanvas-size" type="range" min="1" max="80" value="8" />
+                  </div>
+                  <div class="simplecanvas-tool-group">
+                    <label for="simplecanvas-opacity">OPACITY</label>
+                    <input id="simplecanvas-opacity" type="range" min="0.1" max="1" step="0.05" value="0.9" />
+                  </div>
+                  <div class="simplecanvas-tool-group">
+                    <label for="simplecanvas-color">COLOR</label>
+                    <input id="simplecanvas-color" type="color" value="#ffffff" />
+                  </div>
+                  <div class="simplecanvas-tool-group">
+                    <label for="simplecanvas-bg">BG</label>
+                    <select id="simplecanvas-bg" class="search-input">
+                      <option value="transparent">TRANSPARENT</option>
+                      <option value="black">BLACK</option>
+                      <option value="white">WHITE</option>
+                    </select>
+                  </div>
+                  <div class="simplecanvas-actions">
+                    <button id="simplecanvas-mode-draw" class="confirm-btn simplecanvas-tool-btn" type="button">DRAW</button>
+                    <button id="simplecanvas-mode-erase" class="confirm-btn simplecanvas-tool-btn" type="button">ERASE</button>
+                    <button id="simplecanvas-apply-bg" class="confirm-btn" type="button">APPLY BG</button>
+                    <button id="simplecanvas-clear" class="confirm-btn" type="button">CLEAR</button>
+                    <button id="simplecanvas-fit" class="confirm-btn" type="button">FIT</button>
+                    <button id="simplecanvas-download" class="submit-btn" type="button">DOWNLOAD PNG</button>
+                  </div>
+                </div>
+              </div>
+              <div class="simplecanvas-stage">
+                <canvas id="simplecanvas-canvas"></canvas>
+              </div>
+              <div id="simplecanvas-status" class="simplecanvas-status">READY.</div>
             </div>
             <div id="swissknife-view-logs" class="swissknife-view">
               <h2>// SWISSKNIFE LOGS</h2>
@@ -797,6 +880,7 @@ for i in range(3):
         <div class="search-toolbar">
           <input class="search-input" id="datawells-search-input" type="text" placeholder="Search Datawells..." oninput="setDatawellSearch()" onkeydown="if(event.key==='Enter') setDatawellSearch()" />
           <button class="submit-btn" type="button" onclick="setDatawellSearch()">SEARCH</button>
+          <button class="submit-btn" type="button" onclick="syncIntelFromBriefs()">SYNC FROM BRIEFS</button>
         </div>
         <div class="hvi-filter-bar">
           <div class="hvi-filter-grid">
@@ -1110,6 +1194,10 @@ for i in range(3):
             <span class="template-launch-title">POSTING TEMPLATE</span>
             <span class="template-launch-desc">Pinned pathway note and timeline stages.</span>
           </button>
+          <button class="template-launch-card" type="button" data-template-nav="pns" onclick="focusMissionProbeSection('pns')">
+            <span class="template-launch-title">PNS</span>
+            <span class="template-launch-desc">Video styles and content types for business social media.</span>
+          </button>
         </div>
         <p id="mission-probe-intro">Unified template workspace. Use Full Mission + Probe to copy the full AI-ready pack in the correct advised order, then work inside the individual templates when needed.</p>
         <div class="templates-summary-grid">
@@ -1230,6 +1318,20 @@ for i in range(3):
                 </div>
               </div>
               <div id="posting-template-list" class="posting-template-list"></div>
+            </div>
+          </section>
+          <section id="mission-probe-pns-card" class="mission-probe-card template-detail-card" data-template-section="pns">
+            <div class="mission-probe-card-head">
+              <button class="back-btn template-back-top-btn" type="button" onclick="scrollTemplatesTop()">< BACK TO TOP</button>
+              <strong>// PNS</strong>
+              <span class="routine-ex-note">Video styles and content type reference for business social media.</span>
+            </div>
+            <div class="mission-probe-actions templates-detail-actions">
+              <button class="submit-btn" type="button" onclick="copyPnsTemplate()">COPY</button>
+              <button class="confirm-btn" type="button" onclick="openDocEditor('OperationDir/Templates/PNS.md','// PNS TEMPLATE EDITOR','mission-probe-pns-content')">EDIT TEMPLATE</button>
+            </div>
+            <div class="manual-view mission-probe-card-body">
+              <div id="mission-probe-pns-content">Loading PNS...</div>
             </div>
           </section>
         </div>
@@ -1559,7 +1661,7 @@ for i in range(3):
         <div id="lock-meta" class="lock-meta"></div>
       </div>
     </div>
-    <script src="/assets/managementapp.js?v=20260316-swissknife-4k-2"></script>
+    <script src="/assets/managementapp.js?v=20260316-task-3"></script>
     <script src="/assets/managementapp-draft.js?v=20260316-swissknife-4k-2"></script>
 
   </body>

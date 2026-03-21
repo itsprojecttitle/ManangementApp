@@ -5,6 +5,12 @@
 - Success criteria:
 - Deadline:
 
+## Mission Type
+- Type: Probe/Index (Execution) or SpecialOps (Planning/Treatments)
+
+## Task
+- Task: SpecialOps planning/treatments, Poster + Indexing tracking, Style + Pain-point 5 posts, Sales & PR DM, Probing/Indexing/Engagement, Debrief & Replanning
+
 ## Context
 - Operation:
 - Background:

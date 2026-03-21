@@ -1,0 +1,3 @@
+[submodule "SimpleCanvasIOS/SimpleCanvasIOS"]
+	path = SimpleCanvasIOS/SimpleCanvasIOS
+	url = git@github.com:itsprojecttitle/Onmi.git

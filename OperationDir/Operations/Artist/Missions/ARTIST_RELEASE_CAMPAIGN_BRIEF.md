@@ -3,6 +3,8 @@
 Mission ID: MIS-004
 Created: 2026-03-11 18:04
 Mission Name: Mission Brief: Operation Comphy - Artist Release Engagement
+Type: Probe/Index
+Task: Unassigned
 Status: PENDING
 
 ## (Showcasing Releases & Influencing Audience Reaction)

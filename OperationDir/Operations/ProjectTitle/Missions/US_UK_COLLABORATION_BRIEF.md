@@ -3,6 +3,8 @@
 Mission ID: MIS-014
 Created: 2026-03-11 18:04
 Mission Name: Mission Brief: Operation ProjectTitle Mission sales - US/UK Collaboration
+Type: Probe/Index
+Task: Unassigned
 Status: PENDING
 
 ## (Community Growth, Net-worth & Sales via Geographic Collaboration)

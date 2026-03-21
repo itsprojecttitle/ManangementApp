@@ -3,4 +3,6 @@
 Mission ID: MIS-016
 Created: 2026-03-11 18:04
 Mission Name: OPERATION PROJECTTITLE UK TOP 40 BRIEF
+Type: Probe/Index
+Task: Unassigned
 Status: PENDING

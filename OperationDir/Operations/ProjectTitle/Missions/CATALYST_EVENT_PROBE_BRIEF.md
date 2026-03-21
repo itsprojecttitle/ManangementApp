@@ -3,6 +3,8 @@
 Mission ID: MIS-010
 Created: 2026-03-11 18:04
 Mission Name: Mission Brief: Operation Fandom Catalyst
+Type: Probe/Index
+Task: Unassigned
 Status: PENDING
 
 ## Purpose:

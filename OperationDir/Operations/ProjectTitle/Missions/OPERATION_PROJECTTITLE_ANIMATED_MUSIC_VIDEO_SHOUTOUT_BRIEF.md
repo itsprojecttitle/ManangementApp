@@ -3,6 +3,8 @@
 Mission ID: MIS-015
 Created: 2026-03-11 18:04
 Mission Name: OPERATION PROJECTTITLE ANIMATED MUSIC VIDEO SHOUTOUT BRIEF
+Type: Probe/Index
+Task: Unassigned
 Status: PENDING
 
 Reference: https://vm.tiktok.com/ZNR564fw4/

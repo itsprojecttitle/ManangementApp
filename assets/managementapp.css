@@ -298,15 +298,59 @@
       }
       #mission-table th:nth-child(4),
       #mission-table td:nth-child(4) {
-        width: 150px;
+        width: 140px;
       }
       #mission-table th:nth-child(5),
       #mission-table td:nth-child(5) {
+        width: 200px;
+      }
+      #mission-table th:nth-child(6),
+      #mission-table td:nth-child(6) {
         width: 118px;
+      }
+      #mission-table th:nth-child(7),
+      #mission-table td:nth-child(7) {
+        width: 120px;
       }
       #mission-table td:nth-child(2),
       #mission-table td:nth-child(3) {
         max-width: 0;
+      }
+      .mission-type-pill {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 999px;
+        font-size: 0.72rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        border: 1px solid transparent;
+        text-transform: uppercase;
+      }
+      .mission-type-probe {
+        color: #7cc4ff;
+        border-color: rgba(124, 196, 255, 0.6);
+        background: rgba(20, 60, 120, 0.25);
+        box-shadow: 0 0 12px rgba(80, 160, 255, 0.25);
+      }
+      .mission-type-special {
+        color: #ff6b6b;
+        border-color: rgba(255, 107, 107, 0.6);
+        background: rgba(120, 20, 20, 0.25);
+        box-shadow: 0 0 12px rgba(255, 80, 80, 0.22);
+      }
+      .mission-task-pill {
+        display: inline-flex;
+        align-items: center;
+        padding: 2px 8px;
+        border-radius: 999px;
+        font-size: 0.68rem;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: #b9ff8f;
+        border: 1px solid rgba(128, 255, 140, 0.35);
+        background: rgba(10, 40, 10, 0.35);
+        box-shadow: 0 0 10px rgba(120, 255, 160, 0.18);
       }
       .blackbook-table input,
       .blackbook-table select,
@@ -4055,10 +4099,13 @@
           letter-spacing: 0.08em;
           text-transform: uppercase;
         }
-        #mission-table td:nth-child(5) {
+        #mission-table td:nth-child(6) {
           grid-column: 1 / -1;
           padding-top: 8px;
           border-top: 1px solid rgba(0, 255, 65, 0.18);
+        }
+        #mission-table td:nth-child(7) {
+          grid-column: 1 / -1;
         }
         .mission-actions-inline {
           justify-content: flex-start;
@@ -4552,6 +4599,10 @@
         padding: 16px;
         margin-bottom: 16px;
       }
+      .swissknife-bordered {
+        border: 2px solid var(--term-green);
+        box-shadow: 0 0 14px rgba(0, 255, 65, 0.35);
+      }
       .swissknife-grid {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -4583,6 +4634,58 @@
         font-family: inherit;
         box-sizing: border-box;
         min-height: 110px;
+      }
+      .simplecanvas-toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        align-items: flex-end;
+      }
+      .simplecanvas-tool-group {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        min-width: 120px;
+      }
+      .simplecanvas-tool-group label {
+        font-size: 0.75rem;
+        color: var(--term-green);
+        opacity: 0.85;
+      }
+      .simplecanvas-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+        margin-left: auto;
+      }
+      .simplecanvas-tool-btn.active {
+        background: var(--term-green);
+        color: #000;
+        box-shadow: 0 0 10px var(--term-green);
+      }
+      .simplecanvas-stage {
+        border: 1px solid var(--term-dim);
+        background: repeating-linear-gradient(
+          45deg,
+          rgba(0, 255, 65, 0.04),
+          rgba(0, 255, 65, 0.04) 12px,
+          rgba(0, 255, 65, 0.02) 12px,
+          rgba(0, 255, 65, 0.02) 24px
+        );
+        min-height: 420px;
+        position: relative;
+      }
+      #simplecanvas-canvas {
+        width: 100%;
+        height: 100%;
+        display: block;
+        touch-action: none;
+      }
+      .simplecanvas-status {
+        margin-top: 10px;
+        font-size: 0.78rem;
+        color: var(--term-dim);
       }
       .swissknife-inline {
         margin: 10px 0 12px 0;
