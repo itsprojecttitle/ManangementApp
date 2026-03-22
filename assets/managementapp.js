@@ -7304,6 +7304,27 @@
         }
       }
 
+      async function rebuildBlackbook() {
+        if (!confirm("Rebuild blackbook from BLACK_BOOK.md? This will overwrite blackbook_entries.json.")) {
+          return;
+        }
+        try {
+          const res = await fetch(serverUrlForPath("/api/blackbook/rebuild"), {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: "{}",
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok || !data.ok) {
+            throw new Error(data.error || "Rebuild failed");
+          }
+          await refreshBlackbook();
+          themedNotice(`Blackbook rebuilt (${data.count || 0}).`);
+        } catch (e) {
+          themedNotice("Blackbook rebuild failed: " + e.message);
+        }
+      }
+
       async function copyTextWithFallback(text, fallbackTitle = "MANUAL COPY") {
         const value = String(text || "");
         if (!value.trim()) throw new Error("Nothing to copy.");

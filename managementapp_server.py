@@ -1736,6 +1736,103 @@ def load_blackbook():
     return []
 
 
+def rebuild_blackbook_from_md():
+    if not BLACKBOOK_MD_FILE.exists():
+        return {"ok": False, "error": "BLACK_BOOK.md not found"}
+    lines = BLACKBOOK_MD_FILE.read_text(encoding="utf-8", errors="ignore").splitlines()
+    header = None
+    in_table = False
+    use_table = False
+    rows = []
+
+    def _split_dt(value: str):
+        raw = (value or "").strip()
+        if not raw:
+            return "", ""
+        for fmt in ("%d/%m/%y %H:%M", "%d/%m/%Y %H:%M", "%Y-%m-%d %H:%M", "%Y-%m-%d %H:%M:%S"):
+            try:
+                parsed = datetime.strptime(raw, fmt)
+                return parsed.strftime("%Y-%m-%d"), parsed.strftime("%H:%M")
+            except ValueError:
+                continue
+        parts = raw.split()
+        if len(parts) >= 2:
+            return parts[0], " ".join(parts[1:])
+        return raw, ""
+
+    def _extract_operation_mission(text: str):
+        if not text:
+            return "", ""
+        m = re.search(r"OperationDir/Operations/([^/]+)/Missions/([^/]+)\\.md", text)
+        if m:
+            operation = m.group(1)
+            mission = m.group(2).replace("_", " ").replace("-", " ")
+            return operation, mission
+        m = re.search(r"Mission:\\s*([^\\s|]+)", text)
+        if m:
+            raw = m.group(1)
+            return _extract_operation_mission(raw)
+        return "", ""
+
+    for line in lines:
+        if line.strip().startswith("|"):
+            cells = [c.strip() for c in line.strip().strip("|").split("|")]
+            if not in_table:
+                header = cells
+                in_table = True
+                use_table = "Probe_ID" in header
+                continue
+            if all(set(c) <= {"-", ":"} for c in cells if c):
+                continue
+            if header and len(cells) == len(header) and use_table:
+                row = dict(zip(header, cells))
+                date_raw = row.get("Date/Time", "")
+                date, time = _split_dt(date_raw)
+                op, mission = _extract_operation_mission(row.get("HVI_Links", ""))
+                notes_parts = []
+                for label, key in (
+                    ("Variable", "Variable_UnderTest"),
+                    ("Qualitative", "Result_Qualitative"),
+                    ("HVI", "HVI_Links"),
+                    ("Leads", "Leads_Generated"),
+                    ("Model", "Model_Update"),
+                ):
+                    val = row.get(key, "")
+                    if val:
+                        notes_parts.append(f"{label}: {val}")
+                status = "PENDING"
+                if row.get("Result_Quantitative") or row.get("Result_Qualitative") or row.get("Model_Update"):
+                    status = "COMPLETED"
+                rows.append({
+                    "Probe_ID": row.get("Probe_ID", ""),
+                    "Date": date,
+                    "Time": time,
+                    "Operation": op,
+                    "Mission": mission,
+                    "Status": status,
+                    "Description": row.get("Content_Summary", ""),
+                    "Hypothesis": row.get("Hypothesis", ""),
+                    "Platform": row.get("Platform", ""),
+                    "Result_Quantitative": row.get("Result_Quantitative", ""),
+                    "Notes": " | ".join(notes_parts),
+                })
+            continue
+        if in_table:
+            if use_table and rows:
+                break
+            in_table = False
+            header = None
+            use_table = False
+
+    if not rows:
+        return {"ok": False, "error": "No Probe_ID table found in BLACK_BOOK.md"}
+    try:
+        save_blackbook(rows)
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+    return {"ok": True, "count": len(rows)}
+
+
 def save_blackbook(rows):
     BLACKBOOK_JSON_FILE.write_text(json.dumps(rows, indent=2), encoding="utf-8")
 
@@ -3709,6 +3806,11 @@ class Handler(SimpleHTTPRequestHandler):
                 "Notes": body.get("Notes", ""),
             })
             return _json_response(self, {"ok": True, "Probe_ID": probe_id}, 200)
+
+        if path == "/api/blackbook/rebuild":
+            result = rebuild_blackbook_from_md()
+            status = 200 if result.get("ok") else 400
+            return _json_response(self, result, status)
 
         if path == "/api/hvi":
             handle = body.get("handle", "")
