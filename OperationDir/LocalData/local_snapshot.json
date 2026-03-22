@@ -1,5 +1,5 @@
 {
-  "saved_at": "2026-03-22T10:46:17.155011+00:00",
+  "saved_at": "2026-03-22T11:27:49.565822+00:00",
   "local_snapshot": {
     "counts": {
       "datawells": 0,
@@ -19759,6 +19759,24 @@
           "kind": "upcoming",
           "createdAt": "2026-03-22T10:24:54.876Z",
           "dismissedAt": ""
+        },
+        {
+          "id": "h_1774178662107_44901",
+          "key": "upcoming:block:2026-03-22:Q3:S4:2026-03-22T11:30:00.000Z",
+          "title": "Upcoming Task",
+          "message": "Q3 Block 4 in 5m: Operation - Mission Task",
+          "kind": "upcoming",
+          "createdAt": "2026-03-22T11:24:22.107Z",
+          "dismissedAt": ""
+        },
+        {
+          "id": "h_1774178722108_35807",
+          "key": "break:2026-03-22:Q3:B3",
+          "title": "BREAK START",
+          "message": "Q3/8 break 3/6 is live now (after block 3).",
+          "kind": "break",
+          "createdAt": "2026-03-22T11:25:22.108Z",
+          "dismissedAt": ""
         }
       ],
       "fired_notifications": [
@@ -19770,7 +19788,9 @@
         "hour:2026-03-21:Q5:H3",
         "checklist:2026-03-21:164270",
         "checklist:2026-03-22:164275",
-        "upcoming:block:2026-03-22:Q3:S2:2026-03-22T10:30:00.000Z"
+        "upcoming:block:2026-03-22:Q3:S2:2026-03-22T10:30:00.000Z",
+        "upcoming:block:2026-03-22:Q3:S4:2026-03-22T11:30:00.000Z",
+        "break:2026-03-22:Q3:B3"
       ],
       "view_sorts": null,
       "operation_colors": null,
@@ -19788,7 +19808,7 @@
     },
     "local_storage_index": {
       "key_count": 14,
-      "bytes": 595756,
+      "bytes": 596722,
       "keys": [
         "omniAppBuild",
         "checklistItems:v1",
