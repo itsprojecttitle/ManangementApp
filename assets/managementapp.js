@@ -7596,6 +7596,7 @@
           restSeconds: normalizeGymMetric(last.restSeconds),
           weight: String(last.weight || "").trim(),
           result: String(last.result || "").trim(),
+          metrics: normalizeGymMetricList(last.metrics || []),
           notes: String(last.notes || "").trim(),
           at: String(last.at || last.updatedAt || "").trim(),
         };
@@ -7603,6 +7604,7 @@
           || normalized.notes
           || normalized.weight
           || normalized.result
+          || (Array.isArray(normalized.metrics) && normalized.metrics.length)
           || normalized.sets
           || normalized.reps
           || normalized.seconds
@@ -7657,6 +7659,32 @@
           weightLabel: normalizeGymMetricLabel(item?.weightLabel, "Weight"),
           resultLabel: normalizeGymMetricLabel(item?.resultLabel, "Result"),
         };
+      }
+
+      function normalizeGymMetricEntry(entry = {}) {
+        return {
+          label: normalizeGymMetricLabel(entry?.label, ""),
+          value: String(entry?.value ?? "").trim(),
+          unit: normalizeGymMetricLabel(entry?.unit, ""),
+        };
+      }
+
+      function normalizeGymMetricList(list) {
+        if (!Array.isArray(list)) return [];
+        return list
+          .map((row) => normalizeGymMetricEntry(row))
+          .filter((row) => row.label || row.value || row.unit);
+      }
+
+      function formatGymMetricEntry(entry = {}) {
+        const label = normalizeGymMetricLabel(entry?.label, "");
+        const value = String(entry?.value ?? "").trim();
+        const unit = normalizeGymMetricLabel(entry?.unit, "");
+        if (!label && !value && !unit) return "";
+        if (label && value && unit) return `${label} ${value} ${unit}`.trim();
+        if (label && value) return `${label} ${value}`.trim();
+        if (value && unit) return `${value} ${unit}`.trim();
+        return label || value || unit;
       }
 
       function gymSessionCardLabelsFor(item = {}) {
@@ -7915,6 +7943,7 @@
           targetSeconds: normalizeGymMetric(exercise?.targetSeconds ?? lastSession?.seconds ?? 0),
           restSeconds: normalizeGymMetric(exercise?.restSeconds ?? lastSession?.restSeconds ?? 0),
           targetWeight: String(exercise?.targetWeight ?? lastSession?.weight ?? "").trim(),
+          extraMetrics: normalizeGymMetricList(exercise?.extraMetrics || lastSession?.metrics || []),
           lastSession,
         };
       }
@@ -10186,6 +10215,11 @@
         const metricSummary = formatGymMetricSummary(lastSession);
         if (metricSummary) bits.push(metricSummary);
         if (normalizeGymMetric(lastSession.restSeconds)) bits.push(`${labels.restLabel} ${normalizeGymMetric(lastSession.restSeconds)}`);
+        const extra = normalizeGymMetricList(lastSession.metrics || []);
+        if (extra.length) {
+          const extraText = extra.map((row) => formatGymMetricEntry(row)).filter(Boolean).join(" • ");
+          if (extraText) bits.push(extraText);
+        }
         return bits.join(" • ");
       }
 
@@ -11371,6 +11405,7 @@
           restSeconds: normalizeGymMetric(item?.restSeconds),
           weight: String(item?.weight || "").trim(),
           result: String(item?.result || "").trim(),
+          metrics: normalizeGymMetricList(item?.metrics || []),
           notes: String(item?.notes || "").trim(),
           updatedAt: String(item?.updatedAt || item?.at || "").trim(),
         };
@@ -11693,6 +11728,7 @@
           weight: String(exercise?.targetWeight ?? last?.weight ?? "").trim(),
           result: String(last?.result || "").trim(),
           notes: "",
+          metrics: normalizeGymMetricList(exercise?.extraMetrics || last?.metrics || []),
           updatedAt: "",
         };
       }
@@ -11721,6 +11757,7 @@
           restSeconds: item.restSeconds,
           weight: item.weight,
           result: item.result,
+          metrics: normalizeGymMetricList(item.metrics || []),
           notes: item.notes,
           at: new Date().toISOString(),
         });
@@ -11739,6 +11776,7 @@
           row.targetSeconds = normalizeGymMetric(item.seconds);
           row.restSeconds = normalizeGymMetric(item.restSeconds);
           row.targetWeight = String(item.weight || "").trim();
+          row.extraMetrics = normalizeGymMetricList(item.metrics || []);
         }
         if (persistStore) saveRoutineData();
       }
@@ -11797,6 +11835,59 @@
           return;
         }
         syncGymSessionStatusPills();
+      }
+
+      function currentGymMetricList() {
+        if (gymSessionMode) {
+          const item = currentGymSessionItem();
+          return Array.isArray(item?.metrics) ? item.metrics.slice() : [];
+        }
+        const row = currentGymViewerCatalogExercise();
+        return Array.isArray(row?.extraMetrics) ? row.extraMetrics.slice() : [];
+      }
+
+      function persistGymMetricList(list) {
+        const normalized = normalizeGymMetricList(list);
+        if (gymSessionMode) {
+          const item = currentGymSessionItem();
+          if (!item) return;
+          item.metrics = normalized;
+          item.updatedAt = new Date().toISOString();
+          persistGymSessionItem(item, false, false);
+          syncActiveGymSavedSession();
+        } else {
+          const row = currentGymViewerCatalogExercise();
+          if (!row) return;
+          row.extraMetrics = normalized;
+          saveRoutineData();
+          renderGymPlanner();
+        }
+      }
+
+      function updateGymMetricFieldAt(index, field, value) {
+        const list = currentGymMetricList();
+        if (index < 0 || index >= list.length) return;
+        const row = { ...(list[index] || {}) };
+        if (field === "label") row.label = value;
+        else if (field === "value") row.value = value;
+        else if (field === "unit") row.unit = value;
+        list[index] = row;
+        persistGymMetricList(list);
+      }
+
+      function addGymMetricRow() {
+        const list = currentGymMetricList();
+        list.push({ label: "", value: "", unit: "" });
+        persistGymMetricList(list);
+        renderExerciseViewer();
+      }
+
+      function removeGymMetricRow(index) {
+        const list = currentGymMetricList();
+        if (index < 0 || index >= list.length) return;
+        list.splice(index, 1);
+        persistGymMetricList(list);
+        renderExerciseViewer();
       }
 
       function markGymSessionInProgress() {
@@ -12175,6 +12266,7 @@
           restSeconds: normalizeGymMetric(row.restSeconds),
           weight: String(row.targetWeight || "").trim(),
           result: String(row.lastSession?.result || "").trim(),
+          metrics: normalizeGymMetricList(row.extraMetrics || []),
           notes: String(row.lastSession?.notes || "").trim(),
           at: new Date().toISOString(),
         });
@@ -12262,6 +12354,15 @@
         const photoSrc = getGymDisplayPhoto(ex);
         const hasCustomPhoto = hasGymCustomPhoto(ex);
         const labels = gymSessionCardLabelsFor(ex);
+        const metricRows = normalizeGymMetricList(gymSessionMode ? ex.metrics : ex.extraMetrics);
+        const metricsHtml = metricRows.map((row, idx) => `
+          <div class="exercise-metric-row" data-metric-idx="${idx}">
+            <input class="exercise-meta-value-input" data-metric-field="label" type="text" value="${escapeHtmlAttr(row.label || "")}" placeholder="Label (Weight, Speed, Distance...)" />
+            <input class="exercise-meta-value-input" data-metric-field="value" type="text" value="${escapeHtmlAttr(row.value || "")}" placeholder="Value" />
+            <input class="exercise-meta-value-input" data-metric-field="unit" type="text" value="${escapeHtmlAttr(row.unit || "")}" placeholder="Unit (kg, mph, km)" />
+            <button class="bb-delete-btn exercise-metric-remove" type="button" title="Remove metric">X</button>
+          </div>
+        `).join("");
         const cardTargetsLabel = normalizeGymMetricLabel(gymSessionMode ? labels.targetsLabel : (ex.targetsLabel || labels.targetsLabel), "Targets");
         const cardTargetsValue = String(ex.targets || "");
         const cardSetsLabel = normalizeGymMetricLabel(gymSessionMode ? labels.setsLabel : (ex.setsLabel || labels.setsLabel), "Sets");
@@ -12318,6 +12419,15 @@
               <button id="exercise-session-complete-card" class="submit-btn exercise-meta-complete-btn ${viewerSelected ? "gym-pick-btn selected" : ""}" type="button">${gymSessionMode ? (ex.status === "completed" ? "COMPLETED" : "COMPLETE") : (viewerSelected ? String(viewerSelectedOrder + 1) : "PICK")}</button>
             </div>
           </div>
+          <div class="exercise-metrics-panel">
+            <div class="exercise-metrics-header">
+              <div class="gym-list-sec">CUSTOM METRICS</div>
+              <button id="exercise-metrics-add" class="confirm-btn" type="button">ADD METRIC</button>
+            </div>
+            <div id="exercise-metrics-list" class="exercise-metric-list">
+              ${metricsHtml || `<div class="routine-ex-note">No custom metrics yet.</div>`}
+            </div>
+          </div>
         `;
         const photoClickEl = document.getElementById("exercise-photo-click");
         if (photoClickEl) photoClickEl.onclick = () => changeCurrentExercisePhotoFromViewer();
@@ -12363,6 +12473,22 @@
         bindQuickField("exercise-session-sets-card", "sets");
         bindQuickField("exercise-session-reps-card-label", "repsLabel");
         bindQuickField("exercise-session-reps-card", "reps");
+        const metricsAddBtn = document.getElementById("exercise-metrics-add");
+        if (metricsAddBtn) metricsAddBtn.onclick = () => addGymMetricRow();
+        const metricsList = document.getElementById("exercise-metrics-list");
+        if (metricsList) {
+          metricsList.querySelectorAll(".exercise-metric-row").forEach((row) => {
+            const idx = Number(row.getAttribute("data-metric-idx"));
+            row.querySelectorAll("input[data-metric-field]").forEach((input) => {
+              input.addEventListener("input", () => {
+                const field = String(input.getAttribute("data-metric-field") || "");
+                if (!Number.isNaN(idx)) updateGymMetricFieldAt(idx, field, input.value);
+              });
+            });
+            const removeBtn = row.querySelector(".exercise-metric-remove");
+            if (removeBtn) removeBtn.onclick = () => removeGymMetricRow(idx);
+          });
+        }
         const completeCardBtn = document.getElementById("exercise-session-complete-card");
         if (completeCardBtn) completeCardBtn.onclick = () => {
           if (gymSessionMode) completeGymSessionStep();
