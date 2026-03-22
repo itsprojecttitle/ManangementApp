@@ -732,7 +732,7 @@ def _apply_backup_sync_action(action):
     raise RuntimeError(f"Unsupported sync action: {action_type}")
 
 
-def _apply_backup_snapshot(snapshot, summary):
+def _apply_backup_snapshot(snapshot, summary, conflicts):
     snapshot = snapshot if isinstance(snapshot, dict) else {}
     files = snapshot.get("files", []) if isinstance(snapshot.get("files", []), list) else []
     if files:
@@ -748,7 +748,22 @@ def _apply_backup_snapshot(snapshot, summary):
                 continue
             dest.parent.mkdir(parents=True, exist_ok=True)
             try:
-                dest.write_text(str(item.get("content", "")), encoding="utf-8")
+                incoming = str(item.get("content", ""))
+                if dest.exists():
+                    try:
+                        existing = dest.read_text(encoding="utf-8", errors="ignore")
+                    except Exception:
+                        existing = ""
+                    if existing != incoming:
+                        stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+                        conflict_path = dest.with_suffix(dest.suffix + f".conflict.{stamp}.bak")
+                        conflict_path.write_text(incoming, encoding="utf-8")
+                        conflicts.append({
+                            "rel_path": rel_path,
+                            "conflict_path": str(conflict_path.resolve().relative_to(ws)),
+                        })
+                        continue
+                dest.write_text(incoming, encoding="utf-8")
                 summary["files"] += 1
             except Exception:
                 continue
@@ -824,6 +839,7 @@ def import_backup_payload_to_workspace(payload):
         "docs": 0,
     }
     errors = []
+    conflicts = []
 
     sync_queue = _extract_sync_queue_from_backup(payload)
     if sync_queue:
@@ -845,7 +861,7 @@ def import_backup_payload_to_workspace(payload):
                 errors.append(f"action[{idx}] {exc}")
     else:
         try:
-            _apply_backup_snapshot(payload.get("snapshot", {}), summary)
+            _apply_backup_snapshot(payload.get("snapshot", {}), summary, conflicts)
         except Exception as exc:
             errors.append(str(exc))
 
@@ -853,6 +869,7 @@ def import_backup_payload_to_workspace(payload):
         "ok": not errors,
         "summary": summary,
         "errors": errors,
+        "conflicts": conflicts,
     }
 
 

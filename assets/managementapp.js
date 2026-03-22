@@ -2581,6 +2581,12 @@
             recordSyncCenterEvent("iphone_workspace_push", {
               message: `Phone workspace merged into Mac: ${appliedActions} action(s).`,
             });
+            if (Array.isArray(pushResult?.conflicts) && pushResult.conflicts.length) {
+              recordSyncCenterEvent("iphone_workspace_conflicts", {
+                message: `Manual conflicts: ${pushResult.conflicts.length} file(s) require review on Mac.`,
+                conflicts: pushResult.conflicts,
+              });
+            }
           }
           let pulled = false;
           if (canPull) {
@@ -2696,7 +2702,14 @@
             const err = await res.json().catch(() => ({ error: "Project sync failed." }));
             return { ok: false, error: err.error || "Project sync failed." };
           }
-          return res.json();
+          const payload = await res.json().catch(() => ({}));
+          if (Array.isArray(payload?.conflicts) && payload.conflicts.length) {
+            recordSyncCenterEvent("mac_workspace_conflicts", {
+              message: `Manual conflicts: ${payload.conflicts.length} file(s) require review.`,
+              conflicts: payload.conflicts,
+            });
+          }
+          return payload;
         } catch (e) {
           return { ok: false, error: e?.message || "Project sync failed." };
         }
