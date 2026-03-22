@@ -1,8 +1,12 @@
+      window.__OMNI_BOOT_OK = true;
       let isFetching = false;
+      let bootLogContainer = null;
+      let bootLogVisible = false;
+      let issueLogCache = [];
       let currentView = "dashboard";
       let viewHistoryStack = [];
       let suppressViewHistory = false;
-      const OFFLINE_ONLY = true;
+      const OFFLINE_ONLY = false;
       let selectedOperation = null;
       let allMissions = [];
       let allOps = [];
@@ -55,6 +59,11 @@
       let routineTaskDrag = { period: "", fromIndex: -1 };
       let routineDescDrag = { period: "", taskId: "", fromIndex: -1 };
       let routineData = null;
+      let uiDiagTimer = 0;
+      let uiDiagLastError = "";
+      let uiDiagLastReportAt = "";
+      let uiDiagLastErrorAt = "";
+      let routineDataHydratedFallback = false;
       let gymCurrentCategory = "";
       let gymCurrentSubcategory = "";
       let gymViewerCategory = "";
@@ -118,6 +127,7 @@
       let swissknifeSessions = [];
       let selectedSwissknifeSession = "";
       let swissknifeConvertHistory = [];
+      let swissknifeNavBound = false;
       let reminderCalendarSelectedDate = "";
       let reminderCalendarMonthCursor = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
       let viewSortModes = {};
@@ -220,6 +230,8 @@
       let OMNI_APP_VERSION_LABEL = "OMNI v0.0.0";
       const OMNI_APP_VERSION_KEY = "omniAppVersion";
       const OMNI_APP_BUILD_KEY = "omniAppBuild";
+      const OMNI_SAFE_MODE_KEY = "omniSafeMode:v1";
+      const OMNI_ISSUE_LOG_KEY = "omniIssueLog:v1";
       const SWISSKNIFE_LOG_KEY = "swissknifeFailLog:v1";
       const SWISSKNIFE_CONVERT_HISTORY_KEY = "swissknifeConvertHistory:v1";
       const SWISSKNIFE_POSTER_SCRIPT_PATH = "/swissknife/render_psd_poster.py";
@@ -249,6 +261,239 @@
         },
       ];
       const nativeWindowFetch = window.fetch.bind(window);
+
+      function loadIssueLog() {
+        try {
+          const raw = localStorage.getItem(OMNI_ISSUE_LOG_KEY);
+          const parsed = raw ? JSON.parse(raw) : [];
+          issueLogCache = Array.isArray(parsed) ? parsed.slice(-200) : [];
+        } catch (_) {
+          issueLogCache = [];
+        }
+      }
+
+      function saveIssueLog() {
+        try {
+          localStorage.setItem(OMNI_ISSUE_LOG_KEY, JSON.stringify(issueLogCache.slice(-200)));
+          queueLocalDataPersist("issue_log");
+        } catch (_) {}
+      }
+
+      function appendIssueLog(level, message, context = {}) {
+        const entry = {
+          ts: new Date().toISOString(),
+          level: String(level || "info"),
+          message: String(message || ""),
+          context: context && typeof context === "object" ? context : {},
+        };
+        issueLogCache.push(entry);
+        saveIssueLog();
+        renderIssueLog();
+      }
+
+      function renderIssueLog() {
+        const host = document.getElementById("omni-issue-log-output");
+        if (!host) return;
+        const lines = (issueLogCache || []).map((row) => {
+          const ctx = row?.context && Object.keys(row.context || {}).length
+            ? ` | ${JSON.stringify(row.context)}`
+            : "";
+          return `[${row.ts || ""}] ${row.level || "info"}: ${row.message || ""}${ctx}`;
+        });
+        host.value = lines.join("\n");
+      }
+
+      function clearIssueLog() {
+        issueLogCache = [];
+        saveIssueLog();
+        renderIssueLog();
+        themedNotice("Issue log cleared.");
+      }
+
+      async function copyIssueLog() {
+        const host = document.getElementById("omni-issue-log-output");
+        const text = String(host?.value || "").trim();
+        if (!text) {
+          themedNotice("No issue log entries to copy.");
+          return;
+        }
+        const result = await copyTextWithFallback(text, "OMNI ISSUE LOG");
+        themedNotice(result === "manual" ? "Clipboard blocked. Manual copy view opened." : "Issue log copied.");
+      }
+
+      function isSafeModeEnabled() {
+        try {
+          const value = localStorage.getItem(OMNI_SAFE_MODE_KEY);
+          if (value === null) return true;
+          return value === "1";
+        } catch (_) {
+          return true;
+        }
+      }
+
+      function setSafeModeEnabled(next) {
+        try {
+          if (next) localStorage.setItem(OMNI_SAFE_MODE_KEY, "1");
+          else localStorage.removeItem(OMNI_SAFE_MODE_KEY);
+        } catch (_) {}
+        renderSafeModeStatus();
+      }
+
+      function renderSafeModeStatus() {
+        const toggle = document.getElementById("omni-safe-mode-toggle");
+        const status = document.getElementById("omni-safe-mode-status");
+        const enabled = isSafeModeEnabled();
+        if (toggle) toggle.checked = enabled;
+        if (status) status.textContent = enabled ? "SAFE MODE ENABLED" : "SAFE MODE OFF";
+      }
+
+      function initSafeModeControls() {
+        const toggle = document.getElementById("omni-safe-mode-toggle");
+        if (toggle) {
+          toggle.onchange = () => {
+            setSafeModeEnabled(!!toggle.checked);
+            appendIssueLog("info", toggle.checked ? "Safe mode enabled" : "Safe mode disabled");
+          };
+        }
+        const refreshBtn = document.getElementById("omni-issue-log-refresh");
+        if (refreshBtn) refreshBtn.onclick = () => renderIssueLog();
+        const clearBtn = document.getElementById("omni-issue-log-clear");
+        if (clearBtn) clearBtn.onclick = () => clearIssueLog();
+        const copyBtn = document.getElementById("omni-issue-log-copy");
+        if (copyBtn) copyBtn.onclick = () => copyIssueLog();
+        const hydrateBtn = document.getElementById("omni-safe-mode-hydrate");
+        if (hydrateBtn) {
+          hydrateBtn.onclick = async () => {
+            const ok = await hydrateLocalDataFromServer(true);
+            appendIssueLog("info", ok ? "Manual hydrate ok" : "Manual hydrate failed");
+            fetchData();
+          };
+        }
+        renderSafeModeStatus();
+        renderIssueLog();
+      }
+
+      function ensureBootLogContainer() {
+        if (bootLogContainer) return bootLogContainer;
+        const el = document.createElement("div");
+        el.id = "omni-bootlog";
+        el.style.position = "fixed";
+        el.style.bottom = "12px";
+        el.style.right = "12px";
+        el.style.maxWidth = "420px";
+        el.style.maxHeight = "240px";
+        el.style.overflow = "auto";
+        el.style.padding = "10px 12px";
+        el.style.border = "1px solid rgba(255, 204, 0, 0.6)";
+        el.style.background = "rgba(0,0,0,0.85)";
+        el.style.color = "#ffcc00";
+        el.style.fontFamily = "monospace";
+        el.style.fontSize = "11px";
+        el.style.zIndex = "99999";
+        el.style.display = "none";
+        document.body.appendChild(el);
+        bootLogContainer = el;
+        return el;
+      }
+
+      function bootLog(message, forceVisible = false) {
+        try {
+          const el = ensureBootLogContainer();
+          const line = document.createElement("div");
+          const ts = new Date().toISOString().split("T")[1]?.replace("Z", "") || "";
+          line.textContent = `${ts} ${message}`;
+          el.appendChild(line);
+          // Keep boot log out of the UI overlay; rely on the Settings log instead.
+          el.style.display = "none";
+        } catch (_) {}
+        appendIssueLog("boot", message);
+      }
+
+      window.addEventListener("error", (event) => {
+        const msg = event?.message || "Unknown error";
+        uiDiagLastError = msg;
+        uiDiagLastErrorAt = new Date().toISOString();
+        bootLog(`ERROR: ${msg}`, true);
+      });
+      window.addEventListener("unhandledrejection", (event) => {
+        const msg = event?.reason?.message || String(event?.reason || "Unhandled rejection");
+        uiDiagLastError = msg;
+        uiDiagLastErrorAt = new Date().toISOString();
+        bootLog(`PROMISE: ${msg}`, true);
+      });
+
+      function collectUiStateSnapshot() {
+        const visiblePanels = Array.from(document.querySelectorAll(".view-panel")).filter((el) => {
+          const style = window.getComputedStyle(el);
+          return style.display !== "none" && style.visibility !== "hidden";
+        });
+        const visiblePanel = visiblePanels[0] || null;
+        const visibleId = visiblePanel ? (visiblePanel.id || "").replace("view-", "") : currentView;
+        const getTextLen = (id) => {
+          const el = document.getElementById(id);
+          if (!el) return 0;
+          return (el.innerText || el.textContent || "").trim().length;
+        };
+        const overlaySelectors = [
+          ".confirm-overlay.active",
+          ".prompt-overlay.active",
+          ".notice-overlay.active",
+          ".mission-editor-overlay.active",
+          ".intel-overlay.active",
+          ".doc-overlay.active",
+          ".reminder-overlay.active",
+          ".exercise-overlay.active",
+          ".lock-overlay.active",
+          ".add-popup-backdrop.active",
+        ];
+        const activeOverlays = overlaySelectors.filter((sel) => document.querySelector(sel));
+        const templates = {
+          workflow: getTextLen("mission-probe-guide-content"),
+          brief: getTextLen("mission-probe-brief-content"),
+          skill: getTextLen("mission-probe-skill-content"),
+          manual: getTextLen("mission-probe-manual-content"),
+          datawell: getTextLen("mission-probe-datawell-prompt-content"),
+          pns: getTextLen("mission-probe-pns-content"),
+        };
+        const routines = {
+          hasRoutineData: !!routineData,
+          topCategories: Array.isArray(routineData?.topCategories) ? routineData.topCategories.length : 0,
+          catalogSections: routineData?.catalog ? Object.keys(routineData.catalog).length : 0,
+        };
+        const swissknife = {
+          sessions: Array.isArray(swissknifeSessions) ? swissknifeSessions.length : 0,
+          selected: String(selectedSwissknifeSession || ""),
+        };
+        return {
+          ts: new Date().toISOString(),
+          currentView: visibleId,
+          visiblePanels: visiblePanels.map((el) => el.id || ""),
+          overlays: activeOverlays,
+          templates,
+          routines,
+          swissknife,
+          lastError: uiDiagLastError,
+          lastErrorAt: uiDiagLastErrorAt,
+        };
+      }
+
+      async function reportUiState() {
+        try {
+          const payload = collectUiStateSnapshot();
+          uiDiagLastReportAt = payload.ts;
+          await nativeWindowFetch(serverUrlForPath("/api/dev/ui_state"), {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+        } catch (_) {}
+      }
+
+      function installUiDiagnostics() {
+        if (uiDiagTimer) return;
+        reportUiState();
+        uiDiagTimer = setInterval(reportUiState, 3000);
+      }
 
       function loadSwissknifeFailLog() {
         try {
@@ -526,11 +771,11 @@
           const text = await res.text();
           host.value = text;
           swissknifePosterScriptLoaded = true;
-          const lineCount = text ? text.split(\"\\n\").length : 0;
+          const lineCount = text ? text.split("\n").length : 0;
           setSwissknifePosterStatus(`LOADED (${lineCount} LINES)`);
         } catch (e) {
           setSwissknifePosterStatus("LOAD FAILED");
-          themedNotice(\"Poster script load failed: \" + (e?.message || String(e)));
+          themedNotice("Poster script load failed: " + (e?.message || String(e)));
         }
       }
 
@@ -540,14 +785,14 @@
       }
 
       async function copySwissknifePosterScript() {
-        const host = document.getElementById(\"swissknife-poster-script\");
-        const text = String(host?.value || \"\").trim();
+        const host = document.getElementById("swissknife-poster-script");
+        const text = String(host?.value || "").trim();
         if (!text) {
-          themedNotice(\"No poster script loaded.\");
+          themedNotice("No poster script loaded.");
           return;
         }
-        const result = await copyTextWithFallback(text, \"POSTER SCRIPT\");
-        themedNotice(result === \"manual\" ? \"Clipboard blocked. Manual copy view opened.\" : \"Poster script copied.\");
+        const result = await copyTextWithFallback(text, "POSTER SCRIPT");
+        themedNotice(result === "manual" ? "Clipboard blocked. Manual copy view opened." : "Poster script copied.");
       }
 
       function loadSwissknifeConvertHistory() {
@@ -614,7 +859,7 @@
 
       async function refreshAppBuildLabels() {
         try {
-          const res = await nativeWindowFetch("/api/dev/version", { cache: "no-store" });
+          const res = await nativeWindowFetch(serverUrlForPath("/api/dev/version"), { cache: "no-store" });
           if (res.ok) {
             const payload = await res.json().catch(() => null);
             const updatedAt = String(payload?.updated_at || "");
@@ -2037,7 +2282,7 @@
         if (hash === lastLocalDataPersistHash) return;
         localDataPersistInFlight = true;
         try {
-          const res = await fetch("/api/localdata/save", {
+          const res = await fetch(serverUrlForPath("/api/localdata/save"), {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: hash,
@@ -2070,7 +2315,7 @@
         if (OFFLINE_ONLY && !isDesktopLocalServerSession()) return false;
         if (!localDataRecoveryNeeded()) return false;
         try {
-          const res = await fetch("/api/localdata/load");
+          const res = await fetch(serverUrlForPath("/api/localdata/load"));
           if (!res.ok) return false;
           const payload = await res.json();
           const localStorageData = payload?.local_storage && typeof payload.local_storage === "object"
@@ -2079,18 +2324,38 @@
           const snapshot = payload?.local_snapshot && typeof payload.local_snapshot === "object"
             ? payload.local_snapshot
             : null;
+          let routineHydrated = false;
           if (localStorageData) {
             Object.keys(localStorageData).forEach((k) => {
               const v = localStorageData[k];
-              localStorage.setItem(k, v == null ? "" : String(v));
+              try {
+                localStorage.setItem(k, v == null ? "" : String(v));
+              } catch (e) {
+                if (k === routineStorageKey() && typeof v === "string") {
+                  try {
+                    routineData = normalizeRoutineData(JSON.parse(v));
+                    routineHydrated = true;
+                  } catch (_) {}
+                }
+              }
             });
+            if (routineHydrated) routineDataHydratedFallback = true;
             return true;
           }
           if (snapshot?.data) {
             const data = snapshot.data;
             const setJson = (key, value) => {
               if (value == null) return;
-              localStorage.setItem(key, JSON.stringify(value));
+              try {
+                localStorage.setItem(key, JSON.stringify(value));
+              } catch (e) {
+                if (key === routineStorageKey() && value) {
+                  try {
+                    routineData = normalizeRoutineData(value);
+                    routineHydrated = true;
+                  } catch (_) {}
+                }
+              }
             };
             setJson(routineStorageKey(), data.routine);
             setJson(checklistStorageKey(), data.checklist);
@@ -2111,10 +2376,48 @@
             if (data.hvi_layout != null) {
               localStorage.setItem(hviLayoutStorageKey(), String(data.hvi_layout));
             }
+            if (routineHydrated) routineDataHydratedFallback = true;
             return true;
           }
         } catch (_) {}
         return false;
+      }
+
+      async function hydrateLocalDataFromServer(force = false) {
+        if (OFFLINE_ONLY && !isDesktopLocalServerSession()) return false;
+        try {
+          bootLog("hydrateLocalDataFromServer:start");
+          const res = await fetch(serverUrlForPath("/api/localdata/load"), { cache: "no-store" });
+          if (!res.ok) return false;
+          const payload = await res.json().catch(() => null);
+          const localStorageData = payload?.local_storage && typeof payload.local_storage === "object"
+            ? payload.local_storage
+            : null;
+          if (!localStorageData) return false;
+          let routineHydrated = false;
+          Object.keys(localStorageData).forEach((k) => {
+            const v = localStorageData[k];
+            if (!k) return;
+            const shouldOverwrite = force || k === routineStorageKey() || localStorage.getItem(k) == null;
+            if (!shouldOverwrite) return;
+            try {
+              localStorage.setItem(k, v == null ? "" : String(v));
+            } catch (e) {
+              if (k === routineStorageKey() && typeof v === "string") {
+                try {
+                  routineData = normalizeRoutineData(JSON.parse(v));
+                  routineHydrated = true;
+                } catch (_) {}
+              }
+            }
+          });
+          if (routineHydrated) routineDataHydratedFallback = true;
+          bootLog("hydrateLocalDataFromServer:ok");
+          return true;
+        } catch (_) {
+          bootLog("hydrateLocalDataFromServer:fail", true);
+          return false;
+        }
       }
 
       function buildBackupFile() {
@@ -3046,6 +3349,7 @@
             <div class="sync-center-stat"><span class="sync-center-stat-key">Invoices</span><span class="sync-center-stat-value">${escapeHtmlAttr(String(counts.invoices || 0))}</span></div>
           </div>
         `;
+        refreshHealthPanel();
       }
 
       function privacySettingsKey() {
@@ -6171,6 +6475,20 @@
         }
       }
 
+      function bindSwissknifeNavHandlers() {
+        if (swissknifeNavBound) return;
+        const root = document.getElementById("view-swissknife");
+        if (!root) return;
+        const buttons = root.querySelectorAll(".swissknife-nav-btn");
+        if (!buttons.length) return;
+        buttons.forEach((btn) => {
+          const viewId = String(btn.getAttribute("data-view") || "").trim();
+          if (!viewId) return;
+          btn.addEventListener("click", () => switchSwissknifeView(viewId, btn));
+        });
+        swissknifeNavBound = true;
+      }
+
       function inferSwissknifeSource(url) {
         const raw = String(url || "").toLowerCase();
         if (!raw) return "instagram";
@@ -6243,7 +6561,7 @@
             }
             return res.result || {};
           }
-          const res = await fetch("/api/swissknife/download", {
+          const res = await fetch(serverUrlForPath("/api/swissknife/download"), {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -6316,7 +6634,7 @@
         if (!sid) return;
         if (!(await themedConfirm("Are you sure you want to delete this?"))) return;
         try {
-          const res = await fetch("/api/swissknife/session", {
+          const res = await fetch(serverUrlForPath("/api/swissknife/session"), {
             method: "DELETE",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ session_id: sid }),
@@ -6337,7 +6655,7 @@
         const label = (labelEl?.value || "").trim() || "daily";
         const source = "";
         try {
-          const res = await fetch("/api/swissknife/session", {
+          const res = await fetch(serverUrlForPath("/api/swissknife/session"), {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ label, source }),
@@ -6407,7 +6725,7 @@
             themedNotice("Download complete and saved to session.");
             return;
           }
-          const res = await fetch("/api/swissknife/download", {
+          const res = await fetch(serverUrlForPath("/api/swissknife/download"), {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -6945,6 +7263,45 @@
             ${html || "<div class=\"intel-card\">Mission Briefing is empty.</div>"}
           </div>
         `;
+      }
+
+      async function refreshHealthPanel() {
+        const host = document.getElementById("health-panel-output");
+        if (!host) return;
+        try {
+          const [paths, uiState] = await Promise.all([
+            fetchJsonPath(serverUrlForPath("/api/dev/paths")),
+            fetchJsonPath(serverUrlForPath("/api/dev/ui_state")),
+          ]);
+          const state = uiState?.state || {};
+          const info = [
+            `Workspace: ${paths?.project_root || "Unknown"}`,
+            `Server CWD: ${paths?.cwd || "Unknown"}`,
+            `Active View: ${state.currentView || "Unknown"}`,
+            `Templates Loaded: ${Object.values(state.templates || {}).filter((n) => Number(n) > 0).length}/6`,
+            `Routines: ${state.routines?.hasRoutineData ? "YES" : "NO"} | Sections: ${state.routines?.catalogSections || 0}`,
+            `Swissknife Sessions: ${state.swissknife?.sessions || 0}`,
+            `Last Error: ${state.lastError || "None"}`,
+            `Last Error At: ${state.lastErrorAt || "N/A"}`,
+            `Overlays: ${(state.overlays || []).join(", ") || "None"}`,
+          ];
+          host.innerHTML = `<pre style="white-space:pre-wrap;">${info.join(\"\\n\")}</pre>`;
+        } catch (e) {
+          host.innerHTML = `<pre>Health load failed: ${e.message}</pre>`;
+        }
+      }
+
+      async function refreshBlackbook() {
+        try {
+          const data = await fetchJsonPath(serverUrlForPath("/api/blackbook"));
+          allBlackbook = Array.isArray(data) ? data : [];
+          if (currentView === "operations" || currentView === "mission-log") {
+            renderBlackbook();
+          }
+          themedNotice(`Blackbook refreshed (${allBlackbook.length}).`);
+        } catch (e) {
+          themedNotice("Blackbook refresh failed: " + e.message);
+        }
       }
 
       async function copyTextWithFallback(text, fallbackTitle = "MANUAL COPY") {
@@ -10318,7 +10675,11 @@
       }
 
       function saveRoutineData() {
-        localStorage.setItem(routineStorageKey(), JSON.stringify(routineData));
+        try {
+          localStorage.setItem(routineStorageKey(), JSON.stringify(routineData));
+        } catch (e) {
+          routineDataHydratedFallback = true;
+        }
         queueNativeNotificationRefresh(250, { prompt: false });
         queueOmniCalendarSync(250, { prompt: false });
         queueLocalDataPersist("routine");
@@ -10326,6 +10687,10 @@
 
       function loadRoutineData() {
         try {
+          if (routineDataHydratedFallback && routineData) {
+            renderRoutines();
+            return;
+          }
           let raw = localStorage.getItem(routineStorageKey());
           if (!raw) raw = localStorage.getItem("routineData:v1");
           const parsed = raw ? JSON.parse(raw) : createDefaultRoutineData();
@@ -14399,15 +14764,9 @@
         }
         if (Object.prototype.hasOwnProperty.call(env, raw)) return env[raw];
         if (!/^[\w\s+\-*/%()[\],.'"]+$/.test(raw)) throw new Error(`Unsupported offline python expression: ${raw}`);
-        const scopeNames = Object.keys(env);
-        const scopeValues = scopeNames.map((key) => env[key]);
-        return Function(...scopeNames, "sqrt", "len", "sum", "sorted", `return (${raw});`)(
-          ...scopeValues,
-          (value) => Math.sqrt(Number(value || 0)),
-          (value) => (Array.isArray(value) || typeof value === "string" ? value.length : 0),
-          (value) => (Array.isArray(value) ? value.reduce((sum, item) => sum + Number(item || 0), 0) : 0),
-          (value) => (Array.isArray(value) ? value.slice().sort((a, b) => String(a).localeCompare(String(b), undefined, { numeric: true })) : [])
-        );
+        // CSP blocks eval/Function in the webview. Return the raw expression
+        // rather than throwing so UI stays responsive.
+        return raw;
       }
 
       function runOfflinePython(code) {
@@ -18854,6 +19213,13 @@
           .replace(/>/g, "&gt;");
       }
 
+      function escapeHtml(s) {
+        return String(s || "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;");
+      }
+
       function hviProfileLinks(item) {
         const links = [];
         const seen = new Set();
@@ -19796,10 +20162,25 @@
       }
 
       function shouldPreferOfflineSnapshots() {
+        if (isSafeModeEnabled()) return false;
         if (OFFLINE_ONLY && !isDesktopLocalServerSession()) return true;
         if (isNativeLanDevSession()) return false;
         const protocol = String(window.location?.protocol || "");
         return Boolean(window.Capacitor) || protocol === "capacitor:" || protocol === "file:";
+      }
+
+      function getServerOrigin() {
+        const protocol = String(window.location?.protocol || "");
+        if (protocol === "file:" || protocol === "capacitor:") {
+          return "http://127.0.0.1:8099";
+        }
+        return String(window.location?.origin || "http://127.0.0.1:8099");
+      }
+
+      function serverUrlForPath(path) {
+        const base = getServerOrigin().replace(/\/+$/, "");
+        const cleanPath = String(path || "").startsWith("/") ? String(path || "") : `/${String(path || "")}`;
+        return `${base}${cleanPath}`;
       }
 
       async function pollLiveDevBuildVersion() {
@@ -19829,8 +20210,9 @@
       }
 
       async function fetchJsonPath(path) {
-        const res = await fetch(path, { cache: "no-store" });
-        if (!res.ok) throw new Error(`HTTP ${res.status} for ${path}`);
+        const url = serverUrlForPath(path);
+        const res = await fetch(url, { cache: "no-store" });
+        if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`);
         return res.json();
       }
 
@@ -19985,6 +20367,7 @@
             renderGlobalSearch();
           } else if (currentView === "settings") {
             renderSyncCenter();
+            refreshHealthPanel();
           }
 
           const logOutputEl = document.getElementById("log-output");
@@ -20022,10 +20405,26 @@
       async function startAppOnce() {
         if (appStarted) return;
         appStarted = true;
+        bootLog("startAppOnce");
         window.alert = (message) => themedNotice(message);
+        installUiDiagnostics();
+        try {
+          document.body.style.pointerEvents = "auto";
+          document.documentElement.style.pointerEvents = "auto";
+          document.getElementById("add-popup-backdrop")?.classList.remove("active");
+          document.querySelectorAll(".confirm-overlay, .prompt-overlay, .notice-overlay, .mission-editor-overlay, .intel-overlay, .doc-overlay, .reminder-overlay, .exercise-overlay, .lock-overlay").forEach((el) => {
+            el.classList.remove("active");
+          });
+          if (bootLogContainer && bootLogContainer.parentElement) {
+            bootLogContainer.parentElement.removeChild(bootLogContainer);
+            bootLogContainer = null;
+          }
+        } catch (_) {}
+        loadIssueLog();
         initTerminalAppTitle();
         initMatrixRain();
         window.addEventListener("resize", initMatrixRain);
+        await hydrateLocalDataFromServer(true);
         await recoverLocalDataFromDiskIfMissing();
         loadGymPhotoManifest().catch(() => {});
         if ("serviceWorker" in navigator) {
@@ -20056,12 +20455,14 @@
         refreshRuntimeModeState().catch(() => {});
         refreshMacIphoneLiveState().catch(() => {});
         initNativeNotifications().catch(() => {});
+        bindSwissknifeNavHandlers();
         queueOmniCalendarSync(700, { prompt: true });
         refreshHviTimeMeta();
         setInterval(refreshHviTimeMeta, 60000);
         initNavHoverDescriptions();
         initSwissknifeSimpleCanvas();
         refreshAppBuildLabels();
+        initSafeModeControls();
         const missionOverlay = document.getElementById("mission-editor-overlay");
         if (missionOverlay) {
           missionOverlay.addEventListener("click", (e) => {
@@ -20119,10 +20520,14 @@
           closeAllMatrixDropdowns();
         });
         document.addEventListener("keydown", onAppUndoRedoShortcut);
+        bootLog("fetchData");
         fetchData();
         runNotificationEngine();
         scheduleFetchDataPolling();
         setInterval(runNotificationEngine, NOTIFICATION_ENGINE_INTERVAL_MS);
+        if (isSafeModeEnabled()) {
+          setInterval(() => hydrateLocalDataFromServer(true), 2 * 60 * 1000);
+        }
         document.addEventListener("visibilitychange", () => {
           if (document.visibilityState === "hidden") {
             if (privacySettings.autoLockOnBackground && lockUnlocked && getLockConfig()) lockNow();
@@ -20144,9 +20549,14 @@
           persistLocalDataToMac("unload").catch(() => {});
         });
         switchView('dashboard');
+        bootLog("switchView:dashboard");
       }
 
       document.addEventListener("DOMContentLoaded", () => {
+        bootLog("DOMContentLoaded");
+        loadIssueLog();
+        renderIssueLog();
+        renderSafeModeStatus();
         loadPrivacySettings();
         if (privacySettings.lockOnLaunch) {
           lockUnlocked = false;

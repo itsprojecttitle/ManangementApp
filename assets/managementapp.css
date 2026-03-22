@@ -2906,6 +2906,8 @@
         border-color: var(--warning-yellow);
         color: var(--warning-yellow);
         background: rgba(255, 204, 0, 0.12);
+        box-shadow: 0 0 14px rgba(255, 204, 0, 0.18);
+        font-weight: 700;
       }
       .reminder-cal-dot {
         border: 1px solid #8a6b00;

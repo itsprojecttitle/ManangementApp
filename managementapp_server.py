@@ -13,6 +13,7 @@ import uuid
 import sys
 import tempfile
 import mimetypes
+import threading
 from threading import Lock, Thread
 from collections import deque
 from datetime import datetime, timezone
@@ -28,7 +29,12 @@ if RUNTIME_VARIANT == "draft":
 else:
     from omni_runtime import ensure_runtime_root
 
-WORKSPACE = ensure_runtime_root()
+_project_root_env = os.environ.get("OMNI_PROJECT_ROOT", "").strip()
+_project_root = Path(_project_root_env).expanduser().resolve() if _project_root_env else None
+if _project_root and (_project_root / "OperationDir").exists():
+    WORKSPACE = _project_root
+else:
+    WORKSPACE = ensure_runtime_root()
 OPERATIONS_DIR = WORKSPACE / "OperationDir" / "Operations"
 BLACKBOOK_FILE = WORKSPACE / "blackbook.crm"
 BLACKBOOK_MD_FILE = WORKSPACE / "OperationDir" / "BLACK_BOOK.md"
@@ -50,6 +56,7 @@ EDITABLE_DOC_FILES = {
     "OperationDir/Templates/ProbeSkill.md": TEMPLATES_DIR / "ProbeSkill.md",
     "OperationDir/Templates/OfficialProbeManuel.md": TEMPLATES_DIR / "OfficialProbeManuel.md",
     "OperationDir/Templates/DatawellDiscovery.md": TEMPLATES_DIR / "DatawellDiscovery.md",
+    "OperationDir/Templates/PNS.md": TEMPLATES_DIR / "PNS.md",
 }
 SWISSKNIFE_SESSIONS_FILE = WORKSPACE / "swissknife_sessions.json"
 SANDBOX_LAB_DIR = WORKSPACE / "SandboxLab"
@@ -85,6 +92,9 @@ BLOCKED_UA_PATTERNS = (
     "selenium",
     "phantomjs",
 )
+
+_UI_STATE_LOCK = Lock()
+_UI_STATE_CACHE = {"ok": True, "updated_at": None, "state": {}}
 
 
 def _path_within(target: Path, root: Path) -> bool:
@@ -3207,6 +3217,24 @@ def load_dev_build_meta():
     }
 
 
+def save_ui_state(payload: dict):
+    if not isinstance(payload, dict):
+        return {"ok": False, "error": "Invalid payload"}
+    with _UI_STATE_LOCK:
+        _UI_STATE_CACHE["updated_at"] = datetime.now(timezone.utc).isoformat()
+        _UI_STATE_CACHE["state"] = payload
+    return {"ok": True}
+
+
+def load_ui_state():
+    with _UI_STATE_LOCK:
+        return {
+            "ok": True,
+            "updated_at": _UI_STATE_CACHE.get("updated_at"),
+            "state": _UI_STATE_CACHE.get("state") or {},
+        }
+
+
 class Handler(SimpleHTTPRequestHandler):
     server_version = "ManagementApp"
     sys_version = ""
@@ -3274,6 +3302,8 @@ class Handler(SimpleHTTPRequestHandler):
         referer = (self.headers.get("Referer") or "").strip().lower()
         if not host:
             return False
+        if origin == "null":
+            return True
         allowed_prefixes = (f"http://{host}/", f"https://{host}/")
         if origin and not origin.startswith((f"http://{host}", f"https://{host}")):
             return False
@@ -3417,6 +3447,8 @@ class Handler(SimpleHTTPRequestHandler):
             return _json_response(self, payload, 200)
         if path == "/api/backup/export":
             return _json_response(self, export_workspace_backup_payload(), 200)
+        if path == "/api/dev/ui_state":
+            return _json_response(self, load_ui_state(), 200)
         if path == "/api/localdata/load":
             return _json_response(self, load_localdata_payload(), 200)
         if path == "/api/mission/brief":
@@ -3480,6 +3512,11 @@ class Handler(SimpleHTTPRequestHandler):
             except Exception as exc:
                 return _json_response(self, {"error": str(exc)}, 400)
             return _json_response(self, payload, 200)
+        if path == "/api/dev/ui_state":
+            if not self._is_loopback_client():
+                return self._forbidden("Loopback access only")
+            payload = save_ui_state(body)
+            return _json_response(self, payload, 200 if payload.get("ok") else 400)
 
         if path == "/api/iphone/live/on":
             if not self._is_loopback_client():

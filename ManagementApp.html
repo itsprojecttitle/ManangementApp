@@ -20,7 +20,54 @@
         }
       })();
     </script>
-    <link rel="stylesheet" href="/assets/managementapp.css?v=20260316-task-3" />
+    <script>
+      (() => {
+        try {
+          fetch("/api/dev/ui_state", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              html_boot: true,
+              ts: new Date().toISOString(),
+              href: String(window.location.href || ""),
+            }),
+          }).catch(() => {});
+        } catch (_) {}
+      })();
+    </script>
+    <script>
+      (() => {
+        window.addEventListener("error", (event) => {
+          try {
+            const target = event && event.target;
+            const isScript = target && target.tagName === "SCRIPT";
+            if (!isScript) return;
+            fetch("/api/dev/ui_state", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                script_error: true,
+                ts: new Date().toISOString(),
+                src: String(target.src || ""),
+              }),
+            }).catch(() => {});
+          } catch (_) {}
+        }, true);
+        setTimeout(() => {
+          try {
+            fetch("/api/dev/ui_state", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                js_boot: !!window.__OMNI_BOOT_OK,
+                ts: new Date().toISOString(),
+              }),
+            }).catch(() => {});
+          } catch (_) {}
+        }, 2500);
+      })();
+    </script>
+    <link rel="stylesheet" href="/assets/managementapp.css?v=20260322-repolive29" />
     <link rel="stylesheet" href="/assets/managementapp-draft.css?v=20260316-task-3" />
 
   </head>
@@ -408,11 +455,11 @@
             </div>
           </div>
           <div class="swissknife-sidebar">
-            <button class="swissknife-nav-btn active" type="button" onclick="switchSwissknifeView('downloads', this)">[01] DOWNLOADS</button>
-            <button class="swissknife-nav-btn" type="button" onclick="switchSwissknifeView('converter', this)">[02] CONVERTER</button>
-            <button class="swissknife-nav-btn" type="button" onclick="switchSwissknifeView('logs', this)">[03] LOGS</button>
-            <button class="swissknife-nav-btn" type="button" onclick="switchSwissknifeView('settings', this)">[04] SETTINGS</button>
-            <button class="swissknife-nav-btn" type="button" onclick="switchSwissknifeView('simplecanvas', this)">[06] SIMPLECANVAS</button>
+            <button class="swissknife-nav-btn active" type="button" data-view="downloads" onclick="switchSwissknifeView('downloads', this)">[01] DOWNLOADS</button>
+            <button class="swissknife-nav-btn" type="button" data-view="converter" onclick="switchSwissknifeView('converter', this)">[02] CONVERTER</button>
+            <button class="swissknife-nav-btn" type="button" data-view="logs" onclick="switchSwissknifeView('logs', this)">[03] LOGS</button>
+            <button class="swissknife-nav-btn" type="button" data-view="settings" onclick="switchSwissknifeView('settings', this)">[04] SETTINGS</button>
+            <button class="swissknife-nav-btn" type="button" data-view="simplecanvas" onclick="switchSwissknifeView('simplecanvas', this)">[06] SIMPLECANVAS</button>
           </div>
           <div class="swissknife-main">
             <div id="swissknife-view-downloads" class="swissknife-view active">
@@ -770,6 +817,34 @@
               <button class="confirm-btn" type="button" onclick="openSettingsSyncCenter()">OPEN SYNC CENTER</button>
               <button class="confirm-btn" type="button" onclick="resetPrivacySettings()">RESET PRIVACY</button>
             </div>
+          </div>
+          <div class="settings-card settings-card-span">
+            <h3>// SAFE MODE + ISSUE LOG</h3>
+            <div class="settings-help">Safe mode forces server hydration and avoids offline snapshots. Issue log captures freezes/errors so fixes are trackable.</div>
+            <div class="settings-row">
+              <div class="settings-label">Safe Mode</div>
+              <label class="matrix-switch">
+                <input id="omni-safe-mode-toggle" type="checkbox" />
+                <span class="matrix-slider"></span>
+              </label>
+              <div class="settings-static" id="omni-safe-mode-status">SAFE MODE OFF</div>
+            </div>
+            <div class="settings-actions" style="margin-bottom:10px;">
+              <button class="confirm-btn" id="omni-safe-mode-hydrate" type="button">FORCE HYDRATE NOW</button>
+              <button class="confirm-btn" id="omni-issue-log-refresh" type="button">REFRESH LOG</button>
+              <button class="confirm-btn" id="omni-issue-log-copy" type="button">COPY LOG</button>
+              <button class="confirm-btn" id="omni-issue-log-clear" type="button">CLEAR LOG</button>
+            </div>
+            <textarea id="omni-issue-log-output" class="swissknife-textarea" rows="8" placeholder="Issue log will appear here..."></textarea>
+          </div>
+          <div class="settings-card settings-card-span">
+            <h3>// HEALTH + DIAGNOSTICS</h3>
+            <div class="settings-help">Live server/workspace status, counts, and last error. This replaces the bottom-right log overlay.</div>
+            <div class="settings-actions" style="margin-bottom:10px;">
+              <button class="confirm-btn" type="button" onclick="refreshHealthPanel()">REFRESH HEALTH</button>
+              <button class="confirm-btn" type="button" onclick="refreshBlackbook()">REFRESH BLACKBOOK</button>
+            </div>
+            <div id="health-panel-output" class="manual-view">Loading health status...</div>
           </div>
           <div class="settings-card settings-card-span" id="settings-sync-center-panel">
             <h3>// SYNC CENTER</h3>
@@ -1661,7 +1736,7 @@ for i in range(3):
         <div id="lock-meta" class="lock-meta"></div>
       </div>
     </div>
-    <script src="/assets/managementapp.js?v=20260316-task-3"></script>
+    <script src="/assets/managementapp.js?v=20260322-repolive29"></script>
     <script src="/assets/managementapp-draft.js?v=20260316-swissknife-4k-2"></script>
 
   </body>

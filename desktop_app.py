@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import os
 import threading
+import subprocess
 import time
 from pathlib import Path
 
@@ -31,10 +32,39 @@ os.environ.setdefault("OMNI_PROJECT_ROOT", str(PROJECT_ROOT))
 
 
 def create_server(mod):
-    server = mod.ThreadingHTTPServer(("127.0.0.1", 0), mod.Handler)
+    preferred_port = int(os.environ.get("OMNI_PORT", "8099"))
+    try:
+        server = mod.ThreadingHTTPServer(("127.0.0.1", preferred_port), mod.Handler)
+    except OSError:
+        server = mod.ThreadingHTTPServer(("127.0.0.1", 0), mod.Handler)
     actual_port = int(server.server_address[1])
     mod.ALLOWED_HOSTS = {f"127.0.0.1:{actual_port}", f"localhost:{actual_port}"}
     return server, actual_port
+
+
+def kill_stray_port_process(port: int):
+    try:
+        out = subprocess.run(["lsof", "-ti", f"tcp:{port}"], capture_output=True, text=True, check=False)
+        pids = [p.strip() for p in out.stdout.splitlines() if p.strip().isdigit()]
+        for pid in pids:
+            if int(pid) == os.getpid():
+                continue
+            comm = subprocess.run(["ps", "-p", pid, "-o", "comm="], capture_output=True, text=True).stdout.strip()
+            args = subprocess.run(["ps", "-p", pid, "-o", "args="], capture_output=True, text=True).stdout.strip()
+            allow = any(token in (comm + " " + args) for token in [
+                "OMNI_FIXED.app",
+                "managementapp_server.py",
+                "desktop_app.py",
+                "OMNI"
+            ])
+            if allow:
+                continue
+            try:
+                os.kill(int(pid), 15)
+            except Exception:
+                pass
+    except Exception:
+        pass
 
 
 def main():
@@ -44,6 +74,7 @@ def main():
     server = None
     port = None
     try:
+        kill_stray_port_process(int(os.environ.get("OMNI_PORT", "8099")))
         server, port = create_server(mod)
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
@@ -52,7 +83,7 @@ def main():
 
     time.sleep(0.2)
     if port:
-        url = f"http://127.0.0.1:{port}/ManagementApp.html?v=20260316-task-3"
+        url = f"http://127.0.0.1:{port}/ManagementApp.html?v=20260322-repolive29"
     else:
         runtime_root = ensure_runtime_root()
         url = f"file://{(runtime_root / 'ManagementApp.html').resolve()}"
