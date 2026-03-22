@@ -10,7 +10,7 @@ class OmniBridgeViewController: CAPBridgeViewController {
 
     private let runtimeModeOverrideKey = "OMNIRuntimeModeOverride"
     private let bundledEntryPage = "ManagementApp.html"
-    private let offlineOnly = true
+    private let offlineOnly = false
 
     override open func capacitorDidLoad() {
         bridge?.registerPluginType(OmniCalendarPlugin.self)
@@ -46,11 +46,22 @@ class OmniBridgeViewController: CAPBridgeViewController {
 
     private func applyPersistedRuntimeModeIfNeeded() {
         guard isRemoteCapable() else {
+            loadRuntimeMode(.bundled)
             return
         }
         webView?.stopLoading()
-        setPersistedRuntimeMode(.bundled)
-        loadRuntimeMode(.bundled)
+        probeLiveAvailability { [weak self] reachable in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                if reachable {
+                    self.setPersistedRuntimeMode(.live)
+                    self.loadRuntimeMode(.live)
+                } else {
+                    self.setPersistedRuntimeMode(.bundled)
+                    self.loadRuntimeMode(.bundled)
+                }
+            }
+        }
     }
 
     private func loadRuntimeMode(_ mode: RuntimeMode) {
