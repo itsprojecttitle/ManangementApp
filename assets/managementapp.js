@@ -7285,7 +7285,7 @@
             `Last Error At: ${state.lastErrorAt || "N/A"}`,
             `Overlays: ${(state.overlays || []).join(", ") || "None"}`,
           ];
-          host.innerHTML = `<pre style="white-space:pre-wrap;">${info.join(\"\\n\")}</pre>`;
+          host.innerHTML = `<pre style="white-space:pre-wrap;">${info.join("\n")}</pre>`;
         } catch (e) {
           host.innerHTML = `<pre>Health load failed: ${e.message}</pre>`;
         }

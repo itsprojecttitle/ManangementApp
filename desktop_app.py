@@ -83,7 +83,7 @@ def main():
 
     time.sleep(0.2)
     if port:
-        url = f"http://127.0.0.1:{port}/ManagementApp.html?v=20260322-repolive30"
+        url = f"http://127.0.0.1:{port}/ManagementApp.html?v=20260322-repolive31"
     else:
         runtime_root = ensure_runtime_root()
         url = f"file://{(runtime_root / 'ManagementApp.html').resolve()}"
