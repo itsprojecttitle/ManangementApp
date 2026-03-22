@@ -59,6 +59,8 @@
       let routineTaskDrag = { period: "", fromIndex: -1 };
       let routineDescDrag = { period: "", taskId: "", fromIndex: -1 };
       let routineData = null;
+      let budgetData = null;
+      let budgetActiveTab = "overview";
       let uiDiagTimer = 0;
       let uiDiagLastError = "";
       let uiDiagLastReportAt = "";
@@ -4101,6 +4103,9 @@
         if (viewId === "gym-planner") {
           renderGymPlanner();
         }
+        if (viewId === "budget") {
+          renderBudget();
+        }
         if (viewId === "journal") {
           renderJournal();
         }
@@ -7562,6 +7567,10 @@
         return "routineData:v2";
       }
 
+      function budgetStorageKey() {
+        return "budgetData:v1";
+      }
+
       function normalizeGymMetric(value) {
         const n = Number(value);
         if (!Number.isFinite(n) || n < 0) return 0;
@@ -10818,6 +10827,441 @@
         }
         saveRoutineData();
         renderRoutines();
+      }
+
+      function createDefaultBudgetData() {
+        const now = new Date().toISOString();
+        return {
+          createdAt: now,
+          entries: [],
+          bills: [],
+          allocations: [
+            { id: "alloc_bills", label: "Bills", percent: 40, balance: 0 },
+            { id: "alloc_savings", label: "Savings", percent: 20, balance: 0 },
+            { id: "alloc_spending", label: "Spending", percent: 30, balance: 0 },
+            { id: "alloc_transport", label: "Transport", percent: 10, balance: 0 },
+          ],
+        };
+      }
+
+      function normalizeBudgetData(data) {
+        const base = createDefaultBudgetData();
+        const out = (data && typeof data === "object") ? data : {};
+        if (!Array.isArray(out.entries)) out.entries = [];
+        if (!Array.isArray(out.bills)) out.bills = [];
+        if (!Array.isArray(out.allocations) || !out.allocations.length) out.allocations = base.allocations.slice();
+        out.allocations = out.allocations.map((row, idx) => {
+          const id = String(row?.id || `alloc_${idx}`).trim() || `alloc_${idx}`;
+          return {
+            id,
+            label: String(row?.label || `Bucket ${idx + 1}`).trim() || `Bucket ${idx + 1}`,
+            percent: Number.isFinite(Number(row?.percent)) ? Number(row?.percent) : 0,
+            balance: Number.isFinite(Number(row?.balance)) ? Number(row?.balance) : 0,
+          };
+        });
+        return out;
+      }
+
+      function loadBudgetData() {
+        try {
+          const raw = localStorage.getItem(budgetStorageKey());
+          if (raw) {
+            budgetData = normalizeBudgetData(JSON.parse(raw));
+          } else {
+            budgetData = normalizeBudgetData(createDefaultBudgetData());
+          }
+        } catch (_) {
+          budgetData = normalizeBudgetData(createDefaultBudgetData());
+        }
+      }
+
+      function saveBudgetData(reason = "") {
+        if (!budgetData) return;
+        try {
+          localStorage.setItem(budgetStorageKey(), JSON.stringify(budgetData));
+        } catch (_) {
+          // Ignore storage errors.
+        }
+        queueLocalDataPersist(reason || "budget");
+      }
+
+      function formatBudgetCurrency(value) {
+        const amount = Number(value) || 0;
+        try {
+          return new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP" }).format(amount);
+        } catch (_) {
+          return `£${amount.toFixed(2)}`;
+        }
+      }
+
+      function budgetTodayKey(d = new Date()) {
+        return localDateKey(d);
+      }
+
+      function budgetEntryDefaultDate() {
+        const input = document.getElementById("budget-entry-date");
+        if (input && !input.value) {
+          input.value = budgetTodayKey(new Date());
+        }
+      }
+
+      function switchBudgetTab(tabId) {
+        budgetActiveTab = String(tabId || "overview").trim();
+        document.querySelectorAll(".budget-tab").forEach((btn) => btn.classList.remove("active"));
+        document.querySelectorAll(".budget-tab-panel").forEach((panel) => panel.classList.remove("active"));
+        const tabBtn = document.querySelector(`.budget-tab[onclick="switchBudgetTab('${budgetActiveTab}')"]`);
+        if (tabBtn) tabBtn.classList.add("active");
+        const panel = document.getElementById(`budget-tab-${budgetActiveTab}`);
+        if (panel) panel.classList.add("active");
+        renderBudget();
+      }
+
+      function renderBudgetEntryCategory() {
+        const row = document.getElementById("budget-entry-category-row");
+        const typeEl = document.getElementById("budget-entry-type");
+        if (!row || !typeEl) return;
+        const type = String(typeEl.value || "income");
+        if (type !== "outcome") {
+          row.innerHTML = "";
+          return;
+        }
+        const options = (budgetData?.allocations || []).map((bucket) => (
+          `<option value="${escapeHtmlAttr(bucket.id)}">${escapeHtml(bucket.label)}</option>`
+        )).join("");
+        row.innerHTML = `
+          <label>ACCOUNT</label>
+          <select id="budget-entry-bucket" class="search-input matrix-select">${options}</select>
+        `;
+      }
+
+      function buildBudgetEntryList(entries) {
+        if (!entries.length) return `<div class="budget-list-item">No entries yet.</div>`;
+        return entries.map((entry) => {
+          const type = entry.type === "income" ? "INCOME" : "OUTCOME";
+          const bucket = budgetData?.allocations?.find((b) => b.id === entry.bucketId);
+          const bucketLabel = bucket ? ` · ${bucket.label}` : "";
+          return `
+            <div class="budget-list-item">
+              <div class="budget-row"><strong>${escapeHtml(entry.label || type)}</strong><span class="budget-pill">${type}</span></div>
+              <div class="budget-row"><span>${escapeHtml(entry.date || "")}${escapeHtml(bucketLabel)}</span><span>${formatBudgetCurrency(entry.amount)}</span></div>
+            </div>
+          `;
+        }).join("");
+      }
+
+      function renderBudgetSummary() {
+        const today = budgetTodayKey(new Date());
+        const entries = (budgetData?.entries || []).filter((entry) => entry.date === today);
+        const income = entries.filter((e) => e.type === "income").reduce((sum, e) => sum + Number(e.amount || 0), 0);
+        const outcome = entries.filter((e) => e.type === "outcome").reduce((sum, e) => sum + Number(e.amount || 0), 0);
+        const net = income - outcome;
+        const summary = document.getElementById("budget-summary-today");
+        if (!summary) return;
+        summary.innerHTML = `
+          <div class="budget-summary-item"><span>Income Today</span><span>${formatBudgetCurrency(income)}</span></div>
+          <div class="budget-summary-item"><span>Outcomes Today</span><span>${formatBudgetCurrency(outcome)}</span></div>
+          <div class="budget-summary-item"><span>Net</span><span>${formatBudgetCurrency(net)}</span></div>
+        `;
+      }
+
+      function computeNextBillDueDate(bill) {
+        if (!bill?.dueDate) return null;
+        const cadence = String(bill.cadence || "monthly");
+        const base = new Date(`${bill.dueDate}T00:00:00`);
+        if (Number.isNaN(base.getTime())) return null;
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        if (cadence === "one-time") return base >= today ? base : null;
+        let due = new Date(base.getTime());
+        while (due < today) {
+          if (cadence === "weekly") due.setDate(due.getDate() + 7);
+          else if (cadence === "yearly") due.setFullYear(due.getFullYear() + 1);
+          else due.setMonth(due.getMonth() + 1);
+        }
+        return due;
+      }
+
+      function formatBudgetDate(date) {
+        if (!date) return "";
+        try {
+          return new Date(date).toLocaleDateString("en-GB");
+        } catch (_) {
+          return String(date || "");
+        }
+      }
+
+      function renderBudgetUpcomingBills() {
+        const host = document.getElementById("budget-upcoming-bills");
+        if (!host) return;
+        const rows = (budgetData?.bills || []).map((bill) => {
+          const nextDue = computeNextBillDueDate(bill);
+          if (!nextDue) return null;
+          return {
+            id: bill.id,
+            name: bill.name,
+            amount: bill.amount,
+            due: nextDue,
+          };
+        }).filter(Boolean).sort((a, b) => a.due - b.due);
+        if (!rows.length) {
+          host.innerHTML = `<div class="budget-list-item">No upcoming bills.</div>`;
+          return;
+        }
+        host.innerHTML = rows.slice(0, 6).map((row) => `
+          <div class="budget-list-item">
+            <div class="budget-row"><strong>${escapeHtml(row.name || "Bill")}</strong><span>${formatBudgetCurrency(row.amount)}</span></div>
+            <div class="budget-row"><span>Due ${formatBudgetDate(row.due)}</span><span class="budget-pill">UPCOMING</span></div>
+          </div>
+        `).join("");
+      }
+
+      function renderBudgetBillsList() {
+        const host = document.getElementById("budget-bills-list");
+        if (!host) return;
+        if (!budgetData?.bills?.length) {
+          host.innerHTML = `<div class="budget-list-item">No bills yet.</div>`;
+          return;
+        }
+        host.innerHTML = budgetData.bills.map((bill) => {
+          const nextDue = computeNextBillDueDate(bill);
+          return `
+            <div class="budget-list-item">
+              <div class="budget-row"><strong>${escapeHtml(bill.name || "Bill")}</strong><span>${formatBudgetCurrency(bill.amount)}</span></div>
+              <div class="budget-row"><span>${escapeHtml(String(bill.cadence || ""))} · Next ${formatBudgetDate(nextDue || bill.dueDate)}</span>
+                <button class="danger-btn" type="button" onclick="removeBudgetBill('${escapeJsString(bill.id)}')">REMOVE</button>
+              </div>
+            </div>
+          `;
+        }).join("");
+      }
+
+      function renderBudgetEntries() {
+        const host = document.getElementById("budget-entry-list");
+        if (!host) return;
+        const entries = (budgetData?.entries || []).slice().sort((a, b) => {
+          const at = String(a.date || "");
+          const bt = String(b.date || "");
+          if (at === bt) return 0;
+          return at < bt ? 1 : -1;
+        }).slice(0, 12);
+        host.innerHTML = buildBudgetEntryList(entries);
+      }
+
+      function renderBudgetAllocations() {
+        const grid = document.getElementById("budget-allocation-grid");
+        const select = document.getElementById("budget-alloc-bucket");
+        if (select) {
+          select.innerHTML = (budgetData?.allocations || []).map((bucket) => (
+            `<option value="${escapeHtmlAttr(bucket.id)}">${escapeHtml(bucket.label)}</option>`
+          )).join("");
+        }
+        if (!grid) return;
+        grid.innerHTML = (budgetData?.allocations || []).map((bucket) => `
+          <div class="budget-allocation-card">
+            <h4>${escapeHtml(bucket.label)}</h4>
+            <div class="budget-allocation-balance">${formatBudgetCurrency(bucket.balance)}</div>
+            <div class="budget-allocation-percent">${Number(bucket.percent || 0)}% allocation</div>
+          </div>
+        `).join("");
+      }
+
+      function renderBudgetAllocationRules() {
+        const host = document.getElementById("budget-allocation-rules");
+        if (!host) return;
+        host.innerHTML = (budgetData?.allocations || []).map((bucket) => `
+          <div class="budget-list-item">
+            <div class="budget-row">
+              <input class="search-input" style="max-width:180px;" value="${escapeHtmlAttr(bucket.label)}" onchange="updateBudgetAllocationField('${escapeJsString(bucket.id)}','label',this.value)" />
+              <input class="search-input" style="max-width:100px;" type="number" step="1" min="0" value="${escapeHtmlAttr(String(bucket.percent || 0))}" onchange="updateBudgetAllocationField('${escapeJsString(bucket.id)}','percent',this.value)" />
+              <span class="budget-pill">%</span>
+            </div>
+          </div>
+        `).join("");
+      }
+
+      function renderBudget() {
+        if (!budgetData) loadBudgetData();
+        const tabs = ["overview", "allocation"];
+        tabs.forEach((tab) => {
+          const btn = document.querySelector(`.budget-tab[onclick="switchBudgetTab('${tab}')"]`);
+          const panel = document.getElementById(`budget-tab-${tab}`);
+          if (btn) btn.classList.toggle("active", budgetActiveTab === tab);
+          if (panel) panel.classList.toggle("active", budgetActiveTab === tab);
+        });
+        budgetEntryDefaultDate();
+        renderBudgetEntryCategory();
+        renderBudgetSummary();
+        renderBudgetUpcomingBills();
+        renderBudgetBillsList();
+        renderBudgetEntries();
+        renderBudgetAllocations();
+        renderBudgetAllocationRules();
+      }
+
+      function createBudgetId(prefix) {
+        return `${prefix}_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
+      }
+
+      function submitBudgetEntry() {
+        if (!budgetData) loadBudgetData();
+        const dateEl = document.getElementById("budget-entry-date");
+        const typeEl = document.getElementById("budget-entry-type");
+        const labelEl = document.getElementById("budget-entry-label");
+        const amountEl = document.getElementById("budget-entry-amount");
+        const date = String(dateEl?.value || budgetTodayKey(new Date()));
+        const type = String(typeEl?.value || "income");
+        const label = String(labelEl?.value || "").trim();
+        const amount = Number(amountEl?.value || 0);
+        if (!Number.isFinite(amount) || amount <= 0) {
+          themedNotice("Enter a valid amount.");
+          return;
+        }
+        const entry = {
+          id: createBudgetId("budget_entry"),
+          date,
+          type,
+          label: label || (type === "income" ? "Income" : "Outcome"),
+          amount,
+        };
+        if (type === "income") {
+          budgetData.allocations.forEach((bucket) => {
+            bucket.balance += amount * (Number(bucket.percent || 0) / 100);
+          });
+        } else {
+          const bucketId = String(document.getElementById("budget-entry-bucket")?.value || "");
+          entry.bucketId = bucketId;
+          const bucket = budgetData.allocations.find((b) => b.id === bucketId) || budgetData.allocations[0];
+          if (bucket) bucket.balance -= amount;
+        }
+        budgetData.entries.push(entry);
+        saveBudgetData("budget_entry");
+        if (labelEl) labelEl.value = "";
+        if (amountEl) amountEl.value = "";
+        renderBudget();
+      }
+
+      function applyBudgetIncome() {
+        const input = document.getElementById("budget-alloc-income");
+        const amount = Number(input?.value || 0);
+        if (!Number.isFinite(amount) || amount <= 0) {
+          themedNotice("Enter a valid income amount.");
+          return;
+        }
+        budgetData.allocations.forEach((bucket) => {
+          bucket.balance += amount * (Number(bucket.percent || 0) / 100);
+        });
+        budgetData.entries.push({
+          id: createBudgetId("budget_entry"),
+          date: budgetTodayKey(new Date()),
+          type: "income",
+          label: "Allocation Income",
+          amount,
+        });
+        if (input) input.value = "";
+        saveBudgetData("budget_income");
+        renderBudget();
+      }
+
+      function applyBudgetSpend() {
+        const input = document.getElementById("budget-alloc-spend");
+        const amount = Number(input?.value || 0);
+        const bucketId = String(document.getElementById("budget-alloc-bucket")?.value || "");
+        if (!Number.isFinite(amount) || amount <= 0) {
+          themedNotice("Enter a valid spend amount.");
+          return;
+        }
+        const bucket = budgetData.allocations.find((b) => b.id === bucketId) || budgetData.allocations[0];
+        if (bucket) bucket.balance -= amount;
+        budgetData.entries.push({
+          id: createBudgetId("budget_entry"),
+          date: budgetTodayKey(new Date()),
+          type: "outcome",
+          label: bucket ? `Spend: ${bucket.label}` : "Spend",
+          amount,
+          bucketId: bucket?.id || "",
+        });
+        if (input) input.value = "";
+        saveBudgetData("budget_spend");
+        renderBudget();
+      }
+
+      function updateBudgetAllocationField(id, field, value) {
+        if (!budgetData) return;
+        const bucket = budgetData.allocations.find((b) => b.id === id);
+        if (!bucket) return;
+        if (field === "label") bucket.label = String(value || "").trim() || bucket.label;
+        if (field === "percent") bucket.percent = Math.max(0, Number(value || 0));
+        saveBudgetData("budget_alloc");
+        renderBudget();
+      }
+
+      function resetBudgetAllocations() {
+        const defaults = createDefaultBudgetData().allocations;
+        budgetData.allocations = defaults.map((row) => ({
+          ...row,
+          balance: 0,
+        }));
+        saveBudgetData("budget_alloc_reset");
+        renderBudget();
+      }
+
+      function addBudgetBill() {
+        if (!budgetData) loadBudgetData();
+        const name = String(document.getElementById("budget-bill-name")?.value || "").trim();
+        const amount = Number(document.getElementById("budget-bill-amount")?.value || 0);
+        const dueDate = String(document.getElementById("budget-bill-date")?.value || "").trim();
+        const cadence = String(document.getElementById("budget-bill-cadence")?.value || "monthly");
+        const leadDays = Number(document.getElementById("budget-bill-lead")?.value || 0);
+        if (!name || !Number.isFinite(amount) || amount <= 0 || !dueDate) {
+          themedNotice("Enter name, amount, and due date.");
+          return;
+        }
+        budgetData.bills.push({
+          id: createBudgetId("bill"),
+          name,
+          amount,
+          dueDate,
+          cadence,
+          leadDays: Number.isFinite(leadDays) ? Math.max(0, Math.round(leadDays)) : 0,
+        });
+        saveBudgetData("budget_bill");
+        document.getElementById("budget-bill-name").value = "";
+        document.getElementById("budget-bill-amount").value = "";
+        syncBudgetBillReminders();
+        renderBudget();
+      }
+
+      function removeBudgetBill(id) {
+        if (!budgetData) return;
+        budgetData.bills = budgetData.bills.filter((bill) => bill.id !== id);
+        saveBudgetData("budget_bill_remove");
+        syncBudgetBillReminders();
+        renderBudget();
+      }
+
+      function syncBudgetBillReminders() {
+        if (!routineData || !Array.isArray(routineData.reminders)) return;
+        const desired = new Map();
+        (budgetData?.bills || []).forEach((bill) => {
+          const nextDue = computeNextBillDueDate(bill);
+          if (!nextDue) return;
+          const dateKey = localDateKey(nextDue);
+          const when = new Date(`${dateKey}T09:00:00`);
+          const lead = Number.isFinite(Number(bill.leadDays)) ? Number(bill.leadDays) : 0;
+          const notifyOffsets = normalizeReminderNotifyOffsets([0, lead * 1440]);
+          desired.set(`bill:${bill.id}`, {
+            id: `bill:${bill.id}`,
+            when: when.toISOString(),
+            title: `${bill.name} bill`,
+            desc: `${bill.name} due (${formatBudgetCurrency(bill.amount)})`,
+            notifyOffsets,
+            syncToAppleCalendar: true,
+          });
+        });
+        routineData.reminders = (routineData.reminders || []).filter((row) => !String(row?.id || "").startsWith("bill:"));
+        desired.forEach((rem) => routineData.reminders.push(rem));
+        routineData.reminders.sort((a, b) => new Date(a.when).getTime() - new Date(b.when).getTime());
+        saveRoutineData();
       }
 
       function renderRoutineList(period) {
@@ -20655,6 +21099,8 @@
         refreshMissionTaskSelectors();
         loadChecklistItems();
         loadRoutineData();
+        loadBudgetData();
+        syncBudgetBillReminders();
         loadDatawells();
         loadMissionDatawellLinks();
         loadHviLayoutTemplate();

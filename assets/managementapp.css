@@ -5435,8 +5435,111 @@
         border-left: 2px solid var(--notice-grey-border);
         padding-left: 8px;
       }
+      .budget-tabs {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin: 8px 0 16px;
+      }
+      .budget-tab {
+        border: 1px solid var(--terminal-green);
+        background: transparent;
+        color: var(--terminal-green);
+        padding: 8px 14px;
+        font-family: "IBM Plex Mono", monospace;
+        cursor: pointer;
+      }
+      .budget-tab.active {
+        background: var(--terminal-green);
+        color: #050505;
+        box-shadow: 0 0 12px rgba(0, 255, 65, 0.35);
+      }
+      .budget-tab-panel {
+        display: none;
+      }
+      .budget-tab-panel.active {
+        display: block;
+      }
+      .budget-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 16px;
+        margin-bottom: 16px;
+      }
+      .budget-card {
+        border: 1px solid var(--terminal-green);
+        padding: 16px;
+        background: rgba(0, 15, 0, 0.6);
+      }
+      .budget-form-row {
+        display: grid;
+        grid-template-columns: 140px 1fr;
+        gap: 12px;
+        align-items: center;
+        margin-bottom: 10px;
+      }
+      .budget-summary {
+        display: grid;
+        gap: 10px;
+      }
+      .budget-summary-item {
+        display: flex;
+        justify-content: space-between;
+        border: 1px solid rgba(0, 255, 65, 0.2);
+        padding: 8px 10px;
+        background: rgba(0, 8, 0, 0.7);
+      }
+      .budget-list {
+        margin-top: 12px;
+        display: grid;
+        gap: 8px;
+      }
+      .budget-list-item {
+        border: 1px solid rgba(0, 255, 65, 0.2);
+        padding: 8px 10px;
+        background: rgba(0, 8, 0, 0.7);
+        display: grid;
+        gap: 4px;
+      }
+      .budget-list-item .budget-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        align-items: center;
+      }
+      .budget-pill {
+        border: 1px solid var(--terminal-green);
+        padding: 2px 8px;
+        font-size: 12px;
+        text-transform: uppercase;
+        color: var(--terminal-green);
+      }
+      .budget-allocation-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+      }
+      .budget-allocation-card {
+        border: 1px solid rgba(0, 255, 65, 0.35);
+        padding: 12px;
+        background: rgba(0, 12, 0, 0.8);
+      }
+      .budget-allocation-card h4 {
+        margin: 0 0 6px;
+      }
+      .budget-allocation-balance {
+        font-size: 20px;
+      }
+      .budget-allocation-percent {
+        color: var(--term-dim);
+        font-size: 12px;
+      }
       @media (max-width: 1100px) {
         .datawell-grid {
+          grid-template-columns: 1fr;
+        }
+        .budget-grid,
+        .budget-allocation-grid {
           grid-template-columns: 1fr;
         }
       }

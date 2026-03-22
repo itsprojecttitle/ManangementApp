@@ -67,7 +67,7 @@
         }, 2500);
       })();
     </script>
-    <link rel="stylesheet" href="/assets/managementapp.css?v=20260322-repolive34" />
+    <link rel="stylesheet" href="/assets/managementapp.css?v=20260322-repolive35" />
     <link rel="stylesheet" href="/assets/managementapp-draft.css?v=20260316-task-3" />
 
   </head>
@@ -100,9 +100,10 @@
       <button class="nav-btn nav-red" onclick="switchView('journal')">[10] JOURNAL</button>
       <button class="nav-btn nav-red" onclick="switchView('blueprints')">[11] ORACLE</button>
       <button class="nav-btn nav-red" onclick="switchView('books')">[12] BOOKS</button>
-      <button class="nav-btn nav-gray" onclick="switchView('swissknife')">[13] SWISSKNIFE</button>
-      <button class="nav-btn nav-gray" onclick="switchView('terminal-lab')">[14] STUDY TERMINAL</button>
-      <button class="nav-btn nav-gray" onclick="switchView('settings')">[15] SETTINGS</button>
+      <button class="nav-btn nav-gray" onclick="switchView('budget')">[13] BUDGET</button>
+      <button class="nav-btn nav-gray" onclick="switchView('swissknife')">[14] SWISSKNIFE</button>
+      <button class="nav-btn nav-gray" onclick="switchView('terminal-lab')">[15] STUDY TERMINAL</button>
+      <button class="nav-btn nav-gray" onclick="switchView('settings')">[16] SETTINGS</button>
       <div id="nav-hover-desc" class="nav-hover-desc">Hover and hold a button to load description.</div>
     </aside>
 
@@ -444,6 +445,115 @@
           <button class="submit-btn" type="button" onclick="setBookSearch()">SEARCH</button>
         </div>
         <div id="book-grid" class="ops-grid"></div>
+      </div>
+
+      <div id="view-budget" class="view-panel">
+        <h2>// BUDGET CONTROL</h2>
+        <p>Track income, outcomes, bills, and automatic allocation across accounts. Bills can sync reminders to the calendar.</p>
+        <div class="budget-tabs">
+          <button class="budget-tab active" type="button" onclick="switchBudgetTab('overview')">[01] DAILY FLOW</button>
+          <button class="budget-tab" type="button" onclick="switchBudgetTab('allocation')">[02] ACCOUNT SPLITS</button>
+        </div>
+        <div id="budget-tab-overview" class="budget-tab-panel active">
+          <div class="budget-grid">
+            <div class="budget-card">
+              <h3>// QUICK ENTRY</h3>
+              <div class="budget-form-row">
+                <label>DATE</label>
+                <input id="budget-entry-date" class="search-input" type="date" />
+              </div>
+              <div class="budget-form-row">
+                <label>TYPE</label>
+                <select id="budget-entry-type" class="search-input matrix-select" onchange="renderBudgetEntryCategory()">
+                  <option value="income">INCOME</option>
+                  <option value="outcome">OUTCOME</option>
+                </select>
+              </div>
+              <div class="budget-form-row">
+                <label>LABEL</label>
+                <input id="budget-entry-label" class="search-input" type="text" placeholder="e.g. Client payment / Groceries" />
+              </div>
+              <div class="budget-form-row">
+                <label>AMOUNT (£)</label>
+                <input id="budget-entry-amount" class="search-input" type="number" step="0.01" />
+              </div>
+              <div class="budget-form-row" id="budget-entry-category-row"></div>
+              <button class="confirm-btn" type="button" onclick="submitBudgetEntry()">ADD ENTRY</button>
+            </div>
+            <div class="budget-card">
+              <h3>// TODAY SUMMARY</h3>
+              <div id="budget-summary-today" class="budget-summary"></div>
+              <h4>// UPCOMING BILLS</h4>
+              <div id="budget-upcoming-bills" class="budget-list"></div>
+            </div>
+          </div>
+          <div class="budget-grid">
+            <div class="budget-card">
+              <h3>// BILLS</h3>
+              <div class="budget-form-row">
+                <label>NAME</label>
+                <input id="budget-bill-name" class="search-input" type="text" placeholder="e.g. Rent / Phone" />
+              </div>
+              <div class="budget-form-row">
+                <label>AMOUNT (£)</label>
+                <input id="budget-bill-amount" class="search-input" type="number" step="0.01" />
+              </div>
+              <div class="budget-form-row">
+                <label>DUE DATE</label>
+                <input id="budget-bill-date" class="search-input" type="date" />
+              </div>
+              <div class="budget-form-row">
+                <label>CADENCE</label>
+                <select id="budget-bill-cadence" class="search-input matrix-select">
+                  <option value="monthly">MONTHLY</option>
+                  <option value="weekly">WEEKLY</option>
+                  <option value="yearly">YEARLY</option>
+                  <option value="one-time">ONE TIME</option>
+                </select>
+              </div>
+              <div class="budget-form-row">
+                <label>REMINDER (DAYS BEFORE)</label>
+                <input id="budget-bill-lead" class="search-input" type="number" min="0" step="1" value="1" />
+              </div>
+              <button class="confirm-btn" type="button" onclick="addBudgetBill()">ADD BILL</button>
+              <div id="budget-bills-list" class="budget-list"></div>
+            </div>
+            <div class="budget-card">
+              <h3>// RECENT ENTRIES</h3>
+              <div id="budget-entry-list" class="budget-list"></div>
+            </div>
+          </div>
+        </div>
+        <div id="budget-tab-allocation" class="budget-tab-panel">
+          <div class="budget-grid">
+            <div class="budget-card">
+              <h3>// ALLOCATION INPUT</h3>
+              <div class="budget-form-row">
+                <label>INCOME AMOUNT (£)</label>
+                <input id="budget-alloc-income" class="search-input" type="number" step="0.01" />
+              </div>
+              <button class="confirm-btn" type="button" onclick="applyBudgetIncome()">APPLY INCOME SPLIT</button>
+              <div class="budget-form-row" style="margin-top:12px;">
+                <label>SPEND AMOUNT (£)</label>
+                <input id="budget-alloc-spend" class="search-input" type="number" step="0.01" />
+              </div>
+              <div class="budget-form-row">
+                <label>ACCOUNT</label>
+                <select id="budget-alloc-bucket" class="search-input matrix-select"></select>
+              </div>
+              <button class="submit-btn" type="button" onclick="applyBudgetSpend()">APPLY SPEND</button>
+            </div>
+            <div class="budget-card">
+              <h3>// ACCOUNT BALANCES</h3>
+              <div id="budget-allocation-grid" class="budget-allocation-grid"></div>
+            </div>
+          </div>
+          <div class="budget-card">
+            <h3>// ALLOCATION RULES</h3>
+            <div id="budget-allocation-rules" class="budget-list"></div>
+            <button class="submit-btn" type="button" onclick="resetBudgetAllocations()">RESET TO DEFAULT</button>
+          </div>
+        </div>
       </div>
 
       <div id="view-swissknife" class="view-panel">
@@ -1737,7 +1847,7 @@ for i in range(3):
         <div id="lock-meta" class="lock-meta"></div>
       </div>
     </div>
-    <script src="/assets/managementapp.js?v=20260322-repolive34"></script>
+    <script src="/assets/managementapp.js?v=20260322-repolive35"></script>
     <script src="/assets/managementapp-draft.js?v=20260316-swissknife-4k-2"></script>
 
   </body>
