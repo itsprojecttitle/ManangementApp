@@ -945,6 +945,8 @@
       let offlineSyncShadow = null;
       let liveDevBuildVersion = "";
       let liveDevReloadTimerId = 0;
+      let autoSyncTimerId = 0;
+      let autoSyncInFlight = false;
       let runtimeModeFetchPromise = null;
       let runtimeModeState = {
         available: false,
@@ -2617,6 +2619,54 @@
           }
         }
         return { pushed: false, pulled: false, appliedActions: 0 };
+      }
+
+      async function autoSyncWithLiveServer(reason = "auto") {
+        if (autoSyncInFlight) return;
+        if (!isNativeRuntime()) return;
+        const plugin = getRuntimeModePlugin();
+        if (!plugin?.fetchBackupFromLive) return;
+        autoSyncInFlight = true;
+        try {
+          await refreshRuntimeModeState(true);
+          if (!runtimeModeState?.remoteCapable) return;
+          const pendingCount = pendingWorkspaceSyncCount();
+          if (pendingCount > 0 && typeof plugin.pushBackupToLive === "function") {
+            const payload = collectAppBackupPayload();
+            const pushResult = await plugin.pushBackupToLive({ payload });
+            if (!pushResult?.ok) {
+              throw new Error(pushResult?.error || "Auto push failed.");
+            }
+            offlineSyncQueue = [];
+            saveOfflineSyncQueue();
+            recordSyncCenterEvent("iphone_auto_push", {
+              message: `Auto-pushed ${pendingCount} queued action(s) to Mac (${reason}).`,
+            });
+          }
+          const backup = await plugin.fetchBackupFromLive();
+          const pulled = replaceOfflineWorkspaceFromBackupPayload(backup);
+          if (pulled) {
+            recordSyncCenterEvent("iphone_auto_pull", {
+              message: `Auto-pulled Mac workspace (${reason}).`,
+            });
+          }
+        } catch (e) {
+          recordSyncCenterEvent("iphone_auto_sync_failed", {
+            message: `Auto-sync failed (${reason}): ${e?.message || "Unknown error"}`,
+          });
+        } finally {
+          autoSyncInFlight = false;
+        }
+      }
+
+      function startAutoSyncLoop() {
+        if (!isNativeRuntime()) return;
+        if (autoSyncTimerId) return;
+        autoSyncWithLiveServer("startup");
+        autoSyncTimerId = setInterval(() => autoSyncWithLiveServer("interval"), 60000);
+        document.addEventListener("visibilitychange", () => {
+          if (!document.hidden) autoSyncWithLiveServer("foreground");
+        });
       }
 
       function triggerImportBackupPicker() {
@@ -20456,6 +20506,7 @@
             regs.forEach((r) => r.unregister());
           }).catch(() => {});
         }
+        startAutoSyncLoop();
         loadOperationColors();
         loadOperationOrder();
         loadViewSortModes();
