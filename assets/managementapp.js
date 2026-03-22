@@ -18414,12 +18414,15 @@
         const rowsHtml = data.map((p, idx) => {
           const status = String(p.Status || "PENDING");
           const statusClass = `mission-link status-${status.toLowerCase().replace(/_/g, "-")}`;
+          const opLabel = p.Operation || p.Probe_ID || "";
+          const missionLabel = p.Mission || p.Platform || "";
+          const descLabel = p.Description || p.Hypothesis || p.Notes || "";
           return `
           <tr data-probe-id="${escapeHtmlAttr(p.Probe_ID || "")}" ondblclick="openBlackbookPopup('${escapeJsString(p.Probe_ID || "")}', ${idx})" title="Double-click to open full entry">
-            <td>${escapeHtml(p.Operation || "")}</td>
-            <td>${escapeHtml(p.Mission || "")}</td>
+            <td>${escapeHtml(opLabel)}</td>
+            <td>${escapeHtml(missionLabel)}</td>
             <td><span class="${statusClass}">${escapeHtml(status)}</span></td>
-            <td>${escapeHtml(p.Description || "")}</td>
+            <td>${escapeHtml(descLabel)}</td>
             <td style="text-align:center;">
               <div class="bb-actions">
                 <button class="bb-delete-btn" onclick="deleteBlackbookFromButton(this)" title="Delete Blackbook Log">X</button>
