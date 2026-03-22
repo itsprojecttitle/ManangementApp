@@ -154,3 +154,24 @@ If localStorage fails, routines hydrate into memory so gym never appears empty.
 - A **new edit introduced a JS syntax error**, which stopped the app from booting.
 - Because the boot fails, **no hydration happens**, so the UI appears empty/frozen.
 - The fix was the syntax correction + cache bump so the fixed JS actually loads.
+
+---
+
+## 12) Incident (2026-03-22) - iPhone Missing All Data
+
+### Symptoms
+- iPhone build launches but **all live data missing**.
+- Mac UI works locally; iPhone shows empty context.
+
+### Root Cause
+- OMNI server was **bound to 127.0.0.1** only:
+  `lsof -nP -iTCP:8099 -sTCP:LISTEN` showed `TCP 127.0.0.1:8099 (LISTEN)`
+- iPhone live build points to `http://192.168.0.10:8099/ManagementApp.html`, but LAN clients cannot reach a loopback-only server.
+
+### Fix
+- Auto-enable LAN bind **when iPhone live mode is configured**.
+- Server now switches to `0.0.0.0` on startup if `capacitor.config.json` has a private LAN host.
+
+### Prevention
+- Keep iPhone live mode configured; server will bind to LAN automatically on launch.
+- If iPhone ever shows empty context again, confirm server is bound to `0.0.0.0` and not `127.0.0.1`.

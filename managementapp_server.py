@@ -346,6 +346,17 @@ def _configured_iphone_live_payload() -> dict:
     }
 
 
+def _should_enable_lan_from_config() -> bool:
+    try:
+        payload = _configured_iphone_live_payload()
+        host = (payload.get("configured_host") or "").strip()
+        if not host:
+            return False
+        return ipaddress.ip_address(host).is_private
+    except Exception:
+        return False
+
+
 def _set_iphone_live_meta(*, action: str = "", error: str = "", summary: str = "") -> None:
     _IPHONE_LIVE_META.update({
         "last_action": str(action or "").strip(),
@@ -3939,6 +3950,8 @@ class Handler(SimpleHTTPRequestHandler):
 
 
 if __name__ == "__main__":
+    if not ALLOW_LAN and _should_enable_lan_from_config():
+        ALLOW_LAN = True
     bind_addr = "0.0.0.0" if ALLOW_LAN else "127.0.0.1"
     server = ThreadingHTTPServer((bind_addr, 8099), Handler)
     if ALLOW_LAN:
