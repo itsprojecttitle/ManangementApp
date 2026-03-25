@@ -2877,6 +2877,16 @@
         background: rgba(255, 204, 0, 0.08);
         padding: 8px;
       }
+      .reminder-calendar-meta {
+        margin-top: 6px;
+        padding: 6px 8px;
+        border: 1px solid rgba(255, 204, 0, 0.35);
+        color: var(--warning-yellow);
+        font-size: 0.78rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        background: rgba(255, 204, 0, 0.08);
+      }
       .reminder-calendar-grid {
         margin-top: 8px;
         display: grid;
@@ -5469,18 +5479,34 @@
       .budget-card {
         border: 1px solid var(--terminal-green);
         padding: 16px;
-        background: rgba(0, 15, 0, 0.6);
+        background: linear-gradient(145deg, rgba(0, 20, 6, 0.7), rgba(0, 6, 0, 0.85));
+        border-radius: 12px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+      }
+      .budget-card h3,
+      .budget-card h4 {
+        margin: 0 0 10px;
+        letter-spacing: 0.06em;
       }
       .budget-form-row {
         display: grid;
-        grid-template-columns: 140px 1fr;
+        grid-template-columns: 130px 1fr;
         gap: 12px;
         align-items: center;
         margin-bottom: 10px;
       }
+      .budget-form-row label {
+        font-size: 12px;
+        text-transform: uppercase;
+        color: var(--term-dim);
+        letter-spacing: 0.12em;
+      }
       .budget-summary {
         display: grid;
         gap: 10px;
+      }
+      .budget-summary-compact {
+        margin-bottom: 10px;
       }
       .budget-summary-item {
         display: flex;
@@ -5488,6 +5514,7 @@
         border: 1px solid rgba(0, 255, 65, 0.2);
         padding: 8px 10px;
         background: rgba(0, 8, 0, 0.7);
+        border-radius: 8px;
       }
       .budget-list {
         margin-top: 12px;
@@ -5500,12 +5527,16 @@
         background: rgba(0, 8, 0, 0.7);
         display: grid;
         gap: 4px;
+        border-radius: 8px;
       }
       .budget-list-item .budget-row {
         display: flex;
         justify-content: space-between;
         gap: 12px;
         align-items: center;
+      }
+      .budget-list-item .budget-row span:first-child {
+        color: var(--term-dim);
       }
       .budget-pill {
         border: 1px solid var(--terminal-green);

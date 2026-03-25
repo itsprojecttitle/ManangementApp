@@ -6,7 +6,7 @@
       let currentView = "dashboard";
       let viewHistoryStack = [];
       let suppressViewHistory = false;
-      const OFFLINE_ONLY = false;
+      const OFFLINE_ONLY = true;
       let selectedOperation = null;
       let allMissions = [];
       let allOps = [];
@@ -229,7 +229,7 @@
       const NOTIFICATION_ENGINE_INTERVAL_MS = 60 * 1000;
       let OMNI_APP_VERSION_BASE = "0.0.0";
       let OMNI_APP_BUILD_LABEL = "";
-      let OMNI_APP_VERSION_LABEL = "OMNI v0.0.0";
+      let OMNI_APP_VERSION_LABEL = "OMNIMAN v0.0.0";
       const OMNI_APP_VERSION_KEY = "omniAppVersion";
       const OMNI_APP_BUILD_KEY = "omniAppBuild";
       const OMNI_SAFE_MODE_KEY = "omniSafeMode:v1";
@@ -319,7 +319,7 @@
           themedNotice("No issue log entries to copy.");
           return;
         }
-        const result = await copyTextWithFallback(text, "OMNI ISSUE LOG");
+        const result = await copyTextWithFallback(text, "OMNIMAN ISSUE LOG");
         themedNotice(result === "manual" ? "Clipboard blocked. Manual copy view opened." : "Issue log copied.");
       }
 
@@ -877,14 +877,14 @@
         const storedBuild = localStorage.getItem(OMNI_APP_BUILD_KEY);
         let versionLabel = localStorage.getItem(OMNI_APP_VERSION_KEY) || "";
         if (storedBuild !== OMNI_APP_BUILD_LABEL || !versionLabel) {
-          const parts = String(versionLabel || "").replace(/^OMNI\s+v/i, "").split(".");
+          const parts = String(versionLabel || "").replace(/^OMNIMAN\s+v/i, "").split(".");
           const currentPatch = Number(parts[parts.length - 1]) || 0;
           const nextPatch = currentPatch + 1;
-          versionLabel = `OMNI v${OMNI_APP_VERSION_BASE}.${nextPatch}`;
+          versionLabel = `OMNIMAN v${OMNI_APP_VERSION_BASE}.${nextPatch}`;
           localStorage.setItem(OMNI_APP_VERSION_KEY, versionLabel);
           localStorage.setItem(OMNI_APP_BUILD_KEY, OMNI_APP_BUILD_LABEL);
         }
-        OMNI_APP_VERSION_LABEL = versionLabel || `OMNI v${OMNI_APP_VERSION_BASE}.1`;
+        OMNI_APP_VERSION_LABEL = versionLabel || `OMNIMAN v${OMNI_APP_VERSION_BASE}.1`;
         if (versionEl) versionEl.textContent = OMNI_APP_VERSION_LABEL;
         if (currentView === "settings") renderSyncCenter();
       }
@@ -1343,11 +1343,11 @@
           const cred = await navigator.credentials.create({
             publicKey: {
               challenge,
-              rp: { name: "OMNI" },
+              rp: { name: "OMNIMAN" },
               user: {
                 id: userId,
                 name: "omni-user",
-                displayName: "OMNI User",
+                displayName: "OMNIMAN User",
               },
               pubKeyCredParams: [
                 { type: "public-key", alg: -7 },
@@ -2179,7 +2179,7 @@
         const localSnapshot = buildLocalSnapshot(ls);
         return {
           meta: {
-            app: "OMNI",
+            app: "OMNIMAN",
             version: "backup-v2",
             exported_at: new Date().toISOString(),
             origin: window.location.origin,
@@ -2503,8 +2503,8 @@
           const { file, name, text } = payload && payload.meta ? buildBackupFileFromPayload(payload) : buildBackupFile();
           if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
             await navigator.share({
-              title: "OMNI Backup",
-              text: "OMNI secure backup export",
+              title: "OMNIMAN Backup",
+              text: "OMNIMAN secure backup export",
               files: [file],
             });
             recordSyncCenterEvent("backup_shared", { message: file.name || name });
@@ -2516,7 +2516,7 @@
           recordSyncCenterEvent("backup_exported", { message: name });
           if (currentView === "settings") renderSyncCenter();
           themedNotice(hasDesktopBridge()
-            ? "Share not available. Backup saved to Downloads/OMNI Exports."
+            ? "Share not available. Backup saved to Downloads/OMNIMAN Exports."
             : "Share not available. Backup downloaded instead.");
         } catch (e) {
           themedNotice("Share cancelled or failed.");
@@ -2563,118 +2563,15 @@
       }
 
       async function syncWorkspaceWithLiveServerOnPhone(plugin, targetMode) {
-        const target = String(targetMode || "").trim().toLowerCase();
-        if (!plugin) return { pushed: false, pulled: false, appliedActions: 0 };
-        const canPush = typeof plugin.pushBackupToLive === "function";
-        const canPull = typeof plugin.fetchBackupFromLive === "function";
-        if (target === "live") {
-          let pushed = false;
-          let appliedActions = 0;
-          if (pendingWorkspaceSyncCount() > 0 && canPush) {
-            const payload = collectAppBackupPayload();
-            const pushResult = await plugin.pushBackupToLive({ payload });
-            if (!pushResult?.ok) {
-              throw new Error(pushResult?.error || "Workspace merge into Mac failed.");
-            }
-            offlineSyncQueue = [];
-            saveOfflineSyncQueue();
-            pushed = true;
-            appliedActions = Number(pushResult?.summary?.applied_actions || 0);
-            recordSyncCenterEvent("iphone_workspace_push", {
-              message: `Phone workspace merged into Mac: ${appliedActions} action(s).`,
-            });
-            if (Array.isArray(pushResult?.conflicts) && pushResult.conflicts.length) {
-              recordSyncCenterEvent("iphone_workspace_conflicts", {
-                message: `Manual conflicts: ${pushResult.conflicts.length} file(s) require review on Mac.`,
-                conflicts: pushResult.conflicts,
-              });
-            }
-          }
-          let pulled = false;
-          if (canPull) {
-            try {
-              const backup = await plugin.fetchBackupFromLive();
-              pulled = replaceOfflineWorkspaceFromBackupPayload(backup);
-              if (pulled) {
-                recordSyncCenterEvent("iphone_workspace_pull", {
-                  message: pushed
-                    ? "Phone cached the merged Mac workspace before live mode."
-                    : "Phone cached the current Mac workspace before live mode.",
-                });
-              }
-            } catch (e) {
-              recordSyncCenterEvent("iphone_workspace_pull_failed", {
-                message: `Workspace cache pull skipped: ${e?.message || "Unknown error"}`,
-              });
-            }
-          }
-          return { pushed, pulled, appliedActions };
-        }
-        if (target === "bundled" && canPull) {
-          try {
-            const backup = await plugin.fetchBackupFromLive();
-            const pulled = replaceOfflineWorkspaceFromBackupPayload(backup);
-            if (pulled) {
-              recordSyncCenterEvent("iphone_workspace_pull", {
-                message: "Phone cached the latest Mac workspace before bundled mode.",
-              });
-            }
-            return { pushed: false, pulled, appliedActions: 0 };
-          } catch (e) {
-            recordSyncCenterEvent("iphone_workspace_pull_failed", {
-              message: `Bundled cache refresh skipped: ${e?.message || "Unknown error"}`,
-            });
-          }
-        }
         return { pushed: false, pulled: false, appliedActions: 0 };
       }
 
       async function autoSyncWithLiveServer(reason = "auto") {
-        if (autoSyncInFlight) return;
-        if (!isNativeRuntime()) return;
-        const plugin = getRuntimeModePlugin();
-        if (!plugin?.fetchBackupFromLive) return;
-        autoSyncInFlight = true;
-        try {
-          await refreshRuntimeModeState(true);
-          if (!runtimeModeState?.remoteCapable) return;
-          const pendingCount = pendingWorkspaceSyncCount();
-          if (pendingCount > 0 && typeof plugin.pushBackupToLive === "function") {
-            const payload = collectAppBackupPayload();
-            const pushResult = await plugin.pushBackupToLive({ payload });
-            if (!pushResult?.ok) {
-              throw new Error(pushResult?.error || "Auto push failed.");
-            }
-            offlineSyncQueue = [];
-            saveOfflineSyncQueue();
-            recordSyncCenterEvent("iphone_auto_push", {
-              message: `Auto-pushed ${pendingCount} queued action(s) to Mac (${reason}).`,
-            });
-          }
-          const backup = await plugin.fetchBackupFromLive();
-          const pulled = replaceOfflineWorkspaceFromBackupPayload(backup);
-          if (pulled) {
-            recordSyncCenterEvent("iphone_auto_pull", {
-              message: `Auto-pulled Mac workspace (${reason}).`,
-            });
-          }
-        } catch (e) {
-          recordSyncCenterEvent("iphone_auto_sync_failed", {
-            message: `Auto-sync failed (${reason}): ${e?.message || "Unknown error"}`,
-          });
-        } finally {
-          autoSyncInFlight = false;
-        }
+        return;
       }
 
       function startAutoSyncLoop() {
-        if (!isNativeRuntime()) return;
-        if (autoSyncTimerId) return;
-        autoSyncWithLiveServer("startup");
-        autoSyncTimerId = setInterval(() => autoSyncWithLiveServer("interval"), 60000);
-        document.addEventListener("visibilitychange", () => {
-          if (!document.hidden) autoSyncWithLiveServer("foreground");
-        });
+        return;
       }
 
       function triggerImportBackupPicker() {
@@ -2740,7 +2637,7 @@
             themedNotice("Backup format not recognized.");
             return;
           }
-          if (!(await themedConfirm("Import this backup and replace current OMNI local data?"))) return;
+          if (!(await themedConfirm("Import this backup and replace current OMNIMAN local data?"))) return;
 
           const projectSyncResult = await importProjectBackupToMac(parsed);
           if (!backupLocalStorage && !backupLocalSnapshot) {
@@ -2953,7 +2850,7 @@
         const counts = currentAppDataCounts();
         const events = (Array.isArray(state.events) ? state.events : []).slice().reverse();
         return [
-          "OMNI // SYNC CENTER REPORT",
+          "OMNIMAN // SYNC CENTER REPORT",
           "",
           `APP: ${OMNI_APP_VERSION_LABEL}`,
           `BUILD: ${OMNI_APP_BUILD_LABEL}`,
@@ -2995,8 +2892,8 @@
         const file = new File([String(text || "")], String(name || "omni-export.txt"), { type: "text/plain" });
         if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
           await navigator.share({
-            title: String(title || "OMNI Export"),
-            text: String(title || "OMNI Export"),
+            title: String(title || "OMNIMAN Export"),
+            text: String(title || "OMNIMAN Export"),
             files: [file],
           });
           return true;
@@ -3038,6 +2935,9 @@
       }
 
       async function refreshRuntimeModeState(force = false) {
+        if (OFFLINE_ONLY) {
+          return setRuntimeModeState(defaultRuntimeModeState());
+        }
         if (!isNativeRuntime()) {
           return setRuntimeModeState(defaultRuntimeModeState());
         }
@@ -3149,7 +3049,7 @@
       function macIphoneServerDetailLabel() {
         const control = String(macIphoneLiveState?.serverControl || "stopped").toLowerCase();
         if (control === "managed") return "Managed by Mac app";
-        if (control === "external") return "External OMNI live server";
+        if (control === "external") return "External OMNIMAN live server";
         return "No live server on port 8099";
       }
 
@@ -3164,7 +3064,7 @@
       async function toggleMacIphoneLiveMode(targetMode) {
         const target = String(targetMode || "").trim().toLowerCase();
         if (!canControlIphoneLiveFromMac()) {
-          themedNotice("Mac iPhone live controls are only available from the Mac version of OMNI.");
+          themedNotice("Mac iPhone live controls are only available from the Mac version of OMNIMAN.");
           return;
         }
         if (target !== "live" && target !== "bundled") {
@@ -6113,7 +6013,7 @@
         }
         try {
           await navigator.share({
-            title: "OMNI AI PACK",
+            title: "OMNIMAN AI PACK",
             text,
           });
         } catch (e) {
@@ -7896,7 +7796,7 @@
             <rect x="336" y="160" width="14" height="62" rx="5" fill="${accent}" opacity="0.72"/>
             <circle cx="210" cy="122" r="40" fill="#0f2617" stroke="${accent}" stroke-width="5"/>
             <path d="M160 304 C188 266, 232 266, 260 304" fill="none" stroke="${accent}" stroke-width="12" stroke-linecap="round"/>
-            <text x="42" y="64" fill="${accent}" font-size="26" font-family="Arial, sans-serif" letter-spacing="2">OMNI OFFLINE</text>
+            <text x="42" y="64" fill="${accent}" font-size="26" font-family="Arial, sans-serif" letter-spacing="2">OMNIMAN OFFLINE</text>
             <text x="42" y="346" fill="#f7f1cc" font-size="22" font-family="Arial, sans-serif">${escapeSvgText(section)}</text>
             <text x="42" y="376" fill="#ffffff" font-size="28" font-family="Arial, sans-serif" font-weight="700">${escapeSvgText(name)}</text>
           </svg>
@@ -10279,7 +10179,7 @@
               <a class="submit-btn" href="${escapeHtmlAttr(target)}" target="_blank" rel="noopener">OPEN IN BROWSER</a>
               <button class="confirm-btn" type="button" onclick="closeDocPopup()">CLOSE</button>
             </div>
-            <div class="routine-ex-note">If the embedded page refuses to load, use OPEN IN BROWSER and then return to OMNI.</div>
+            <div class="routine-ex-note">If the embedded page refuses to load, use OPEN IN BROWSER and then return to OMNIMAN.</div>
             <iframe class="exercise-reference-frame" src="${escapeHtmlAttr(target)}" title="${escapeHtmlAttr(label || "Reference Viewer")}"></iframe>
           </div>
         `;
@@ -10981,6 +10881,17 @@
         return due;
       }
 
+      function computeMonthlyBillAmount(bill) {
+        if (!bill) return 0;
+        const amount = Number(bill.amount || 0);
+        if (!Number.isFinite(amount) || amount <= 0) return 0;
+        const cadence = String(bill.cadence || "monthly");
+        if (cadence === "weekly") return amount * (52 / 12);
+        if (cadence === "yearly") return amount / 12;
+        if (cadence === "one-time") return 0;
+        return amount;
+      }
+
       function formatBudgetDate(date) {
         if (!date) return "";
         try {
@@ -10990,8 +10901,58 @@
         }
       }
 
+      function billOccurrencesInMonth(bill, year, month) {
+        if (!bill?.dueDate) return 0;
+        const cadence = String(bill.cadence || "monthly");
+        const base = new Date(`${bill.dueDate}T00:00:00`);
+        if (Number.isNaN(base.getTime())) return 0;
+        const monthStart = new Date(year, month, 1);
+        const monthEnd = new Date(year, month + 1, 0);
+        monthStart.setHours(0, 0, 0, 0);
+        monthEnd.setHours(23, 59, 59, 999);
+        if (cadence === "one-time") {
+          return (base >= monthStart && base <= monthEnd) ? 1 : 0;
+        }
+        if (cadence === "yearly") {
+          return (base.getMonth() === month) ? 1 : 0;
+        }
+        if (cadence === "monthly") {
+          return 1;
+        }
+        if (cadence === "weekly") {
+          let count = 0;
+          let cursor = new Date(base.getTime());
+          cursor.setHours(0, 0, 0, 0);
+          if (cursor < monthStart) {
+            const diffDays = Math.floor((monthStart - cursor) / (24 * 60 * 60 * 1000));
+            const weeks = Math.floor(diffDays / 7);
+            cursor.setDate(cursor.getDate() + weeks * 7);
+            while (cursor < monthStart) {
+              cursor.setDate(cursor.getDate() + 7);
+            }
+          }
+          while (cursor <= monthEnd) {
+            if (cursor >= monthStart) count += 1;
+            cursor.setDate(cursor.getDate() + 7);
+          }
+          return count;
+        }
+        return 0;
+      }
+
+      function computeBillTotalForMonth(year, month) {
+        const bills = budgetData?.bills || [];
+        return bills.reduce((sum, bill) => {
+          const amount = Number(bill?.amount || 0);
+          if (!Number.isFinite(amount) || amount <= 0) return sum;
+          const occurrences = billOccurrencesInMonth(bill, year, month);
+          return sum + amount * occurrences;
+        }, 0);
+      }
+
       function renderBudgetUpcomingBills() {
         const host = document.getElementById("budget-upcoming-bills");
+        const summary = document.getElementById("budget-upcoming-summary");
         if (!host) return;
         const rows = (budgetData?.bills || []).map((bill) => {
           const nextDue = computeNextBillDueDate(bill);
@@ -11001,8 +10962,15 @@
             name: bill.name,
             amount: bill.amount,
             due: nextDue,
+            monthly: computeMonthlyBillAmount(bill),
           };
         }).filter(Boolean).sort((a, b) => a.due - b.due);
+        if (summary) {
+          const monthlyTotal = rows.reduce((sum, row) => sum + Number(row.monthly || 0), 0);
+          summary.innerHTML = rows.length
+            ? `<div class="budget-summary-item"><span>Monthly Bill Total</span><span>${formatBudgetCurrency(monthlyTotal)}</span></div>`
+            : "";
+        }
         if (!rows.length) {
           host.innerHTML = `<div class="budget-list-item">No upcoming bills.</div>`;
           return;
@@ -13935,6 +13903,8 @@
         if (timeEl && !timeEl.value) timeEl.value = d.toTimeString().slice(0, 5);
         overlay.classList.add("active");
         overlay.setAttribute("aria-hidden", "false");
+        if (!budgetData) loadBudgetData();
+        syncBudgetBillReminders();
         reminderCalendarMonthCursor = new Date(d.getFullYear(), d.getMonth(), 1);
         reminderCalendarSelectedDate = String(dateEl?.value || localDateKey(d) || "").trim();
         applyReminderLeadInputs([0]);
@@ -14075,7 +14045,7 @@
         if (!(await themedConfirm("Are you sure you want to delete this?"))) return;
         if (!routineData) return;
         if (OMNI_PINNED_REMINDER_SPECS.some((spec) => String(spec.id || "") === String(id || ""))) {
-          themedNotice("This reminder is pinned in OMNI and cannot be deleted from the calendar.");
+          themedNotice("This reminder is pinned in OMNIMAN and cannot be deleted from the calendar.");
           return;
         }
         routineData.reminders = (routineData.reminders || []).filter((r) => r.id !== id);
@@ -14107,6 +14077,7 @@
       function renderReminderCalendar() {
         const titleEl = document.getElementById("reminder-calendar-title");
         const gridEl = document.getElementById("reminder-calendar-grid");
+        const billTotalEl = document.getElementById("reminder-calendar-bill-total");
         if (!titleEl || !gridEl || !routineData) return;
 
         const month = reminderCalendarMonthCursor.getMonth();
@@ -14115,6 +14086,10 @@
           month: "long",
           year: "numeric",
         }).toUpperCase();
+        if (billTotalEl) {
+          const total = computeBillTotalForMonth(year, month);
+          billTotalEl.textContent = `BILLS THIS MONTH: ${formatBudgetCurrency(total)}`;
+        }
 
         const first = new Date(year, month, 1);
         const last = new Date(year, month + 1, 0);
@@ -14274,7 +14249,7 @@
         }
         omniCalendarPermission = state;
         if (showNotice && state !== "granted" && state !== "write-only") {
-          themedNotice("Apple Calendar access is not allowed yet. Enable Calendar access for OMNI DEV on iPhone.");
+          themedNotice("Apple Calendar access is not allowed yet. Enable Calendar access for OMNIMAN DEV on iPhone.");
         }
         return state === "granted" || state === "write-only";
       }
@@ -14289,7 +14264,7 @@
         const desc = String(reminder?.desc || "").trim();
         const notes = [
           desc,
-          "Created by OMNI.",
+          "Created by OMNIMAN.",
         ].filter(Boolean).join("\n\n");
         return {
           syncKey: `reminder:${String(reminder?.id || "").trim()}`,
@@ -14966,7 +14941,7 @@
       }
 
       async function clearAppCache() {
-        if (!(await themedConfirm("Clear cached app files now? (Your saved OMNI data will stay.)"))) return;
+        if (!(await themedConfirm("Clear cached app files now? (Your saved OMNIMAN data will stay.)"))) return;
         try {
           if ("caches" in window) {
             const keys = await caches.keys();
@@ -15152,7 +15127,7 @@
         await plugin.schedule({
           notifications: [{
             id: nativeNotificationIdForKey(key),
-            title: "OMNI Test Alert",
+            title: "OMNIMAN Test Alert",
             body: "Phone notifications are active.",
             schedule: { at: new Date(Date.now() + 2000) },
             sound: nativeNotificationSoundName("test"),
@@ -15536,7 +15511,7 @@
             return;
           }
           if (/^uname(?:\s+-a)?$/.test(line)) {
-            stdout.push("OMNI iPhone Sandbox");
+            stdout.push("OMNIMAN iPhone Sandbox");
             return;
           }
           if (/^cd\b/.test(line)) {

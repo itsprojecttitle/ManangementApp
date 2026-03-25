@@ -449,7 +449,7 @@
 
       <div id="view-budget" class="view-panel">
         <h2>// BUDGET CONTROL</h2>
-        <p>Track income, outcomes, bills, and automatic allocation across accounts. Bills can sync reminders to the calendar.</p>
+        <p>Track daily flow, bills, and account splits with a clean offline-first log.</p>
         <div class="budget-tabs">
           <button class="budget-tab active" type="button" onclick="switchBudgetTab('overview')">[01] DAILY FLOW</button>
           <button class="budget-tab" type="button" onclick="switchBudgetTab('allocation')">[02] ACCOUNT SPLITS</button>
@@ -484,6 +484,7 @@
               <h3>// TODAY SUMMARY</h3>
               <div id="budget-summary-today" class="budget-summary"></div>
               <h4>// UPCOMING BILLS</h4>
+              <div id="budget-upcoming-summary" class="budget-summary budget-summary-compact"></div>
               <div id="budget-upcoming-bills" class="budget-list"></div>
             </div>
           </div>
@@ -917,7 +918,7 @@
           </div>
           <div class="settings-card" ondblclick="resetPrivacySettings()">
             <h3>// PRIVACY + ACCESS</h3>
-            <div class="settings-help">Use the existing OMNI lock system as the main privacy layer. Lock on launch and auto-lock on background can both be enabled here.</div>
+            <div class="settings-help">Use the existing OMNIMAN lock system as the main privacy layer. Lock on launch and auto-lock on background can both be enabled here.</div>
             <div class="notify-settings" style="margin-bottom:10px;">
               <label><input id="privacy-lock-on-launch" class="checklist-check" type="checkbox" onchange="savePrivacySettings()" /> LOCK ON LAUNCH</label>
               <label><input id="privacy-auto-lock-bg" class="checklist-check" type="checkbox" onchange="savePrivacySettings()" /> AUTO LOCK ON BACKGROUND</label>
@@ -1693,6 +1694,7 @@ for i in range(3):
               <div id="reminder-calendar-title" class="hvi-calendar-title">CALENDAR</div>
               <button class="confirm-btn" type="button" onclick="shiftReminderCalendarMonth(1)">▶</button>
             </div>
+            <div id="reminder-calendar-bill-total" class="reminder-calendar-meta">BILLS THIS MONTH: £0.00</div>
             <div id="reminder-calendar-grid" class="reminder-calendar-grid"></div>
           </div>
           <div class="reminder-form">
@@ -1806,7 +1808,7 @@ for i in range(3):
 
     <div id="lock-overlay" class="lock-overlay" aria-hidden="true">
       <div class="lock-modal" role="dialog" aria-modal="true" aria-labelledby="lock-title">
-        <h3 id="lock-title" class="lock-title">// OMNI LOCK</h3>
+        <h3 id="lock-title" class="lock-title">// OMNIMAN LOCK</h3>
         <p id="lock-sub" class="lock-sub">Set a Master Key and a private recovery prompt + answer.</p>
 
         <div id="lock-setup-box">

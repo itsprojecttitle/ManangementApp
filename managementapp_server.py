@@ -2320,6 +2320,67 @@ def _find_session(rows, session_id: str):
 
 def swissknife_list_sessions():
     rows = _load_swissknife_sessions()
+    updated = False
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        downloads = row.get("downloads")
+        if isinstance(downloads, list) and downloads:
+            continue
+        session_id = str(row.get("id") or "").strip()
+        if not session_id:
+            continue
+        source = str(row.get("source") or "").strip().lower()
+        remote_path = str(row.get("remote_path") or "").strip()
+        candidates = []
+        if remote_path:
+            candidates.append(Path(remote_path))
+        candidates.append(WORKSPACE / "swissknife_ytdlp" / session_id)
+        candidates.append(WORKSPACE / "swissknife_instagram" / session_id)
+        seen = set()
+        files = []
+        for base in candidates:
+            if not base or not base.exists() or not base.is_dir():
+                continue
+            key = str(base.resolve())
+            if key in seen:
+                continue
+            seen.add(key)
+            for root, _, filenames in os.walk(base):
+                for name in filenames:
+                    ext = name.lower().rsplit(".", 1)[-1] if "." in name else ""
+                    if ext not in {
+                        "mp4", "mov", "mkv", "webm",
+                        "mp3", "m4a", "wav",
+                        "jpg", "jpeg", "png", "webp", "gif"
+                    }:
+                        continue
+                    path = Path(root) / name
+                    try:
+                        stat = path.stat()
+                    except Exception:
+                        continue
+                    files.append((path, stat.st_mtime))
+            if files and (not remote_path or not Path(remote_path).exists()):
+                row["remote_path"] = str(base.resolve())
+                updated = True
+        if not files:
+            continue
+        files.sort(key=lambda x: x[1], reverse=True)
+        downloads = []
+        for path, mtime in files[:120]:
+            downloads.append({
+                "downloaded_at": datetime.fromtimestamp(mtime, tz=timezone.utc).isoformat(),
+                "output_path": str(path),
+                "file_count": 1,
+                "source": source or "local",
+                "shortcode": path.stem,
+                "owner_username": "",
+            })
+        row["downloads"] = downloads
+        updated = True
+    if updated:
+        _save_swissknife_sessions(rows)
     rows.sort(key=lambda r: str((r or {}).get("created_at", "")), reverse=True)
     return rows
 

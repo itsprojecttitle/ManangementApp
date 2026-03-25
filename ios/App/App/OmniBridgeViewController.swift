@@ -10,7 +10,7 @@ class OmniBridgeViewController: CAPBridgeViewController {
 
     private let runtimeModeOverrideKey = "OMNIRuntimeModeOverride"
     private let bundledEntryPage = "ManagementApp.html"
-    private let offlineOnly = false
+    private let offlineOnly = true
 
     override open func capacitorDidLoad() {
         bridge?.registerPluginType(OmniCalendarPlugin.self)
