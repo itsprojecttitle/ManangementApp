@@ -4886,6 +4886,12 @@
         letter-spacing: 0.12em;
         color: var(--term-dim);
       }
+      .swissknife-preview-fallback {
+        font-size: 0.7rem;
+        letter-spacing: 0.12em;
+        color: var(--term-dim);
+        text-transform: uppercase;
+      }
       .swissknife-recent-card:hover {
         border-color: var(--term-green);
         background: rgba(0, 255, 65, 0.06);

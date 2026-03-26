@@ -6352,14 +6352,14 @@
           const path = d?.download_dir || d?.manifest?.download_dir || "";
           const openPath = pickSwissknifeFilePath(d);
           const source = d?.source ? `Source: ${String(d.source).toUpperCase()}` : "";
-          const clickAttr = openPath ? `onclick="openSwissknifePath('${escapeJsString(openPath)}')"` : "";
-          const preview = buildSwissknifePreview(d);
+          const clickAttr = openPath ? `onclick="openSwissknifePath('${escapeJsString(openPath)}')" ondblclick="openSwissknifePath('${escapeJsString(openPath)}')"` : "";
+          const preview = buildSwissknifePreview(d) || buildSwissknifePreviewFallback();
           const statusClass = idx === 0 ? "recent-latest" : (idx === 1 ? "recent-previous" : "recent-older");
           const badge = fileKind(openPath);
           const sourceLabel = swissknifeSourceLabel(d);
           const sourceId = swissknifeSourceId(d);
           const sourceUrl = swissknifeSourceUrl(d);
-          const sourceMeta = sourceId ? `${sourceLabel} ID: ${sourceId}` : sourceLabel;
+          const sourceMeta = sourceId ? `${sourceLabel} ID: ${sourceId}` : `${sourceLabel} ID: N/A`;
           const linkBtn = sourceUrl
             ? `<button class="submit-btn budget-mini-btn swissknife-link-btn" type="button" onclick="event.stopPropagation(); openExternalDocumentUrl('${escapeJsString(sourceUrl)}')">OPEN LINK</button>`
             : "";
@@ -6427,9 +6427,9 @@
           const sourceLabel = swissknifeSourceLabel(d);
           const sourceId = swissknifeSourceId(d);
           const sourceUrl = swissknifeSourceUrl(d);
-          const sourceMeta = sourceId ? `${sourceLabel} ID: ${sourceId}` : sourceLabel;
-          const clickAttr = openPath ? `onclick="openSwissknifePath('${escapeJsString(openPath)}')"` : "";
-          const preview = buildSwissknifePreview(d);
+          const sourceMeta = sourceId ? `${sourceLabel} ID: ${sourceId}` : `${sourceLabel} ID: N/A`;
+          const clickAttr = openPath ? `onclick="openSwissknifePath('${escapeJsString(openPath)}')" ondblclick="openSwissknifePath('${escapeJsString(openPath)}')"` : "";
+          const preview = buildSwissknifePreview(d) || buildSwissknifePreviewFallback();
           const linkBtn = sourceUrl
             ? `<button class="submit-btn budget-mini-btn swissknife-link-btn" type="button" onclick="event.stopPropagation(); openExternalDocumentUrl('${escapeJsString(sourceUrl)}')">OPEN LINK</button>`
             : "";
@@ -6476,12 +6476,16 @@
         const url = filePathToUrl(openPath);
         const ext = (openPath.split(".").pop() || "").toLowerCase();
         if (["png", "jpg", "jpeg", "gif", "webp"].includes(ext)) {
-          return `<div class="swissknife-recent-preview"><img src="${escapeHtmlAttr(url)}" alt="preview" /></div>`;
+          return `<div class="swissknife-recent-preview"><img src="${escapeHtmlAttr(url)}" alt="preview" loading="lazy" decoding="async" /></div>`;
         }
         if (["mp4", "mov", "webm", "mkv"].includes(ext)) {
-          return `<div class="swissknife-recent-preview"><video src="${escapeHtmlAttr(url)}" muted playsinline preload="metadata"></video></div>`;
+          return `<div class="swissknife-recent-preview"><video src="${escapeHtmlAttr(url)}" muted playsinline preload="none"></video></div>`;
         }
         return `<div class="swissknife-recent-preview swissknife-audio-preview">AUDIO</div>`;
+      }
+
+      function buildSwissknifePreviewFallback() {
+        return `<div class="swissknife-recent-preview swissknife-preview-fallback">NO PREVIEW</div>`;
       }
 
       function filePathToUrl(path) {

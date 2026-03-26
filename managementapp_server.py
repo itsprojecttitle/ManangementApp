@@ -80,6 +80,7 @@ RATE_LIMIT_WINDOW_SEC = 60
 RATE_LIMIT_API_GET = 240
 RATE_LIMIT_API_MUTATE = 90
 RATE_LIMIT_STATIC = 300
+RATE_LIMIT_FILE = 100000
 BLOCKED_UA_PATTERNS = (
     "curl/",
     "wget/",
@@ -3606,7 +3607,10 @@ class Handler(SimpleHTTPRequestHandler):
 
         client_ip = self._client_ip()
         if is_api:
-            limit = RATE_LIMIT_API_GET if method == "GET" else RATE_LIMIT_API_MUTATE
+            if path == "/api/system/file":
+                limit = RATE_LIMIT_FILE
+            else:
+                limit = RATE_LIMIT_API_GET if method == "GET" else RATE_LIMIT_API_MUTATE
         else:
             limit = RATE_LIMIT_STATIC
         if not _record_and_check_rate_limit(client_ip, limit):

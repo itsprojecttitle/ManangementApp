@@ -1,5 +1,5 @@
 {
-  "saved_at": "2026-03-26T17:17:16.849138+00:00",
+  "saved_at": "2026-03-26T18:12:27.091829+00:00",
   "local_snapshot": {
     "counts": {
       "datawells": 0,
@@ -21802,6 +21802,33 @@
           "kind": "hour",
           "createdAt": "2026-03-26T17:00:01.665Z",
           "dismissedAt": ""
+        },
+        {
+          "id": "h_1774547725718_27734",
+          "key": "break:2026-03-26:Q5:B4",
+          "title": "BREAK START",
+          "message": "Q5/8 break 4/6 is live now (after block 4).",
+          "kind": "break",
+          "createdAt": "2026-03-26T17:55:25.718Z",
+          "dismissedAt": ""
+        },
+        {
+          "id": "h_1774548025720_20337",
+          "key": "hour:2026-03-26:Q5:H3",
+          "title": "HOUR START",
+          "message": "Q5/8 hour 3/3 is live now.",
+          "kind": "hour",
+          "createdAt": "2026-03-26T18:00:25.720Z",
+          "dismissedAt": ""
+        },
+        {
+          "id": "h_1774548025721_57257",
+          "key": "checklist:2026-03-26:164310",
+          "title": "Checklist Pending",
+          "message": "72 item(s) pending. Clean Opencalow | Fix Openclaw",
+          "kind": "checklist",
+          "createdAt": "2026-03-26T18:00:25.721Z",
+          "dismissedAt": ""
         }
       ],
       "fired_notifications": [
@@ -21932,7 +21959,10 @@
         "upcoming:block:2026-03-26:Q5:S2:2026-03-26T16:30:00.000Z",
         "upcoming:block:2026-03-26:Q5:S3:2026-03-26T17:00:00.000Z",
         "break:2026-03-26:Q5:B2",
-        "hour:2026-03-26:Q5:H2"
+        "hour:2026-03-26:Q5:H2",
+        "break:2026-03-26:Q5:B4",
+        "hour:2026-03-26:Q5:H3",
+        "checklist:2026-03-26:164310"
       ],
       "view_sorts": null,
       "operation_colors": null,
@@ -21950,7 +21980,7 @@
     },
     "local_storage_index": {
       "key_count": 17,
-      "bytes": 647129,
+      "bytes": 647421,
       "keys": [
         "missionPlan:2026-03-26",
         "omniAppBuild",
