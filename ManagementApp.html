@@ -716,6 +716,24 @@
                 <h3>// LATEST ACQUISITIONS</h3>
                 <div id="swissknife-recent-downloads" class="swissknife-recent-list">Waiting for input...</div>
               </div>
+              <div class="swissknife-block swissknife-bordered">
+                <h3>// DOWNLOAD HISTORY</h3>
+                <div class="swissknife-history-toolbar">
+                  <input id="swissknife-history-search" class="search-input" type="text" placeholder="Search title, ID, or path..." oninput="renderSwissknifeDownloadHistory()" />
+                  <select id="swissknife-history-source" class="search-input" onchange="renderSwissknifeDownloadHistory()">
+                    <option value="">ALL SOURCES</option>
+                    <option value="instagram">INSTAGRAM</option>
+                    <option value="tiktok">TIKTOK</option>
+                    <option value="youtube">YOUTUBE</option>
+                    <option value="ytdlp">YTDLP</option>
+                    <option value="local">LOCAL</option>
+                    <option value="other">OTHER</option>
+                  </select>
+                  <button class="submit-btn" type="button" onclick="clearSwissknifeHistory()">CLEAR HISTORY</button>
+                </div>
+                <div id="swissknife-history-count" class="swissknife-history-count"></div>
+                <div id="swissknife-history-list" class="swissknife-recent-list">Waiting for input...</div>
+              </div>
             </div>
             <div id="swissknife-view-converter" class="swissknife-view">
               <h2>// UNIVERSAL CONVERTER</h2>

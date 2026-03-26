@@ -4820,6 +4820,18 @@
         display: grid;
         gap: 8px;
       }
+      .swissknife-history-toolbar {
+        display: grid;
+        grid-template-columns: minmax(220px, 1fr) minmax(160px, 220px) auto;
+        gap: 10px;
+        align-items: center;
+        margin-bottom: 10px;
+      }
+      .swissknife-history-count {
+        font-size: 0.75rem;
+        color: var(--term-dim);
+        margin-bottom: 8px;
+      }
       .swissknife-recent-card {
         border: 1px solid var(--term-dim);
         padding: 10px 12px;
@@ -4901,6 +4913,11 @@
         font-size: 0.74rem;
         color: var(--term-dim);
         word-break: break-all;
+      }
+      @media (max-width: 900px) {
+        .swissknife-history-toolbar {
+          grid-template-columns: 1fr;
+        }
       }
       .swissknife-footer {
         grid-column: 1 / -1;

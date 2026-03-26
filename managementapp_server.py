@@ -2424,6 +2424,15 @@ def swissknife_create_session(label: str, source: str = ""):
     return row
 
 
+def swissknife_clear_history():
+    rows = _load_swissknife_sessions()
+    for row in rows:
+        if isinstance(row, dict):
+            row["downloads"] = []
+    _save_swissknife_sessions(rows)
+    return {"ok": True, "sessions": len(rows)}
+
+
 def _ytdlp_quality_height(quality: str) -> str:
     q = str(quality or "").strip().lower()
     if not q:
@@ -3856,6 +3865,12 @@ class Handler(SimpleHTTPRequestHandler):
             except Exception as exc:
                 return _json_response(self, {"error": str(exc)}, 400)
             return _json_response(self, {"ok": True, **result}, 200)
+        if path == "/api/swissknife/history/clear":
+            try:
+                result = swissknife_clear_history()
+            except Exception as exc:
+                return _json_response(self, {"error": str(exc)}, 400)
+            return _json_response(self, result, 200)
 
         if path == "/api/doc/content":
             file_name = body.get("file", "")

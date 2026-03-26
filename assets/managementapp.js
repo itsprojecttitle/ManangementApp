@@ -6236,6 +6236,7 @@
         }
         if (!sel || !list) {
           renderSwissknifeRecentDownloads(Array.isArray(swissknifeSessions) ? swissknifeSessions : []);
+          renderSwissknifeDownloadHistory(Array.isArray(swissknifeSessions) ? swissknifeSessions : []);
           renderSwissknifeLog();
           renderSwissknifeConvertHistory();
           return;
@@ -6288,8 +6289,43 @@
           selectedSwissknifeSession = sel.value || "";
         };
         renderSwissknifeRecentDownloads(sessions);
+        renderSwissknifeDownloadHistory(sessions);
         renderSwissknifeLog();
         renderSwissknifeConvertHistory();
+      }
+
+      function swissknifeDownloadTitle(d) {
+        const direct = String(d?.title || d?.name || d?.video_title || "").trim();
+        if (direct) return direct;
+        const path = String(d?.output_path || d?.file_path || d?.download_path || "").trim();
+        if (path) {
+          const file = path.split("/").pop() || "";
+          if (file) return file.replace(/\.[^.]+$/, "");
+        }
+        return String(d?.shortcode || d?.owner_username || "Download").trim() || "Download";
+      }
+
+      function swissknifeSourceLabel(d) {
+        const src = String(d?.source || "").toLowerCase();
+        if (src.includes("tiktok")) return "TIKTOK";
+        if (src.includes("instagram") || src.includes("insta") || src === "ig") return "INSTAGRAM";
+        if (src.includes("youtube") || src.includes("yt")) return "YOUTUBE";
+        if (src.includes("ytdlp")) return "YTDLP";
+        if (src.includes("local")) return "LOCAL";
+        return src ? src.toUpperCase() : "SOURCE";
+      }
+
+      function swissknifeSourceId(d) {
+        return String(d?.shortcode || d?.owner_username || "").trim();
+      }
+
+      function swissknifeSourceUrl(d) {
+        const direct = String(d?.url || d?.source_url || d?.link || "").trim();
+        if (direct) return direct;
+        const src = swissknifeSourceLabel(d);
+        const code = String(d?.shortcode || "").trim();
+        if (src === "INSTAGRAM" && code) return `https://www.instagram.com/p/${encodeURIComponent(code)}/`;
+        return "";
       }
 
       function renderSwissknifeRecentDownloads(sessions) {
@@ -6302,34 +6338,6 @@
           });
         });
         recent.sort((a, b) => toSortDateMs(b?.downloaded_at || "") - toSortDateMs(a?.downloaded_at || ""));
-        const getTitle = (d) => {
-          const direct = String(d?.title || d?.name || d?.video_title || "").trim();
-          if (direct) return direct;
-          const path = String(d?.output_path || d?.file_path || d?.download_path || "").trim();
-          if (path) {
-            const file = path.split("/").pop() || "";
-            if (file) return file.replace(/\.[^.]+$/, "");
-          }
-          return String(d?.shortcode || d?.owner_username || "Download").trim() || "Download";
-        };
-        const getSourceLabel = (d) => {
-          const src = String(d?.source || "").toLowerCase();
-          if (src.includes("tiktok")) return "TIKTOK";
-          if (src.includes("instagram") || src.includes("insta") || src === "ig") return "INSTAGRAM";
-          if (src.includes("youtube") || src.includes("yt")) return "YOUTUBE";
-          return src ? src.toUpperCase() : "SOURCE";
-        };
-        const getSourceId = (d) => {
-          return String(d?.shortcode || d?.owner_username || "").trim();
-        };
-        const getSourceUrl = (d) => {
-          const direct = String(d?.url || d?.source_url || d?.link || "").trim();
-          if (direct) return direct;
-          const src = getSourceLabel(d);
-          const code = String(d?.shortcode || "").trim();
-          if (src === "INSTAGRAM" && code) return `https://www.instagram.com/p/${encodeURIComponent(code)}/`;
-          return "";
-        };
         const fileKind = (path) => {
           const ext = (String(path || "").split(".").pop() || "").toLowerCase();
           if (["png", "jpg", "jpeg", "gif", "webp"].includes(ext)) return "IMAGE";
@@ -6340,7 +6348,7 @@
           return ext ? ext.toUpperCase() : "FILE";
         };
         const rows = recent.slice(0, 6).map((d, idx) => {
-          const label = getTitle(d);
+          const label = swissknifeDownloadTitle(d);
           const path = d?.download_dir || d?.manifest?.download_dir || "";
           const openPath = pickSwissknifeFilePath(d);
           const source = d?.source ? `Source: ${String(d.source).toUpperCase()}` : "";
@@ -6348,9 +6356,9 @@
           const preview = buildSwissknifePreview(d);
           const statusClass = idx === 0 ? "recent-latest" : (idx === 1 ? "recent-previous" : "recent-older");
           const badge = fileKind(openPath);
-          const sourceLabel = getSourceLabel(d);
-          const sourceId = getSourceId(d);
-          const sourceUrl = getSourceUrl(d);
+          const sourceLabel = swissknifeSourceLabel(d);
+          const sourceId = swissknifeSourceId(d);
+          const sourceUrl = swissknifeSourceUrl(d);
           const sourceMeta = sourceId ? `${sourceLabel} ID: ${sourceId}` : sourceLabel;
           const linkBtn = sourceUrl
             ? `<button class="submit-btn budget-mini-btn swissknife-link-btn" type="button" onclick="event.stopPropagation(); openExternalDocumentUrl('${escapeJsString(sourceUrl)}')">OPEN LINK</button>`
@@ -6372,6 +6380,94 @@
           `;
         }).join("");
         host.innerHTML = rows || "Waiting for input...";
+      }
+
+      function renderSwissknifeDownloadHistory(sessions) {
+        const host = document.getElementById("swissknife-history-list");
+        const countEl = document.getElementById("swissknife-history-count");
+        if (!host) return;
+        const searchEl = document.getElementById("swissknife-history-search");
+        const sourceEl = document.getElementById("swissknife-history-source");
+        const query = String(searchEl?.value || "").trim().toLowerCase();
+        const sourceFilter = String(sourceEl?.value || "").trim().toLowerCase();
+        const all = [];
+        (Array.isArray(sessions) ? sessions : []).forEach((session) => {
+          (Array.isArray(session.downloads) ? session.downloads : []).forEach((d) => {
+            all.push({ ...d, session });
+          });
+        });
+        all.sort((a, b) => toSortDateMs(b?.downloaded_at || "") - toSortDateMs(a?.downloaded_at || ""));
+        const filtered = all.filter((d) => {
+          const source = String(d?.source || "").toLowerCase();
+          if (sourceFilter) {
+            if (sourceFilter === "other") {
+              if (["instagram", "insta", "ig", "tiktok", "youtube", "yt", "ytdlp", "local"].some((k) => source.includes(k))) {
+                return false;
+              }
+            } else if (!source.includes(sourceFilter)) {
+              return false;
+            }
+          }
+          if (!query) return true;
+          const title = swissknifeDownloadTitle(d);
+          const id = swissknifeSourceId(d);
+          const path = String(d?.output_path || d?.download_path || d?.file_path || d?.download_dir || "");
+          const blob = `${title} ${id} ${path} ${source}`.toLowerCase();
+          return blob.includes(query);
+        });
+        if (countEl) countEl.textContent = `Showing ${filtered.length} of ${all.length}`;
+        if (!filtered.length) {
+          host.innerHTML = "No matching downloads.";
+          return;
+        }
+        const rows = filtered.map((d) => {
+          const label = swissknifeDownloadTitle(d);
+          const path = d?.download_dir || d?.manifest?.download_dir || "";
+          const openPath = pickSwissknifeFilePath(d);
+          const sourceLabel = swissknifeSourceLabel(d);
+          const sourceId = swissknifeSourceId(d);
+          const sourceUrl = swissknifeSourceUrl(d);
+          const sourceMeta = sourceId ? `${sourceLabel} ID: ${sourceId}` : sourceLabel;
+          const clickAttr = openPath ? `onclick="openSwissknifePath('${escapeJsString(openPath)}')"` : "";
+          const preview = buildSwissknifePreview(d);
+          const linkBtn = sourceUrl
+            ? `<button class="submit-btn budget-mini-btn swissknife-link-btn" type="button" onclick="event.stopPropagation(); openExternalDocumentUrl('${escapeJsString(sourceUrl)}')">OPEN LINK</button>`
+            : "";
+          return `
+            <div class="swissknife-recent-card" ${clickAttr} title="${escapeHtmlAttr(openPath || "")}">
+              ${preview}
+              <div class="swissknife-recent-info">
+                <div class="swissknife-recent-name">${escapeHtmlAttr(label)}</div>
+                <div class="swissknife-recent-path">${escapeHtmlAttr(path || "No download path recorded.")}</div>
+                <div class="swissknife-recent-meta">
+                  <span>${escapeHtmlAttr(sourceMeta)}</span>
+                  ${linkBtn}
+                </div>
+              </div>
+              <div class="swissknife-status-line">${escapeHtmlAttr(d?.downloaded_at || "")}</div>
+            </div>
+          `;
+        }).join("");
+        host.innerHTML = rows;
+      }
+
+      async function clearSwissknifeHistory() {
+        if (!(await themedConfirm("Clear all download history?"))) return;
+        try {
+          const res = await fetch("/api/swissknife/history/clear", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({}),
+          });
+          if (!res.ok) throw new Error("Failed to clear history");
+          const data = await fetchJsonPath("/api/swissknife/sessions");
+          if (Array.isArray(data)) {
+            applySwissknifeSessionsData(data);
+          }
+          renderSwissknife();
+        } catch (e) {
+          themedNotice("Failed to clear history.");
+        }
       }
 
       function buildSwissknifePreview(download) {
