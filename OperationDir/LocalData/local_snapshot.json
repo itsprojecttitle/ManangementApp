@@ -1,5 +1,5 @@
 {
-  "saved_at": "2026-03-26T18:12:27.091829+00:00",
+  "saved_at": "2026-03-26T18:38:01.424349+00:00",
   "local_snapshot": {
     "counts": {
       "datawells": 0,
@@ -21829,6 +21829,15 @@
           "kind": "checklist",
           "createdAt": "2026-03-26T18:00:25.721Z",
           "dismissedAt": ""
+        },
+        {
+          "id": "h_1774549518683_18071",
+          "key": "break:2026-03-26:Q5:B5",
+          "title": "BREAK START",
+          "message": "Q5/8 break 5/6 is live now (after recovery block 5).",
+          "kind": "break",
+          "createdAt": "2026-03-26T18:25:18.683Z",
+          "dismissedAt": "2026-03-26T18:35:12.250Z"
         }
       ],
       "fired_notifications": [
@@ -21980,7 +21989,7 @@
     },
     "local_storage_index": {
       "key_count": 17,
-      "bytes": 647421,
+      "bytes": 650028,
       "keys": [
         "missionPlan:2026-03-26",
         "omniAppBuild",

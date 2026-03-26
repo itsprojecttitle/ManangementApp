@@ -460,6 +460,11 @@
               <div class="budget-hero-title">
                 <h3>// MONTHLY DASHBOARD</h3>
                 <div class="budget-dashboard-sub" id="budget-dashboard-month">MONTH</div>
+                <div class="budget-month-controls">
+                  <button class="submit-btn budget-mini-btn" type="button" onclick="shiftBudgetMonth(-1)">◀ PREV</button>
+                  <button class="submit-btn budget-mini-btn" type="button" onclick="resetBudgetMonth()">THIS MONTH</button>
+                  <button class="submit-btn budget-mini-btn" type="button" onclick="shiftBudgetMonth(1)">NEXT ▶</button>
+                </div>
               </div>
               <div class="budget-hero-metrics">
                 <div class="budget-meta-card">
@@ -473,6 +478,10 @@
                 <div class="budget-meta-card">
                   <span>Total Balance</span>
                   <strong id="budget-dashboard-balance">£0.00</strong>
+                </div>
+                <div class="budget-meta-card">
+                  <span>Bills Coverage</span>
+                  <strong id="budget-dashboard-coverage">£0.00</strong>
                 </div>
               </div>
             </div>
@@ -509,6 +518,9 @@
                 <h4>// BILLS (NEXT DUE)</h4>
                 <div id="budget-upcoming-summary" class="budget-summary budget-summary-compact"></div>
                 <div id="budget-bills-combined" class="budget-list"></div>
+                <div class="budget-divider"></div>
+                <h4>// TOP LEAKS</h4>
+                <div id="budget-top-leaks" class="budget-list"></div>
               </div>
             </div>
 
@@ -572,6 +584,13 @@
 
             <div class="budget-card budget-card-wide">
               <h4>// ALL ENTRIES (FILTERS)</h4>
+              <div class="budget-filter-chips">
+                <button class="submit-btn budget-mini-btn" type="button" onclick="setBudgetQuickFilter('month')">THIS MONTH</button>
+                <button class="submit-btn budget-mini-btn" type="button" onclick="setBudgetQuickFilter('income')">INCOME</button>
+                <button class="submit-btn budget-mini-btn" type="button" onclick="setBudgetQuickFilter('outcome')">OUTCOME</button>
+                <button class="submit-btn budget-mini-btn danger" type="button" onclick="setBudgetQuickFilter('over')">OVER-BUDGET</button>
+                <button class="submit-btn budget-mini-btn" type="button" onclick="setBudgetQuickFilter('clear')">CLEAR</button>
+              </div>
               <div class="budget-filter-grid">
                 <input id="budget-filter-query" class="search-input" type="text" placeholder="Search label..." oninput="renderBudgetEntryExplorer()" />
                 <select id="budget-filter-type" class="search-input matrix-select" onchange="renderBudgetEntryExplorer()">

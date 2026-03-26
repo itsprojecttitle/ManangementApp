@@ -61,6 +61,8 @@
       let routineData = null;
       let budgetData = null;
       let budgetActiveTab = "overview";
+      let budgetMonthCursor = null;
+      let budgetEntryQuickFilter = "";
       let uiDiagTimer = 0;
       let uiDiagLastError = "";
       let uiDiagLastReportAt = "";
@@ -11021,8 +11023,9 @@
           const bucket = budgetData?.allocations?.find((b) => b.id === entry.bucketId);
           const bucketLabel = bucket ? ` · ${bucket.label}` : "";
           const swatch = bucket?.color ? `<span class="budget-color-dot" style="background:${escapeHtmlAttr(bucket.color)};"></span>` : "";
+          const rowClass = entry.type === "outcome" ? "budget-list-item budget-entry-outcome" : "budget-list-item";
           return `
-            <div class="budget-list-item">
+            <div class="${rowClass}">
               <div class="budget-row">
                 <strong>${escapeHtml(entry.label || type)}</strong>
                 <span class="budget-pill">${type}</span>
@@ -11058,26 +11061,29 @@
         const host = document.getElementById("budget-dashboard-grid");
         const monthEl = document.getElementById("budget-dashboard-month");
         const incomeEl = document.getElementById("budget-dashboard-income");
-        const billTotalEl = document.getElementById("budget-dashboard-bills-total");
+        const coverageEl = document.getElementById("budget-dashboard-coverage");
         if (!host) return;
         ensureAllocationPercents();
-        const monthKey = budgetMonthKey();
+        const monthKey = currentBudgetMonthKey();
         const incomeTotal = computeMonthlyIncomeTotal(monthKey);
         const outcomesByBucket = computeMonthlyOutcomesByBucket(monthKey);
         if (monthEl) {
-          const d = new Date();
+          const d = budgetCursorDate();
           monthEl.textContent = d.toLocaleDateString("en-GB", { month: "long", year: "numeric" }).toUpperCase();
         }
         if (incomeEl) incomeEl.textContent = formatBudgetCurrency(incomeTotal);
-        if (billTotalEl) {
-          const d = new Date();
+        if (coverageEl) {
+          const d = budgetCursorDate();
           const billTotal = computeBillTotalForMonth(d.getFullYear(), d.getMonth());
-          billTotalEl.textContent = formatBudgetCurrency(billTotal);
+          const billsBucket = budgetData?.allocations?.find((b) => String(b.label || "").toLowerCase() === "bills");
+          const billsAlloc = billsBucket ? (incomeTotal * (Number(billsBucket.percent || 0) / 100)) : 0;
+          coverageEl.textContent = `${formatBudgetCurrency(billsAlloc)} / ${formatBudgetCurrency(billTotal)}`;
         }
         host.innerHTML = (budgetData?.allocations || []).map((bucket) => {
           const spent = Number(outcomesByBucket[bucket.id] || 0);
           const allocated = incomeTotal * (Number(bucket.percent || 0) / 100);
           const remaining = allocated - spent;
+          const pct = allocated > 0 ? Math.min(100, Math.max(0, Math.round((spent / allocated) * 100))) : 0;
           return `
             <div class="budget-dash-card">
               <div class="budget-dash-head">
@@ -11085,61 +11091,11 @@
                 <div class="budget-dash-actions">
                   <button class="submit-btn budget-mini-btn" type="button" onclick="editBudgetAllocation('${escapeJsString(bucket.id)}')">EDIT</button>
                   <button class="submit-btn budget-mini-btn danger" type="button" onclick="removeBudgetAllocation('${escapeJsString(bucket.id)}')">REMOVE</button>
+                  <button class="submit-btn budget-mini-btn danger" type="button" onclick="clearBudgetPotHistory('${escapeJsString(bucket.id)}')">CLEAR</button>
                 </div>
               </div>
-              <div class="budget-dash-metric">
-                <div>Allocation</div>
-                <div>${Number(bucket.percent || 0)}%</div>
-              </div>
-              <div class="budget-dash-metric">
-                <div>Allocated</div>
-                <div>${formatBudgetCurrency(allocated)}</div>
-              </div>
-              <div class="budget-dash-metric">
-                <div>Spent</div>
-                <div>${formatBudgetCurrency(spent)}</div>
-              </div>
-              <div class="budget-dash-metric ${remaining < 0 ? "budget-dash-negative" : ""}">
-                <div>Remaining</div>
-                <div>${formatBudgetCurrency(remaining)}</div>
-              </div>
-            </div>
-          `;
-        }).join("");
-      }
-
-      function renderBudgetDashboard() {
-        const host = document.getElementById("budget-dashboard-grid");
-        const monthEl = document.getElementById("budget-dashboard-month");
-        const incomeEl = document.getElementById("budget-dashboard-income");
-        const billTotalEl = document.getElementById("budget-dashboard-bills-total");
-        if (!host) return;
-        ensureAllocationPercents();
-        const monthKey = budgetMonthKey();
-        const incomeTotal = computeMonthlyIncomeTotal(monthKey);
-        const outcomesByBucket = computeMonthlyOutcomesByBucket(monthKey);
-        if (monthEl) {
-          const d = new Date();
-          monthEl.textContent = d.toLocaleDateString("en-GB", { month: "long", year: "numeric" }).toUpperCase();
-        }
-        if (incomeEl) incomeEl.textContent = formatBudgetCurrency(incomeTotal);
-        if (billTotalEl) {
-          const d = new Date();
-          const billTotal = computeBillTotalForMonth(d.getFullYear(), d.getMonth());
-          billTotalEl.textContent = formatBudgetCurrency(billTotal);
-        }
-        host.innerHTML = (budgetData?.allocations || []).map((bucket) => {
-          const spent = Number(outcomesByBucket[bucket.id] || 0);
-          const allocated = incomeTotal * (Number(bucket.percent || 0) / 100);
-          const remaining = allocated - spent;
-          return `
-            <div class="budget-dash-card">
-              <div class="budget-dash-head">
-                <div class="budget-dash-title">${escapeHtml(bucket.label)}</div>
-                <div class="budget-dash-actions">
-                  <button class="submit-btn budget-mini-btn" type="button" onclick="editBudgetAllocation('${escapeJsString(bucket.id)}')">EDIT</button>
-                  <button class="submit-btn budget-mini-btn danger" type="button" onclick="removeBudgetAllocation('${escapeJsString(bucket.id)}')">REMOVE</button>
-                </div>
+              <div class="budget-progress">
+                <div class="budget-progress-bar" style="width:${pct}%;"></div>
               </div>
               <div class="budget-dash-metric">
                 <div>Allocation</div>
@@ -11205,6 +11161,29 @@
         const y = dt.getFullYear();
         const m = String(dt.getMonth() + 1).padStart(2, "0");
         return `${y}-${m}`;
+      }
+
+      function budgetCursorDate() {
+        return budgetMonthCursor ? new Date(budgetMonthCursor) : new Date();
+      }
+
+      function currentBudgetMonthKey() {
+        return budgetMonthKey(budgetCursorDate());
+      }
+
+      function shiftBudgetMonth(delta) {
+        const d = budgetCursorDate();
+        d.setDate(1);
+        d.setMonth(d.getMonth() + Number(delta || 0));
+        budgetMonthCursor = d.toISOString();
+        setBudgetQuickFilter("month");
+        renderBudget();
+      }
+
+      function resetBudgetMonth() {
+        budgetMonthCursor = null;
+        setBudgetQuickFilter("month");
+        renderBudget();
       }
 
       function budgetEntryMonthKey(entry) {
@@ -11358,7 +11337,7 @@
           };
         }).filter(Boolean).sort((a, b) => a.due - b.due);
         if (summary) {
-          const d = new Date();
+          const d = budgetCursorDate();
           const monthlyTotal = computeBillTotalForMonth(d.getFullYear(), d.getMonth());
           summary.innerHTML = (budgetData?.bills || []).length
             ? `<div class="budget-summary-item"><span>This Month Bills Total</span><span>${formatBudgetCurrency(monthlyTotal)}</span></div>`
@@ -11420,6 +11399,16 @@
           if (bucketId && String(e.bucketId || "") !== bucketId) return false;
           if (from && String(e.date || "") < from) return false;
           if (to && String(e.date || "") > to) return false;
+          if (budgetEntryQuickFilter === "over") {
+            const monthKey = currentBudgetMonthKey();
+            const incomeTotal = computeMonthlyIncomeTotal(monthKey);
+            const outcomesByBucket = computeMonthlyOutcomesByBucket(monthKey);
+            const bucket = budgetData?.allocations?.find((b) => b.id === e.bucketId);
+            if (!bucket || e.type !== "outcome") return false;
+            const allocated = incomeTotal * (Number(bucket.percent || 0) / 100);
+            const spent = Number(outcomesByBucket[bucket.id] || 0);
+            if (spent <= allocated) return false;
+          }
           if (query) {
             const blob = `${e.label || ""} ${e.date || ""}`.toLowerCase();
             if (!blob.includes(query)) return false;
@@ -11432,6 +11421,59 @@
           return at < bt ? 1 : -1;
         });
         host.innerHTML = buildBudgetEntryList(entries);
+      }
+
+      function setBudgetQuickFilter(mode) {
+        budgetEntryQuickFilter = String(mode || "");
+        const typeEl = document.getElementById("budget-filter-type");
+        const bucketEl = document.getElementById("budget-filter-bucket");
+        const fromEl = document.getElementById("budget-filter-from");
+        const toEl = document.getElementById("budget-filter-to");
+        if (mode === "month") {
+          const d = budgetCursorDate();
+          const y = d.getFullYear();
+          const m = d.getMonth();
+          const from = new Date(y, m, 1);
+          const to = new Date(y, m + 1, 0);
+          if (fromEl) fromEl.value = localDateKey(from);
+          if (toEl) toEl.value = localDateKey(to);
+        } else if (mode === "income") {
+          if (typeEl) typeEl.value = "income";
+        } else if (mode === "outcome") {
+          if (typeEl) typeEl.value = "outcome";
+        } else if (mode === "clear") {
+          budgetEntryQuickFilter = "";
+          if (typeEl) typeEl.value = "";
+          if (bucketEl) bucketEl.value = "";
+          if (fromEl) fromEl.value = "";
+          if (toEl) toEl.value = "";
+        }
+        renderBudgetEntryExplorer();
+      }
+
+      function renderBudgetTopLeaks() {
+        const host = document.getElementById("budget-top-leaks");
+        if (!host) return;
+        const monthKey = currentBudgetMonthKey();
+        const rows = (budgetData?.entries || []).filter((e) => e.type === "outcome" && budgetEntryMonthKey(e) === monthKey);
+        if (!rows.length) {
+          host.innerHTML = `<div class="budget-list-item">No outgoing this month.</div>`;
+          return;
+        }
+        const totals = {};
+        rows.forEach((e) => {
+          const id = String(e.bucketId || "unknown");
+          totals[id] = (totals[id] || 0) + Number(e.amount || 0);
+        });
+        const leaks = Object.keys(totals).map((id) => {
+          const bucket = budgetData?.allocations?.find((b) => b.id === id);
+          return { id, label: bucket?.label || "Unknown", total: totals[id] };
+        }).sort((a, b) => b.total - a.total).slice(0, 3);
+        host.innerHTML = leaks.map((row, i) => `
+          <div class="budget-list-item">
+            <div class="budget-row"><strong>#${i + 1} ${escapeHtml(row.label)}</strong><span>${formatBudgetCurrency(row.total)}</span></div>
+          </div>
+        `).join("");
       }
 
       function renderBudgetAllocations() {
@@ -11490,6 +11532,7 @@
         renderBudgetAllocations();
         renderBudgetAllocationRules();
         renderBudgetDashboard();
+        renderBudgetTopLeaks();
         const modeSelect = document.getElementById("budget-pot-mode");
         if (modeSelect) modeSelect.value = budgetData?.potInputMode === "percent" ? "percent" : "rating";
         const importanceInput = document.getElementById("budget-new-importance");
@@ -11657,6 +11700,17 @@
         budgetData.allocations = budgetData.allocations.filter((b) => b.id !== id);
         ensureAllocationPercents();
         saveBudgetData("budget_alloc_remove");
+        renderBudget();
+      }
+
+      async function clearBudgetPotHistory(id) {
+        if (!budgetData) return;
+        const bucket = budgetData.allocations.find((b) => b.id === id);
+        const name = bucket?.label || "this pot";
+        const monthKey = budgetMonthKey();
+        if (!(await themedConfirm(`Clear this month's outgoing for ${name}?`))) return;
+        budgetData.entries = (budgetData.entries || []).filter((e) => !(e.type === "outcome" && e.bucketId === id && budgetEntryMonthKey(e) === monthKey));
+        saveBudgetData("budget_pot_clear");
         renderBudget();
       }
 
