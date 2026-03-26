@@ -13,7 +13,7 @@
     "label": "default",
     "day": "2026-03-16",
     "created_at": "2026-03-16T15:03:30",
-    "remote_path": "/Users/samuelapata/Downloads",
+    "remote_path": "/Users/samuelapata/Downloads/Hello",
     "downloads": [
       {
         "downloaded_at": "2026-03-23T20:50:35.639163+00:00",
@@ -974,9 +974,138 @@
         "source": "ytdlp",
         "shortcode": "line-art-simple-trash-can-outline-waste-bin-garbage-icon-vector",
         "owner_username": ""
+      },
+      {
+        "url": "https://www.tiktok.com/@sirjuggy/video/7621170596432416022?lang=en-GB",
+        "downloaded_at": "2026-03-26T17:01:07",
+        "shortcode": "",
+        "owner_username": "",
+        "download_dir": "/Users/samuelapata/Downloads/Hello",
+        "file_count": 1,
+        "manifest": {
+          "files": [
+            "/Users/samuelapata/Downloads/Hello/20260325_7621170596432416022.mp4"
+          ]
+        },
+        "format": "original",
+        "quality": "highest",
+        "source": "ytdlp",
+        "compat_h264": false,
+        "force_4k": false
+      },
+      {
+        "url": "https://www.tiktok.com/@sykosvn/video/7618266772025920790?lang=en-GB",
+        "downloaded_at": "2026-03-26T17:01:10",
+        "shortcode": "",
+        "owner_username": "",
+        "download_dir": "/Users/samuelapata/Downloads/Hello",
+        "file_count": 1,
+        "manifest": {
+          "files": [
+            "/Users/samuelapata/Downloads/Hello/20260317_7618266772025920790.mp4"
+          ]
+        },
+        "format": "original",
+        "quality": "highest",
+        "source": "ytdlp",
+        "compat_h264": false,
+        "force_4k": false
+      },
+      {
+        "url": "https://www.tiktok.com/@400unna/video/7620519035956153603?lang=en-GB",
+        "downloaded_at": "2026-03-26T17:01:13",
+        "shortcode": "",
+        "owner_username": "",
+        "download_dir": "/Users/samuelapata/Downloads/Hello",
+        "file_count": 1,
+        "manifest": {
+          "files": [
+            "/Users/samuelapata/Downloads/Hello/20260323_7620519035956153603.mp4"
+          ]
+        },
+        "format": "original",
+        "quality": "highest",
+        "source": "ytdlp",
+        "compat_h264": false,
+        "force_4k": false
+      },
+      {
+        "url": "https://www.tiktok.com/@csuff2r_/video/7616748144759508246?lang=en-GB",
+        "downloaded_at": "2026-03-26T17:01:15",
+        "shortcode": "",
+        "owner_username": "",
+        "download_dir": "/Users/samuelapata/Downloads/Hello",
+        "file_count": 1,
+        "manifest": {
+          "files": [
+            "/Users/samuelapata/Downloads/Hello/20260313_7616748144759508246.mp4"
+          ]
+        },
+        "format": "original",
+        "quality": "highest",
+        "source": "ytdlp",
+        "compat_h264": false,
+        "force_4k": false
+      },
+      {
+        "url": "https://www.tiktok.com/@vicblaze300/video/7621300694565276950?lang=en-GB",
+        "downloaded_at": "2026-03-26T17:01:20",
+        "shortcode": "",
+        "owner_username": "",
+        "download_dir": "/Users/samuelapata/Downloads/Hello",
+        "file_count": 1,
+        "manifest": {
+          "files": [
+            "/Users/samuelapata/Downloads/Hello/20260325_7621300694565276950.mp4"
+          ]
+        },
+        "format": "original",
+        "quality": "highest",
+        "source": "ytdlp",
+        "compat_h264": false,
+        "force_4k": false
+      },
+      {
+        "url": "https://www.tiktok.com/@jvstnnn2/video/7621259310806568194?lang=en-GB",
+        "downloaded_at": "2026-03-26T17:01:22",
+        "shortcode": "",
+        "owner_username": "",
+        "download_dir": "/Users/samuelapata/Downloads/Hello",
+        "file_count": 1,
+        "manifest": {
+          "files": [
+            "/Users/samuelapata/Downloads/Hello/20260325_7621259310806568194.mp4"
+          ]
+        },
+        "format": "original",
+        "quality": "highest",
+        "source": "ytdlp",
+        "compat_h264": false,
+        "force_4k": false
+      },
+      {
+        "url": "https://www.tiktok.com/@jvstnnn2/video/7618666540841389334?lang=en-GB",
+        "downloaded_at": "2026-03-26T17:01:42",
+        "shortcode": "",
+        "owner_username": "",
+        "download_dir": "/Users/samuelapata/Downloads/Hello",
+        "file_count": 3,
+        "manifest": {
+          "files": [
+            "/Users/samuelapata/Downloads/Hello/20260115_7595658612677086486.mp4",
+            "/Users/samuelapata/Downloads/Hello/20260118_7596837319299190038.mp4",
+            "/Users/samuelapata/Downloads/Hello/20260318_7618666540841389334.mp4"
+          ]
+        },
+        "format": "original",
+        "quality": "highest",
+        "source": "ytdlp",
+        "compat_h264": false,
+        "force_4k": false
       }
     ],
     "source": "ytdlp",
-    "auto": true
+    "auto": true,
+    "last_download_at": "2026-03-26T17:01:42"
   }
 ]

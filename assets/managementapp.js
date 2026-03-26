@@ -5921,12 +5921,22 @@
       function openExternalDocumentUrl(url) {
         const target = normalizeGymCatalogText(url);
         if (!target) return;
-        try {
-          const opened = window.open(target, "_blank", "noopener");
-          if (!opened) window.location.href = target;
-        } catch (e) {
-          window.location.href = target;
-        }
+        fetch("/api/system/open-url", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: target }),
+        }).then((res) => {
+          if (!res.ok) {
+            throw new Error("open-url failed");
+          }
+        }).catch(() => {
+          try {
+            const opened = window.open(target, "_blank", "noopener");
+            if (!opened) window.location.href = target;
+          } catch (e) {
+            window.location.href = target;
+          }
+        });
       }
 
       function getPdfBookmarkPage(fileName) {

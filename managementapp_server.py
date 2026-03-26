@@ -3199,6 +3199,16 @@ def open_system_path(path: str, reveal: bool = False):
     subprocess.run(cmd, check=False)
     return {"ok": True}
 
+def open_system_url(url: str):
+    target = str(url or "").strip()
+    if not target:
+        raise RuntimeError("url is required")
+    parsed = urlparse(target)
+    if parsed.scheme not in ("http", "https"):
+        raise RuntimeError("Only http/https URLs are allowed")
+    subprocess.run(["open", target], check=False)
+    return {"ok": True}
+
 
 def pick_system_folder() -> Dict[str, Any]:
     try:
@@ -3684,6 +3694,14 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._forbidden("Loopback access only")
             try:
                 payload = open_system_path(body.get("path", ""), bool(body.get("reveal", False)))
+            except Exception as exc:
+                return _json_response(self, {"error": str(exc)}, 400)
+            return _json_response(self, payload, 200)
+        if path == "/api/system/open-url":
+            if not self._is_loopback_client():
+                return self._forbidden("Loopback access only")
+            try:
+                payload = open_system_url(body.get("url", ""))
             except Exception as exc:
                 return _json_response(self, {"error": str(exc)}, 400)
             return _json_response(self, payload, 200)
