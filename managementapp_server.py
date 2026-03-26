@@ -2111,6 +2111,11 @@ def save_localdata_payload(payload: dict):
         data = {"saved_at": saved_at, "local_storage": payload.get("local_storage")}
         LOCALDATA_STORAGE_FILE.write_text(json.dumps(data, indent=2), encoding="utf-8")
         summary["files"].append(str(LOCALDATA_STORAGE_FILE))
+        try:
+            write_journal_markdown(payload.get("local_storage") or {})
+            summary["files"].append(str(LOCALDATA_DIR / "journal.md"))
+        except Exception:
+            pass
     if isinstance(payload.get("local_snapshot"), dict):
         data = {"saved_at": saved_at, "local_snapshot": payload.get("local_snapshot")}
         LOCALDATA_SNAPSHOT_FILE.write_text(json.dumps(data, indent=2), encoding="utf-8")
@@ -2119,6 +2124,60 @@ def save_localdata_payload(payload: dict):
         summary["ok"] = False
         summary["error"] = "No local data provided."
     return summary
+
+
+def _safe_text(value: str) -> str:
+    return str(value or "").replace("\r", "").strip()
+
+
+def _format_journal_entry(idx: int, entry: dict) -> str:
+    title = _safe_text(entry.get("title", "Untitled"))
+    at = _safe_text(entry.get("at", ""))
+    desc = _safe_text(entry.get("desc", ""))
+    link = _safe_text(entry.get("link", ""))
+    photo = _safe_text(entry.get("photo", ""))
+    lines = [f"## {idx:02d} — {title}"]
+    if at:
+        lines.append(f"- Date: {at}")
+    if link:
+        lines.append(f"- Link: {link}")
+    if photo:
+        lines.append(f"- Photo: {photo}")
+    if desc:
+        lines.append("")
+        lines.append(desc)
+    return "\n".join(lines)
+
+
+def write_journal_markdown(local_storage: dict):
+    if not isinstance(local_storage, dict):
+        return
+    raw = local_storage.get("routineData:v2") or local_storage.get("routineData:v1")
+    if not raw:
+        return
+    try:
+        routine = json.loads(raw) if isinstance(raw, str) else raw
+    except Exception:
+        return
+    journal = routine.get("journal") if isinstance(routine, dict) else None
+    if not isinstance(journal, list):
+        return
+    entries = list(journal)
+    entries.sort(key=lambda x: str((x or {}).get("at", "")), reverse=True)
+    lines = [
+        "# Journal",
+        f"_Updated: {datetime.now(timezone.utc).isoformat()}_",
+        "",
+    ]
+    if not entries:
+        lines.append("_No entries yet._")
+    else:
+        for i, entry in enumerate(entries, 1):
+            if not isinstance(entry, dict):
+                continue
+            lines.append(_format_journal_entry(i, entry))
+            lines.append("")
+    (LOCALDATA_DIR / "journal.md").write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
 
 
 def load_localdata_payload():
@@ -2334,7 +2393,12 @@ def swissknife_list_sessions():
         remote_path = str(row.get("remote_path") or "").strip()
         candidates = []
         if remote_path:
-            candidates.append(Path(remote_path))
+            try:
+                rp = Path(remote_path).resolve()
+                if _path_within(rp, WORKSPACE / "swissknife_ytdlp") or _path_within(rp, WORKSPACE / "swissknife_instagram"):
+                    candidates.append(rp)
+            except Exception:
+                pass
         candidates.append(WORKSPACE / "swissknife_ytdlp" / session_id)
         candidates.append(WORKSPACE / "swissknife_instagram" / session_id)
         seen = set()

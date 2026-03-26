@@ -14232,10 +14232,10 @@
             progress: journalProgressScore(item),
           })
         );
-        host.innerHTML = rows.map((j) => `
+        host.innerHTML = rows.map((j, idx) => `
           <div class="journal-item">
             <div class="journal-head">
-              <span class="journal-title">${escapeHtmlAttr(j.title)}</span>
+              <span class="journal-title">#${String(idx + 1).padStart(2, "0")} ${escapeHtmlAttr(j.title)}</span>
               <span class="journal-time">${escapeHtmlAttr(formatJournalTime(j.at))}</span>
             </div>
             <div class="journal-desc">${escapeHtmlAttr(j.desc)}</div>

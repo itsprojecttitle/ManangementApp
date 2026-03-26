@@ -637,7 +637,7 @@
           <div class="swissknife-sidebar">
             <button class="swissknife-nav-btn active" type="button" data-view="downloads" onclick="switchSwissknifeView('downloads', this)">[01] DOWNLOADS</button>
             <button class="swissknife-nav-btn" type="button" data-view="converter" onclick="switchSwissknifeView('converter', this)">[02] CONVERTER</button>
-            <button class="swissknife-nav-btn" type="button" data-view="logs" onclick="switchSwissknifeView('logs', this)">[03] LOGS</button>
+            <button class="swissknife-nav-btn" type="button" data-view="history" onclick="switchSwissknifeView('history', this)">[03] HISTORY</button>
             <button class="swissknife-nav-btn" type="button" data-view="settings" onclick="switchSwissknifeView('settings', this)">[04] SETTINGS</button>
             <button class="swissknife-nav-btn" type="button" data-view="simplecanvas" onclick="switchSwissknifeView('simplecanvas', this)">[06] SIMPLECANVAS</button>
           </div>
@@ -716,8 +716,10 @@
                 <h3>// LATEST ACQUISITIONS</h3>
                 <div id="swissknife-recent-downloads" class="swissknife-recent-list">Waiting for input...</div>
               </div>
+            </div>
+            <div id="swissknife-view-history" class="swissknife-view">
+              <h2>// DOWNLOAD HISTORY</h2>
               <div class="swissknife-block swissknife-bordered">
-                <h3>// DOWNLOAD HISTORY</h3>
                 <div class="swissknife-history-toolbar">
                   <input id="swissknife-history-search" class="search-input" type="text" placeholder="Search title, ID, or path..." oninput="renderSwissknifeDownloadHistory()" />
                   <select id="swissknife-history-source" class="search-input" onchange="renderSwissknifeDownloadHistory()">
@@ -856,16 +858,6 @@
                 <canvas id="simplecanvas-canvas"></canvas>
               </div>
               <div id="simplecanvas-status" class="simplecanvas-status">READY.</div>
-            </div>
-            <div id="swissknife-view-logs" class="swissknife-view">
-              <h2>// SWISSKNIFE LOGS</h2>
-              <div class="swissknife-block">
-                <div class="swissknife-inline" style="justify-content:flex-end;">
-                  <button class="submit-btn" type="button" onclick="copySwissknifeLog()">COPY LOG</button>
-                  <button class="submit-btn" type="button" onclick="clearSwissknifeLog()">CLEAR</button>
-                </div>
-                <textarea id="swissknife-log-output" class="swissknife-textarea" rows="10" placeholder="No failures logged yet."></textarea>
-              </div>
             </div>
           </div>
           <div class="swissknife-footer">
