@@ -31,3 +31,43 @@
 * Organization/Affiliation: N/A
 * Painpoint/Need: N/A (Potential for collaboration/engagement)
 * Mission Stage: Potential HVI (T001 Debrief)
+
+## HVI: Netspend
+* Name: Netspend
+* Age: N/A
+* Social Media Handles: N/A
+* Contact Number: N/A
+* Email Address: N/A
+* Organization/Affiliation: N/A
+* Painpoint/Need: N/A (Potential for collaboration/engagement)
+* Mission Stage: Potential HVI (Manual entry)
+
+## HVI: Fakemink
+* Name: Fakemink
+* Age: N/A
+* Social Media Handles: N/A
+* Contact Number: N/A
+* Email Address: N/A
+* Organization/Affiliation: N/A
+* Painpoint/Need: N/A (Potential for collaboration/engagement)
+* Mission Stage: Potential HVI (Manual entry)
+
+## HVI: HStikky Ledbyher
+* Name: HStikky Ledbyher
+* Age: N/A
+* Social Media Handles: N/A
+* Contact Number: N/A
+* Email Address: N/A
+* Organization/Affiliation: N/A
+* Painpoint/Need: N/A (Potential for collaboration/engagement)
+* Mission Stage: Potential HVI (Manual entry)
+
+## HVI: Ed Mathews
+* Name: Ed Mathews
+* Age: N/A
+* Social Media Handles: hstickytokky (Handle)
+* Contact Number: N/A
+* Email Address: N/A
+* Organization/Affiliation: N/A
+* Painpoint/Need: N/A (Potential for collaboration/engagement)
+* Mission Stage: Potential HVI (Manual entry)

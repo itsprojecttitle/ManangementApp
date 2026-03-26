@@ -2125,6 +2125,15 @@
         background-color: var(--term-green);
         color: var(--bg-color);
       }
+      .submit-btn.danger {
+        background: rgba(255, 90, 90, 0.12);
+        color: #ff5a5a;
+        border-color: #ff5a5a;
+      }
+      .submit-btn.danger:hover {
+        background: #ff5a5a;
+        color: var(--bg-color);
+      }
       .bb-actions {
         display: inline-flex;
         align-items: center;
@@ -4820,6 +4829,19 @@
         gap: 12px;
         align-items: center;
         cursor: pointer;
+        position: relative;
+      }
+      .swissknife-file-badge {
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        border: 1px solid var(--term-green);
+        padding: 2px 8px;
+        font-size: 0.7rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--term-green);
+        background: rgba(0, 12, 0, 0.8);
       }
       .swissknife-recent-card.recent-latest {
         border-top: 3px solid var(--term-green);
@@ -4862,6 +4884,18 @@
       }
       .swissknife-recent-name {
         font-weight: 700;
+      }
+      .swissknife-recent-meta {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+        font-size: 0.72rem;
+        color: var(--term-dim);
+      }
+      .swissknife-link-btn {
+        padding: 3px 8px;
+        font-size: 0.68rem;
       }
       .swissknife-recent-path {
         font-size: 0.74rem;
@@ -5451,6 +5485,84 @@
         flex-wrap: wrap;
         margin: 8px 0 16px;
       }
+      .budget-dashboard {
+        margin-bottom: 18px;
+        padding: 16px;
+        border: 1px solid rgba(0, 255, 65, 0.35);
+        background: linear-gradient(140deg, rgba(0, 20, 6, 0.75), rgba(0, 6, 0, 0.85));
+        border-radius: 14px;
+      }
+      .budget-dashboard-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-bottom: 12px;
+      }
+      .budget-dashboard-sub {
+        color: var(--term-dim);
+        letter-spacing: 0.12em;
+        font-size: 0.8rem;
+      }
+      .budget-dashboard-meta {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+      .budget-meta-card {
+        border: 1px solid rgba(0, 255, 65, 0.25);
+        padding: 8px 12px;
+        background: rgba(0, 8, 0, 0.7);
+        border-radius: 10px;
+        min-width: 160px;
+        display: grid;
+        gap: 4px;
+      }
+      .budget-meta-card span {
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--term-dim);
+      }
+      .budget-dashboard-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+        gap: 12px;
+      }
+      .budget-dash-card {
+        border: 1px solid rgba(0, 255, 65, 0.35);
+        padding: 12px;
+        border-radius: 12px;
+        background: rgba(0, 10, 0, 0.75);
+        display: grid;
+        gap: 6px;
+      }
+      .budget-dash-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        align-items: center;
+      }
+      .budget-dash-title {
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+      .budget-dash-actions {
+        display: flex;
+        gap: 6px;
+      }
+      .budget-dash-metric {
+        display: flex;
+        justify-content: space-between;
+        color: var(--term-dim);
+        font-size: 0.85rem;
+      }
+      .budget-dash-negative {
+        color: var(--warning-yellow);
+        font-weight: 700;
+      }
       .budget-tab {
         border: 1px solid var(--terminal-green);
         background: transparent;
@@ -5476,12 +5588,53 @@
         gap: 16px;
         margin-bottom: 16px;
       }
+      .budget-shell {
+        display: grid;
+        gap: 18px;
+      }
+      .budget-hero {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        flex-wrap: wrap;
+        padding: 14px 16px;
+        border: 1px solid rgba(0, 255, 65, 0.3);
+        background: linear-gradient(135deg, rgba(0, 16, 6, 0.7), rgba(0, 6, 0, 0.9));
+        border-radius: 12px;
+      }
+      .budget-hero-title h3 {
+        margin: 0 0 6px;
+      }
+      .budget-hero-metrics {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+      .budget-hero-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+        gap: 16px;
+      }
+      .budget-rail {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 16px;
+      }
+      .budget-card-wide {
+        grid-column: 1 / -1;
+      }
+      .budget-divider {
+        height: 1px;
+        background: rgba(0, 255, 65, 0.15);
+        margin: 12px 0;
+      }
       .budget-card {
         border: 1px solid var(--terminal-green);
         padding: 16px;
-        background: linear-gradient(145deg, rgba(0, 20, 6, 0.7), rgba(0, 6, 0, 0.85));
+        background: linear-gradient(145deg, rgba(0, 18, 6, 0.68), rgba(0, 6, 0, 0.88));
         border-radius: 12px;
-        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+        box-shadow: 0 8px 22px rgba(0, 0, 0, 0.3);
       }
       .budget-card h3,
       .budget-card h4 {
@@ -5494,6 +5647,18 @@
         gap: 12px;
         align-items: center;
         margin-bottom: 10px;
+      }
+      .budget-toggle-row {
+        margin: 10px 0;
+      }
+      .budget-toggle-label {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.8rem;
+        color: var(--term-dim);
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
       }
       .budget-form-row label {
         font-size: 12px;
@@ -5535,6 +5700,27 @@
         gap: 12px;
         align-items: center;
       }
+      .budget-color-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+        display: inline-block;
+        margin-right: 6px;
+        border: 1px solid rgba(0, 0, 0, 0.4);
+      }
+      .budget-color-input {
+        max-width: 90px;
+        padding: 0;
+        height: 34px;
+      }
+      .budget-entry-meta {
+        font-size: 0.7rem;
+        color: var(--term-dim);
+      }
+      .budget-entry-actions {
+        display: flex;
+        gap: 6px;
+      }
       .budget-list-item .budget-row span:first-child {
         color: var(--term-dim);
       }
@@ -5544,6 +5730,16 @@
         font-size: 12px;
         text-transform: uppercase;
         color: var(--terminal-green);
+      }
+      .budget-mini-btn {
+        padding: 4px 8px;
+        font-size: 0.7rem;
+      }
+      .budget-filter-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        gap: 10px;
+        margin-bottom: 10px;
       }
       .budget-allocation-grid {
         display: grid;
@@ -5570,6 +5766,8 @@
           grid-template-columns: 1fr;
         }
         .budget-grid,
+        .budget-hero-grid,
+        .budget-rail,
         .budget-allocation-grid {
           grid-template-columns: 1fr;
         }

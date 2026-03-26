@@ -2348,12 +2348,9 @@ def swissknife_list_sessions():
             seen.add(key)
             for root, _, filenames in os.walk(base):
                 for name in filenames:
-                    ext = name.lower().rsplit(".", 1)[-1] if "." in name else ""
-                    if ext not in {
-                        "mp4", "mov", "mkv", "webm",
-                        "mp3", "m4a", "wav",
-                        "jpg", "jpeg", "png", "webp", "gif"
-                    }:
+                    if name.startswith("."):
+                        continue
+                    if name.lower().endswith(".part"):
                         continue
                     path = Path(root) / name
                     try:

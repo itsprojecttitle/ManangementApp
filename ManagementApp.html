@@ -451,108 +451,177 @@
         <h2>// BUDGET CONTROL</h2>
         <p>Track daily flow, bills, and account splits with a clean offline-first log.</p>
         <div class="budget-tabs">
-          <button class="budget-tab active" type="button" onclick="switchBudgetTab('overview')">[01] DAILY FLOW</button>
-          <button class="budget-tab" type="button" onclick="switchBudgetTab('allocation')">[02] ACCOUNT SPLITS</button>
+          <button class="budget-tab active" type="button" onclick="switchBudgetTab('overview')">[01] DASHBOARD</button>
+          <button class="budget-tab" type="button" onclick="switchBudgetTab('allocation')">[02] SPLITS & RULES</button>
         </div>
         <div id="budget-tab-overview" class="budget-tab-panel active">
-          <div class="budget-grid">
-            <div class="budget-card">
-              <h3>// QUICK ENTRY</h3>
+          <div class="budget-shell">
+            <div class="budget-hero">
+              <div class="budget-hero-title">
+                <h3>// MONTHLY DASHBOARD</h3>
+                <div class="budget-dashboard-sub" id="budget-dashboard-month">MONTH</div>
+              </div>
+              <div class="budget-hero-metrics">
+                <div class="budget-meta-card">
+                  <span>Monthly Income</span>
+                  <strong id="budget-dashboard-income">£0.00</strong>
+                </div>
+                <div class="budget-meta-card">
+                  <span>Total Outcomes</span>
+                  <strong id="budget-dashboard-outcome">£0.00</strong>
+                </div>
+                <div class="budget-meta-card">
+                  <span>Total Balance</span>
+                  <strong id="budget-dashboard-balance">£0.00</strong>
+                </div>
+              </div>
+            </div>
+
+            <div class="budget-hero-grid">
+              <div class="budget-card budget-card-wide">
+                <h4>// POTS OVERVIEW</h4>
+                <div id="budget-dashboard-grid" class="budget-dashboard-grid"></div>
+              </div>
+              <div class="budget-card">
+                <h4>// QUICK ENTRY</h4>
+                <div class="budget-form-row">
+                  <label>DATE</label>
+                  <input id="budget-entry-date" class="search-input" type="date" />
+                </div>
+                <div class="budget-form-row">
+                  <label>TYPE</label>
+                  <select id="budget-entry-type" class="search-input matrix-select" onchange="renderBudgetEntryCategory()">
+                    <option value="income">INCOME</option>
+                    <option value="outcome">OUTCOME</option>
+                  </select>
+                </div>
+                <div class="budget-form-row">
+                  <label>LABEL</label>
+                  <input id="budget-entry-label" class="search-input" type="text" placeholder="e.g. Client payment / Groceries" />
+                </div>
+                <div class="budget-form-row">
+                  <label>AMOUNT (£)</label>
+                  <input id="budget-entry-amount" class="search-input" type="number" step="0.01" />
+                </div>
+                <div class="budget-form-row" id="budget-entry-category-row"></div>
+                <button class="confirm-btn" type="button" onclick="submitBudgetEntry()">ADD ENTRY</button>
+                <div class="budget-divider"></div>
+                <h4>// BILLS (NEXT DUE)</h4>
+                <div id="budget-upcoming-summary" class="budget-summary budget-summary-compact"></div>
+                <div id="budget-bills-combined" class="budget-list"></div>
+              </div>
+            </div>
+
+            <div class="budget-rail">
+              <div class="budget-card">
+                <h4>// BILLS</h4>
+                <div class="budget-form-row">
+                  <label>NAME</label>
+                  <input id="budget-bill-name" class="search-input" type="text" placeholder="e.g. Rent / Phone" />
+                </div>
+                <div class="budget-form-row">
+                  <label>AMOUNT (£)</label>
+                  <input id="budget-bill-amount" class="search-input" type="number" step="0.01" />
+                </div>
+                <div class="budget-form-row">
+                  <label>DUE DATE</label>
+                  <input id="budget-bill-date" class="search-input" type="date" />
+                </div>
+                <div class="budget-form-row">
+                  <label>CADENCE</label>
+                  <select id="budget-bill-cadence" class="search-input matrix-select">
+                    <option value="monthly">MONTHLY</option>
+                    <option value="weekly">WEEKLY</option>
+                    <option value="yearly">YEARLY</option>
+                    <option value="one-time">ONE TIME</option>
+                  </select>
+                </div>
+                <div class="budget-form-row">
+                  <label>REMINDER (DAYS BEFORE)</label>
+                  <input id="budget-bill-lead" class="search-input" type="number" min="0" step="1" value="1" />
+                </div>
+                <button class="confirm-btn" type="button" onclick="addBudgetBill()">ADD BILL</button>
+              </div>
+
+              <div class="budget-card budget-card-wide">
+                <h4>// MANAGE POTS</h4>
+                <div class="budget-form-row">
+                  <label>NEW POT</label>
+                  <input id="budget-new-category" class="search-input" type="text" placeholder="e.g. Bills / Travel" />
+                </div>
               <div class="budget-form-row">
-                <label>DATE</label>
-                <input id="budget-entry-date" class="search-input" type="date" />
+                <label>INPUT MODE</label>
+                <select id="budget-pot-mode" class="search-input matrix-select" onchange="setPotInputMode(this.value)">
+                  <option value="rating">RATING (1-3)</option>
+                  <option value="percent">PERCENT</option>
+                </select>
               </div>
               <div class="budget-form-row">
-                <label>TYPE</label>
-                <select id="budget-entry-type" class="search-input matrix-select" onchange="renderBudgetEntryCategory()">
+                <label>IMPORTANCE (1-3)</label>
+                <input id="budget-new-importance" class="search-input" type="number" min="1" max="3" step="1" value="2" />
+              </div>
+              <div class="budget-form-row">
+                <label>PERCENT (%)</label>
+                <input id="budget-new-percent" class="search-input" type="number" min="0" max="100" step="1" placeholder="0" />
+              </div>
+                <button class="submit-btn" type="button" onclick="addBudgetAllocation()">ADD POT</button>
+                <div id="budget-allocation-rules" class="budget-list"></div>
+                <button class="submit-btn" type="button" onclick="resetBudgetAllocations()">RESET TO DEFAULT</button>
+              </div>
+            </div>
+
+            <div class="budget-card budget-card-wide">
+              <h4>// ALL ENTRIES (FILTERS)</h4>
+              <div class="budget-filter-grid">
+                <input id="budget-filter-query" class="search-input" type="text" placeholder="Search label..." oninput="renderBudgetEntryExplorer()" />
+                <select id="budget-filter-type" class="search-input matrix-select" onchange="renderBudgetEntryExplorer()">
+                  <option value="">ALL TYPES</option>
                   <option value="income">INCOME</option>
                   <option value="outcome">OUTCOME</option>
                 </select>
-              </div>
-              <div class="budget-form-row">
-                <label>LABEL</label>
-                <input id="budget-entry-label" class="search-input" type="text" placeholder="e.g. Client payment / Groceries" />
-              </div>
-              <div class="budget-form-row">
-                <label>AMOUNT (£)</label>
-                <input id="budget-entry-amount" class="search-input" type="number" step="0.01" />
-              </div>
-              <div class="budget-form-row" id="budget-entry-category-row"></div>
-              <button class="confirm-btn" type="button" onclick="submitBudgetEntry()">ADD ENTRY</button>
-            </div>
-            <div class="budget-card">
-              <h3>// TODAY SUMMARY</h3>
-              <div id="budget-summary-today" class="budget-summary"></div>
-              <h4>// UPCOMING BILLS</h4>
-              <div id="budget-upcoming-summary" class="budget-summary budget-summary-compact"></div>
-              <div id="budget-upcoming-bills" class="budget-list"></div>
-            </div>
-          </div>
-          <div class="budget-grid">
-            <div class="budget-card">
-              <h3>// BILLS</h3>
-              <div class="budget-form-row">
-                <label>NAME</label>
-                <input id="budget-bill-name" class="search-input" type="text" placeholder="e.g. Rent / Phone" />
-              </div>
-              <div class="budget-form-row">
-                <label>AMOUNT (£)</label>
-                <input id="budget-bill-amount" class="search-input" type="number" step="0.01" />
-              </div>
-              <div class="budget-form-row">
-                <label>DUE DATE</label>
-                <input id="budget-bill-date" class="search-input" type="date" />
-              </div>
-              <div class="budget-form-row">
-                <label>CADENCE</label>
-                <select id="budget-bill-cadence" class="search-input matrix-select">
-                  <option value="monthly">MONTHLY</option>
-                  <option value="weekly">WEEKLY</option>
-                  <option value="yearly">YEARLY</option>
-                  <option value="one-time">ONE TIME</option>
+                <select id="budget-filter-bucket" class="search-input matrix-select" onchange="renderBudgetEntryExplorer()">
+                  <option value="">ALL CATEGORIES</option>
                 </select>
+                <input id="budget-filter-from" class="search-input" type="date" onchange="renderBudgetEntryExplorer()" />
+                <input id="budget-filter-to" class="search-input" type="date" onchange="renderBudgetEntryExplorer()" />
               </div>
-              <div class="budget-form-row">
-                <label>REMINDER (DAYS BEFORE)</label>
-                <input id="budget-bill-lead" class="search-input" type="number" min="0" step="1" value="1" />
-              </div>
-              <button class="confirm-btn" type="button" onclick="addBudgetBill()">ADD BILL</button>
-              <div id="budget-bills-list" class="budget-list"></div>
-            </div>
-            <div class="budget-card">
-              <h3>// RECENT ENTRIES</h3>
-              <div id="budget-entry-list" class="budget-list"></div>
+              <div id="budget-entry-explorer" class="budget-list"></div>
             </div>
           </div>
         </div>
         <div id="budget-tab-allocation" class="budget-tab-panel">
-          <div class="budget-grid">
-            <div class="budget-card">
-              <h3>// ALLOCATION INPUT</h3>
-              <div class="budget-form-row">
-                <label>INCOME AMOUNT (£)</label>
-                <input id="budget-alloc-income" class="search-input" type="number" step="0.01" />
+          <div class="budget-shell">
+            <div class="budget-hero">
+              <div class="budget-hero-title">
+                <h3>// POTS & SPLITS</h3>
+                <div class="budget-dashboard-sub">Balance control</div>
               </div>
-              <button class="confirm-btn" type="button" onclick="applyBudgetIncome()">APPLY INCOME SPLIT</button>
-              <div class="budget-form-row" style="margin-top:12px;">
-                <label>SPEND AMOUNT (£)</label>
-                <input id="budget-alloc-spend" class="search-input" type="number" step="0.01" />
-              </div>
-              <div class="budget-form-row">
-                <label>ACCOUNT</label>
-                <select id="budget-alloc-bucket" class="search-input matrix-select"></select>
-              </div>
-              <button class="submit-btn" type="button" onclick="applyBudgetSpend()">APPLY SPEND</button>
             </div>
-            <div class="budget-card">
-              <h3>// ACCOUNT BALANCES</h3>
-              <div id="budget-allocation-grid" class="budget-allocation-grid"></div>
+
+            <div class="budget-hero-grid">
+              <div class="budget-card">
+                <h4>// INCOME SPLIT</h4>
+                <div class="budget-form-row">
+                  <label>INCOME AMOUNT (£)</label>
+                  <input id="budget-alloc-income" class="search-input" type="number" step="0.01" />
+                </div>
+                <button class="confirm-btn" type="button" onclick="applyBudgetIncome()">APPLY INCOME SPLIT</button>
+                <div class="budget-form-row" style="margin-top:12px;">
+                  <label>SPEND AMOUNT (£)</label>
+                  <input id="budget-alloc-spend" class="search-input" type="number" step="0.01" />
+                </div>
+                <div class="budget-form-row">
+                  <label>ACCOUNT</label>
+                  <select id="budget-alloc-bucket" class="search-input matrix-select"></select>
+                </div>
+                <button class="submit-btn" type="button" onclick="applyBudgetSpend()">APPLY SPEND</button>
+              </div>
+              <div class="budget-card budget-card-wide">
+                <h4>// ACCOUNT BALANCES</h4>
+                <div id="budget-allocation-grid" class="budget-allocation-grid"></div>
+              </div>
             </div>
-          </div>
-          <div class="budget-card">
-            <h3>// ALLOCATION RULES</h3>
-            <div id="budget-allocation-rules" class="budget-list"></div>
-            <button class="submit-btn" type="button" onclick="resetBudgetAllocations()">RESET TO DEFAULT</button>
+
           </div>
         </div>
       </div>

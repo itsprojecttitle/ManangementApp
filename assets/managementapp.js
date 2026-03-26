@@ -6292,20 +6292,70 @@
           });
         });
         recent.sort((a, b) => toSortDateMs(b?.downloaded_at || "") - toSortDateMs(a?.downloaded_at || ""));
+        const getTitle = (d) => {
+          const direct = String(d?.title || d?.name || d?.video_title || "").trim();
+          if (direct) return direct;
+          const path = String(d?.output_path || d?.file_path || d?.download_path || "").trim();
+          if (path) {
+            const file = path.split("/").pop() || "";
+            if (file) return file.replace(/\.[^.]+$/, "");
+          }
+          return String(d?.shortcode || d?.owner_username || "Download").trim() || "Download";
+        };
+        const getSourceLabel = (d) => {
+          const src = String(d?.source || "").toLowerCase();
+          if (src.includes("tiktok")) return "TIKTOK";
+          if (src.includes("instagram") || src.includes("insta") || src === "ig") return "INSTAGRAM";
+          if (src.includes("youtube") || src.includes("yt")) return "YOUTUBE";
+          return src ? src.toUpperCase() : "SOURCE";
+        };
+        const getSourceId = (d) => {
+          return String(d?.shortcode || d?.owner_username || "").trim();
+        };
+        const getSourceUrl = (d) => {
+          const direct = String(d?.url || d?.source_url || d?.link || "").trim();
+          if (direct) return direct;
+          const src = getSourceLabel(d);
+          const code = String(d?.shortcode || "").trim();
+          if (src === "INSTAGRAM" && code) return `https://www.instagram.com/p/${encodeURIComponent(code)}/`;
+          return "";
+        };
+        const fileKind = (path) => {
+          const ext = (String(path || "").split(".").pop() || "").toLowerCase();
+          if (["png", "jpg", "jpeg", "gif", "webp"].includes(ext)) return "IMAGE";
+          if (["mp4", "mov", "webm", "mkv"].includes(ext)) return "VIDEO";
+          if (["mp3", "m4a", "wav", "aac", "flac", "opus"].includes(ext)) return "AUDIO";
+          if (["pdf", "doc", "docx", "txt", "md", "rtf", "odt", "html", "epub"].includes(ext)) return "DOC";
+          if (["zip", "rar", "7z", "tar", "gz"].includes(ext)) return "ARCHIVE";
+          return ext ? ext.toUpperCase() : "FILE";
+        };
         const rows = recent.slice(0, 6).map((d, idx) => {
-          const label = d?.shortcode || d?.owner_username || d?.url || "Download";
+          const label = getTitle(d);
           const path = d?.download_dir || d?.manifest?.download_dir || "";
           const openPath = pickSwissknifeFilePath(d);
           const source = d?.source ? `Source: ${String(d.source).toUpperCase()}` : "";
           const clickAttr = openPath ? `onclick="openSwissknifePath('${escapeJsString(openPath)}')"` : "";
           const preview = buildSwissknifePreview(d);
           const statusClass = idx === 0 ? "recent-latest" : (idx === 1 ? "recent-previous" : "recent-older");
+          const badge = fileKind(openPath);
+          const sourceLabel = getSourceLabel(d);
+          const sourceId = getSourceId(d);
+          const sourceUrl = getSourceUrl(d);
+          const sourceMeta = sourceId ? `${sourceLabel} ID: ${sourceId}` : sourceLabel;
+          const linkBtn = sourceUrl
+            ? `<button class="submit-btn budget-mini-btn swissknife-link-btn" type="button" onclick="event.stopPropagation(); openExternalDocumentUrl('${escapeJsString(sourceUrl)}')">OPEN LINK</button>`
+            : "";
           return `
             <div class="swissknife-recent-card ${statusClass}" ${clickAttr} title="${escapeHtmlAttr(openPath || "")}">
+              <div class="swissknife-file-badge">${escapeHtmlAttr(badge)}</div>
               ${preview}
               <div class="swissknife-recent-info">
                 <div class="swissknife-recent-name">${escapeHtmlAttr(label)}</div>
                 <div class="swissknife-recent-path">${escapeHtmlAttr(path || "No download path recorded.")}</div>
+                <div class="swissknife-recent-meta">
+                  <span>${escapeHtmlAttr(sourceMeta)}</span>
+                  ${linkBtn}
+                </div>
               </div>
               <div class="swissknife-status-line">${escapeHtmlAttr([d?.downloaded_at || "", source].filter(Boolean).join(" | "))}</div>
             </div>
@@ -10735,11 +10785,13 @@
           createdAt: now,
           entries: [],
           bills: [],
+          autoSplitImportance: false,
+          potInputMode: "rating",
           allocations: [
-            { id: "alloc_bills", label: "Bills", percent: 40, balance: 0 },
-            { id: "alloc_savings", label: "Savings", percent: 20, balance: 0 },
-            { id: "alloc_spending", label: "Spending", percent: 30, balance: 0 },
-            { id: "alloc_transport", label: "Transport", percent: 10, balance: 0 },
+            { id: "alloc_bills", label: "Bills", percent: 0, importance: 3, color: "#6ee7b7", balance: 0 },
+            { id: "alloc_savings", label: "Savings", percent: 0, importance: 2, color: "#38bdf8", balance: 0 },
+            { id: "alloc_spending", label: "Spending", percent: 0, importance: 2, color: "#fbbf24", balance: 0 },
+            { id: "alloc_transport", label: "Transport", percent: 0, importance: 1, color: "#a78bfa", balance: 0 },
           ],
         };
       }
@@ -10749,13 +10801,31 @@
         const out = (data && typeof data === "object") ? data : {};
         if (!Array.isArray(out.entries)) out.entries = [];
         if (!Array.isArray(out.bills)) out.bills = [];
+        out.bills = out.bills.map((bill, idx) => {
+          const id = String(bill?.id || `bill_${idx}`).trim() || `bill_${idx}`;
+          const name = String(bill?.name || "Bill").trim() || "Bill";
+          const amount = Number.isFinite(Number(bill?.amount)) ? Number(bill.amount) : 0;
+          const dueDate = String(bill?.dueDate || "").trim();
+          const cadence = String(bill?.cadence || "monthly").trim().toLowerCase() || "monthly";
+          const leadDays = Number.isFinite(Number(bill?.leadDays)) ? Math.max(0, Math.round(Number(bill.leadDays))) : 0;
+          return { id, name, amount, dueDate, cadence, leadDays };
+        });
+        if (out.autoSplitImportance == null) out.autoSplitImportance = false;
+        if (!out.potInputMode) out.potInputMode = "rating";
         if (!Array.isArray(out.allocations) || !out.allocations.length) out.allocations = base.allocations.slice();
         out.allocations = out.allocations.map((row, idx) => {
           const id = String(row?.id || `alloc_${idx}`).trim() || `alloc_${idx}`;
+          const percent = Number.isFinite(Number(row?.percent)) ? Number(row?.percent) : 0;
+          const importance = Number.isFinite(Number(row?.importance))
+            ? Number(row?.importance)
+            : Math.max(1, Math.round(percent / 33));
+          const color = String(row?.color || "").trim() || base.allocations[idx]?.color || "#22c55e";
           return {
             id,
             label: String(row?.label || `Bucket ${idx + 1}`).trim() || `Bucket ${idx + 1}`,
-            percent: Number.isFinite(Number(row?.percent)) ? Number(row?.percent) : 0,
+            percent,
+            importance,
+            color,
             balance: Number.isFinite(Number(row?.balance)) ? Number(row?.balance) : 0,
           };
         });
@@ -10840,33 +10910,151 @@
           const type = entry.type === "income" ? "INCOME" : "OUTCOME";
           const bucket = budgetData?.allocations?.find((b) => b.id === entry.bucketId);
           const bucketLabel = bucket ? ` · ${bucket.label}` : "";
+          const swatch = bucket?.color ? `<span class="budget-color-dot" style="background:${escapeHtmlAttr(bucket.color)};"></span>` : "";
           return `
             <div class="budget-list-item">
-              <div class="budget-row"><strong>${escapeHtml(entry.label || type)}</strong><span class="budget-pill">${type}</span></div>
-              <div class="budget-row"><span>${escapeHtml(entry.date || "")}${escapeHtml(bucketLabel)}</span><span>${formatBudgetCurrency(entry.amount)}</span></div>
+              <div class="budget-row">
+                <strong>${escapeHtml(entry.label || type)}</strong>
+                <span class="budget-pill">${type}</span>
+              </div>
+              <div class="budget-row">
+                <span>${swatch}${escapeHtml(entry.date || "")}${escapeHtml(bucketLabel)}</span>
+                <span>${formatBudgetCurrency(entry.amount)}</span>
+              </div>
+              <div class="budget-row">
+                <span class="budget-entry-meta">${escapeHtml(entry.id || "")}</span>
+                <div class="budget-entry-actions">
+                  <button class="submit-btn budget-mini-btn" type="button" onclick="editBudgetEntry('${escapeJsString(entry.id)}')">EDIT</button>
+                  <button class="submit-btn budget-mini-btn danger" type="button" onclick="removeBudgetEntry('${escapeJsString(entry.id)}')">REMOVE</button>
+                </div>
+              </div>
             </div>
           `;
         }).join("");
       }
 
       function renderBudgetSummary() {
-        const today = budgetTodayKey(new Date());
-        const entries = (budgetData?.entries || []).filter((entry) => entry.date === today);
+        const entries = (budgetData?.entries || []);
         const income = entries.filter((e) => e.type === "income").reduce((sum, e) => sum + Number(e.amount || 0), 0);
         const outcome = entries.filter((e) => e.type === "outcome").reduce((sum, e) => sum + Number(e.amount || 0), 0);
         const net = income - outcome;
-        const summary = document.getElementById("budget-summary-today");
-        if (!summary) return;
-        summary.innerHTML = `
-          <div class="budget-summary-item"><span>Income Today</span><span>${formatBudgetCurrency(income)}</span></div>
-          <div class="budget-summary-item"><span>Outcomes Today</span><span>${formatBudgetCurrency(outcome)}</span></div>
-          <div class="budget-summary-item"><span>Net</span><span>${formatBudgetCurrency(net)}</span></div>
-        `;
+        const outcomeEl = document.getElementById("budget-dashboard-outcome");
+        const balanceEl = document.getElementById("budget-dashboard-balance");
+        if (outcomeEl) outcomeEl.textContent = formatBudgetCurrency(outcome);
+        if (balanceEl) balanceEl.textContent = formatBudgetCurrency(net);
+      }
+
+      function renderBudgetDashboard() {
+        const host = document.getElementById("budget-dashboard-grid");
+        const monthEl = document.getElementById("budget-dashboard-month");
+        const incomeEl = document.getElementById("budget-dashboard-income");
+        const billTotalEl = document.getElementById("budget-dashboard-bills-total");
+        if (!host) return;
+        ensureAllocationPercents();
+        const monthKey = budgetMonthKey();
+        const incomeTotal = computeMonthlyIncomeTotal(monthKey);
+        const outcomesByBucket = computeMonthlyOutcomesByBucket(monthKey);
+        if (monthEl) {
+          const d = new Date();
+          monthEl.textContent = d.toLocaleDateString("en-GB", { month: "long", year: "numeric" }).toUpperCase();
+        }
+        if (incomeEl) incomeEl.textContent = formatBudgetCurrency(incomeTotal);
+        if (billTotalEl) {
+          const d = new Date();
+          const billTotal = computeBillTotalForMonth(d.getFullYear(), d.getMonth());
+          billTotalEl.textContent = formatBudgetCurrency(billTotal);
+        }
+        host.innerHTML = (budgetData?.allocations || []).map((bucket) => {
+          const spent = Number(outcomesByBucket[bucket.id] || 0);
+          const allocated = incomeTotal * (Number(bucket.percent || 0) / 100);
+          const remaining = allocated - spent;
+          return `
+            <div class="budget-dash-card">
+              <div class="budget-dash-head">
+                <div class="budget-dash-title"><span class="budget-color-dot" style="background:${escapeHtmlAttr(bucket.color || "#22c55e")};"></span>${escapeHtml(bucket.label)}</div>
+                <div class="budget-dash-actions">
+                  <button class="submit-btn budget-mini-btn" type="button" onclick="editBudgetAllocation('${escapeJsString(bucket.id)}')">EDIT</button>
+                  <button class="submit-btn budget-mini-btn danger" type="button" onclick="removeBudgetAllocation('${escapeJsString(bucket.id)}')">REMOVE</button>
+                </div>
+              </div>
+              <div class="budget-dash-metric">
+                <div>Allocation</div>
+                <div>${Number(bucket.percent || 0)}%</div>
+              </div>
+              <div class="budget-dash-metric">
+                <div>Allocated</div>
+                <div>${formatBudgetCurrency(allocated)}</div>
+              </div>
+              <div class="budget-dash-metric">
+                <div>Spent</div>
+                <div>${formatBudgetCurrency(spent)}</div>
+              </div>
+              <div class="budget-dash-metric ${remaining < 0 ? "budget-dash-negative" : ""}">
+                <div>Remaining</div>
+                <div>${formatBudgetCurrency(remaining)}</div>
+              </div>
+            </div>
+          `;
+        }).join("");
+      }
+
+      function renderBudgetDashboard() {
+        const host = document.getElementById("budget-dashboard-grid");
+        const monthEl = document.getElementById("budget-dashboard-month");
+        const incomeEl = document.getElementById("budget-dashboard-income");
+        const billTotalEl = document.getElementById("budget-dashboard-bills-total");
+        if (!host) return;
+        ensureAllocationPercents();
+        const monthKey = budgetMonthKey();
+        const incomeTotal = computeMonthlyIncomeTotal(monthKey);
+        const outcomesByBucket = computeMonthlyOutcomesByBucket(monthKey);
+        if (monthEl) {
+          const d = new Date();
+          monthEl.textContent = d.toLocaleDateString("en-GB", { month: "long", year: "numeric" }).toUpperCase();
+        }
+        if (incomeEl) incomeEl.textContent = formatBudgetCurrency(incomeTotal);
+        if (billTotalEl) {
+          const d = new Date();
+          const billTotal = computeBillTotalForMonth(d.getFullYear(), d.getMonth());
+          billTotalEl.textContent = formatBudgetCurrency(billTotal);
+        }
+        host.innerHTML = (budgetData?.allocations || []).map((bucket) => {
+          const spent = Number(outcomesByBucket[bucket.id] || 0);
+          const allocated = incomeTotal * (Number(bucket.percent || 0) / 100);
+          const remaining = allocated - spent;
+          return `
+            <div class="budget-dash-card">
+              <div class="budget-dash-head">
+                <div class="budget-dash-title">${escapeHtml(bucket.label)}</div>
+                <div class="budget-dash-actions">
+                  <button class="submit-btn budget-mini-btn" type="button" onclick="editBudgetAllocation('${escapeJsString(bucket.id)}')">EDIT</button>
+                  <button class="submit-btn budget-mini-btn danger" type="button" onclick="removeBudgetAllocation('${escapeJsString(bucket.id)}')">REMOVE</button>
+                </div>
+              </div>
+              <div class="budget-dash-metric">
+                <div>Allocation</div>
+                <div>${Number(bucket.percent || 0)}%</div>
+              </div>
+              <div class="budget-dash-metric">
+                <div>Allocated</div>
+                <div>${formatBudgetCurrency(allocated)}</div>
+              </div>
+              <div class="budget-dash-metric">
+                <div>Spent</div>
+                <div>${formatBudgetCurrency(spent)}</div>
+              </div>
+              <div class="budget-dash-metric ${remaining < 0 ? "budget-dash-negative" : ""}">
+                <div>Remaining</div>
+                <div>${formatBudgetCurrency(remaining)}</div>
+              </div>
+            </div>
+          `;
+        }).join("");
       }
 
       function computeNextBillDueDate(bill) {
         if (!bill?.dueDate) return null;
-        const cadence = String(bill.cadence || "monthly");
+        const cadence = String(bill.cadence || "monthly").toLowerCase();
         const base = new Date(`${bill.dueDate}T00:00:00`);
         if (Number.isNaN(base.getTime())) return null;
         const today = new Date();
@@ -10885,7 +11073,7 @@
         if (!bill) return 0;
         const amount = Number(bill.amount || 0);
         if (!Number.isFinite(amount) || amount <= 0) return 0;
-        const cadence = String(bill.cadence || "monthly");
+        const cadence = String(bill.cadence || "monthly").toLowerCase();
         if (cadence === "weekly") return amount * (52 / 12);
         if (cadence === "yearly") return amount / 12;
         if (cadence === "one-time") return 0;
@@ -10901,9 +11089,103 @@
         }
       }
 
+      function budgetMonthKey(d = new Date()) {
+        const dt = new Date(d);
+        if (Number.isNaN(dt.getTime())) return "";
+        const y = dt.getFullYear();
+        const m = String(dt.getMonth() + 1).padStart(2, "0");
+        return `${y}-${m}`;
+      }
+
+      function budgetEntryMonthKey(entry) {
+        const d = String(entry?.date || "").slice(0, 7);
+        return d;
+      }
+
+      function computeMonthlyIncomeTotal(monthKey = budgetMonthKey()) {
+        const entries = budgetData?.entries || [];
+        return entries
+          .filter((e) => e?.type === "income" && budgetEntryMonthKey(e) === monthKey)
+          .reduce((sum, e) => sum + Number(e.amount || 0), 0);
+      }
+
+      function computeMonthlyOutcomesByBucket(monthKey = budgetMonthKey()) {
+        const entries = budgetData?.entries || [];
+        const totals = {};
+        entries
+          .filter((e) => e?.type === "outcome" && budgetEntryMonthKey(e) === monthKey)
+          .forEach((e) => {
+            const id = String(e.bucketId || "");
+            if (!id) return;
+            totals[id] = (totals[id] || 0) + Number(e.amount || 0);
+          });
+        return totals;
+      }
+
+      function recomputeAllocationBalances() {
+        if (!budgetData?.allocations) return;
+        ensureAllocationPercents();
+        budgetData.allocations.forEach((b) => { b.balance = 0; });
+        (budgetData?.entries || []).forEach((entry) => {
+          const amount = Number(entry.amount || 0);
+          if (!Number.isFinite(amount) || amount <= 0) return;
+          if (entry.type === "income") {
+            budgetData.allocations.forEach((bucket) => {
+              bucket.balance += amount * (Number(bucket.percent || 0) / 100);
+            });
+          } else if (entry.type === "outcome") {
+            const bucket = budgetData.allocations.find((b) => b.id === entry.bucketId) || budgetData.allocations[0];
+            if (bucket) bucket.balance -= amount;
+          }
+        });
+      }
+
+      function recomputeAllocationPercentsFromImportance() {
+        if (!budgetData?.allocations?.length) return;
+        const total = budgetData.allocations.reduce((sum, b) => sum + Math.max(0, Number(b.importance || 0)), 0);
+        if (total <= 0) return;
+        budgetData.allocations.forEach((b) => {
+          b.percent = Math.round((Math.max(0, Number(b.importance || 0)) / total) * 100);
+        });
+        const diff = 100 - budgetData.allocations.reduce((sum, b) => sum + Number(b.percent || 0), 0);
+        if (budgetData.allocations.length) {
+          budgetData.allocations[0].percent += diff;
+        }
+      }
+
+      function ensureAllocationPercents() {
+        if (!budgetData?.allocations?.length) return;
+        if (budgetData.potInputMode === "rating") {
+          recomputeAllocationPercentsFromImportance();
+        }
+      }
+
+      function deriveImportanceFromPercent(percent) {
+        const pct = Math.max(0, Math.min(100, Number(percent || 0)));
+        if (pct >= 67) return 3;
+        if (pct >= 34) return 2;
+        return 1;
+      }
+
+      function setPotInputMode(mode) {
+        if (!budgetData) loadBudgetData();
+        budgetData.potInputMode = mode === "percent" ? "percent" : "rating";
+        if (budgetData.potInputMode === "rating") {
+          budgetData.allocations.forEach((b) => {
+            if (!Number.isFinite(Number(b.importance)) || Number(b.importance) <= 0) {
+              b.importance = deriveImportanceFromPercent(b.percent);
+            }
+            b.importance = Math.max(1, Math.min(3, Math.round(Number(b.importance || 1))));
+          });
+          ensureAllocationPercents();
+        }
+        saveBudgetData("budget_pot_mode");
+        renderBudget();
+      }
+
       function billOccurrencesInMonth(bill, year, month) {
         if (!bill?.dueDate) return 0;
-        const cadence = String(bill.cadence || "monthly");
+        const cadence = String(bill.cadence || "monthly").toLowerCase();
         const base = new Date(`${bill.dueDate}T00:00:00`);
         if (Number.isNaN(base.getTime())) return 0;
         const monthStart = new Date(year, month, 1);
@@ -10951,7 +11233,7 @@
       }
 
       function renderBudgetUpcomingBills() {
-        const host = document.getElementById("budget-upcoming-bills");
+        const host = document.getElementById("budget-bills-combined");
         const summary = document.getElementById("budget-upcoming-summary");
         if (!host) return;
         const rows = (budgetData?.bills || []).map((bill) => {
@@ -10966,42 +11248,31 @@
           };
         }).filter(Boolean).sort((a, b) => a.due - b.due);
         if (summary) {
-          const monthlyTotal = rows.reduce((sum, row) => sum + Number(row.monthly || 0), 0);
-          summary.innerHTML = rows.length
-            ? `<div class="budget-summary-item"><span>Monthly Bill Total</span><span>${formatBudgetCurrency(monthlyTotal)}</span></div>`
+          const d = new Date();
+          const monthlyTotal = computeBillTotalForMonth(d.getFullYear(), d.getMonth());
+          summary.innerHTML = (budgetData?.bills || []).length
+            ? `<div class="budget-summary-item"><span>This Month Bills Total</span><span>${formatBudgetCurrency(monthlyTotal)}</span></div>`
             : "";
         }
         if (!rows.length) {
           host.innerHTML = `<div class="budget-list-item">No upcoming bills.</div>`;
           return;
         }
-        host.innerHTML = rows.slice(0, 6).map((row) => `
+        host.innerHTML = rows.map((row) => `
           <div class="budget-list-item">
             <div class="budget-row"><strong>${escapeHtml(row.name || "Bill")}</strong><span>${formatBudgetCurrency(row.amount)}</span></div>
-            <div class="budget-row"><span>Due ${formatBudgetDate(row.due)}</span><span class="budget-pill">UPCOMING</span></div>
+            <div class="budget-row">
+              <span>${escapeHtml(String(row.cadence || "").toUpperCase())} · Due ${formatBudgetDate(row.due)}</span>
+              <div class="budget-entry-actions">
+                <button class="submit-btn budget-mini-btn" type="button" onclick="editBudgetBill('${escapeJsString(row.id)}')">EDIT</button>
+                <button class="submit-btn budget-mini-btn danger" type="button" onclick="removeBudgetBill('${escapeJsString(row.id)}')">REMOVE</button>
+                <span class="budget-pill">UPCOMING</span>
+              </div>
+            </div>
           </div>
         `).join("");
       }
 
-      function renderBudgetBillsList() {
-        const host = document.getElementById("budget-bills-list");
-        if (!host) return;
-        if (!budgetData?.bills?.length) {
-          host.innerHTML = `<div class="budget-list-item">No bills yet.</div>`;
-          return;
-        }
-        host.innerHTML = budgetData.bills.map((bill) => {
-          const nextDue = computeNextBillDueDate(bill);
-          return `
-            <div class="budget-list-item">
-              <div class="budget-row"><strong>${escapeHtml(bill.name || "Bill")}</strong><span>${formatBudgetCurrency(bill.amount)}</span></div>
-              <div class="budget-row"><span>${escapeHtml(String(bill.cadence || ""))} · Next ${formatBudgetDate(nextDue || bill.dueDate)}</span>
-                <button class="danger-btn" type="button" onclick="removeBudgetBill('${escapeJsString(bill.id)}')">REMOVE</button>
-              </div>
-            </div>
-          `;
-        }).join("");
-      }
 
       function renderBudgetEntries() {
         const host = document.getElementById("budget-entry-list");
@@ -11012,6 +11283,44 @@
           if (at === bt) return 0;
           return at < bt ? 1 : -1;
         }).slice(0, 12);
+        host.innerHTML = buildBudgetEntryList(entries);
+      }
+
+      function renderBudgetEntryExplorer() {
+        const host = document.getElementById("budget-entry-explorer");
+        if (!host) return;
+        const queryEl = document.getElementById("budget-filter-query");
+        const typeEl = document.getElementById("budget-filter-type");
+        const bucketEl = document.getElementById("budget-filter-bucket");
+        const fromEl = document.getElementById("budget-filter-from");
+        const toEl = document.getElementById("budget-filter-to");
+        if (bucketEl) {
+          const options = (budgetData?.allocations || []).map((b) => (
+            `<option value="${escapeHtmlAttr(b.id)}">${escapeHtml(b.label)}</option>`
+          )).join("");
+          bucketEl.innerHTML = `<option value="">ALL CATEGORIES</option>${options}`;
+        }
+        const query = String(queryEl?.value || "").trim().toLowerCase();
+        const type = String(typeEl?.value || "").trim();
+        const bucketId = String(bucketEl?.value || "").trim();
+        const from = String(fromEl?.value || "").trim();
+        const to = String(toEl?.value || "").trim();
+        const entries = (budgetData?.entries || []).slice().filter((e) => {
+          if (type && e.type !== type) return false;
+          if (bucketId && String(e.bucketId || "") !== bucketId) return false;
+          if (from && String(e.date || "") < from) return false;
+          if (to && String(e.date || "") > to) return false;
+          if (query) {
+            const blob = `${e.label || ""} ${e.date || ""}`.toLowerCase();
+            if (!blob.includes(query)) return false;
+          }
+          return true;
+        }).sort((a, b) => {
+          const at = String(a.date || "");
+          const bt = String(b.date || "");
+          if (at === bt) return 0;
+          return at < bt ? 1 : -1;
+        });
         host.innerHTML = buildBudgetEntryList(entries);
       }
 
@@ -11036,12 +11345,16 @@
       function renderBudgetAllocationRules() {
         const host = document.getElementById("budget-allocation-rules");
         if (!host) return;
+        const mode = budgetData?.potInputMode === "percent" ? "percent" : "rating";
         host.innerHTML = (budgetData?.allocations || []).map((bucket) => `
           <div class="budget-list-item">
             <div class="budget-row">
-              <input class="search-input" style="max-width:180px;" value="${escapeHtmlAttr(bucket.label)}" onchange="updateBudgetAllocationField('${escapeJsString(bucket.id)}','label',this.value)" />
-              <input class="search-input" style="max-width:100px;" type="number" step="1" min="0" value="${escapeHtmlAttr(String(bucket.percent || 0))}" onchange="updateBudgetAllocationField('${escapeJsString(bucket.id)}','percent',this.value)" />
+              <input class="search-input" style="max-width:220px;" value="${escapeHtmlAttr(bucket.label)}" onchange="updateBudgetAllocationField('${escapeJsString(bucket.id)}','label',this.value)" />
+              <input class="search-input" style="max-width:80px;" type="number" step="1" min="1" max="3" value="${escapeHtmlAttr(String(bucket.importance || 1))}" ${mode === "percent" ? "disabled" : ""} onchange="updateBudgetAllocationField('${escapeJsString(bucket.id)}','importance',this.value)" />
+              <span class="budget-pill">IMP</span>
+              <input class="search-input" style="max-width:90px;" type="number" step="1" min="0" max="100" value="${escapeHtmlAttr(String(bucket.percent || 0))}" ${mode === "rating" ? "disabled" : ""} onchange="updateBudgetAllocationField('${escapeJsString(bucket.id)}','percent',this.value)" />
               <span class="budget-pill">%</span>
+              <button class="submit-btn budget-mini-btn danger" type="button" onclick="removeBudgetAllocation('${escapeJsString(bucket.id)}')">REMOVE</button>
             </div>
           </div>
         `).join("");
@@ -11049,6 +11362,8 @@
 
       function renderBudget() {
         if (!budgetData) loadBudgetData();
+        ensureAllocationPercents();
+        recomputeAllocationBalances();
         const tabs = ["overview", "allocation"];
         tabs.forEach((tab) => {
           const btn = document.querySelector(`.budget-tab[onclick="switchBudgetTab('${tab}')"]`);
@@ -11060,10 +11375,17 @@
         renderBudgetEntryCategory();
         renderBudgetSummary();
         renderBudgetUpcomingBills();
-        renderBudgetBillsList();
         renderBudgetEntries();
+        renderBudgetEntryExplorer();
         renderBudgetAllocations();
         renderBudgetAllocationRules();
+        renderBudgetDashboard();
+        const modeSelect = document.getElementById("budget-pot-mode");
+        if (modeSelect) modeSelect.value = budgetData?.potInputMode === "percent" ? "percent" : "rating";
+        const importanceInput = document.getElementById("budget-new-importance");
+        const percentInput = document.getElementById("budget-new-percent");
+        if (importanceInput) importanceInput.disabled = (budgetData?.potInputMode === "percent");
+        if (percentInput) percentInput.disabled = (budgetData?.potInputMode !== "percent");
       }
 
       function createBudgetId(prefix) {
@@ -11092,6 +11414,7 @@
           amount,
         };
         if (type === "income") {
+          ensureAllocationPercents();
           budgetData.allocations.forEach((bucket) => {
             bucket.balance += amount * (Number(bucket.percent || 0) / 100);
           });
@@ -11115,6 +11438,7 @@
           themedNotice("Enter a valid income amount.");
           return;
         }
+        ensureAllocationPercents();
         budgetData.allocations.forEach((bucket) => {
           bucket.balance += amount * (Number(bucket.percent || 0) / 100);
         });
@@ -11153,13 +11477,110 @@
         renderBudget();
       }
 
+      async function editBudgetEntry(id) {
+        if (!budgetData) return;
+        const entry = budgetData.entries.find((e) => e.id === id);
+        if (!entry) return;
+        const nextLabel = prompt("Entry label:", entry.label || "");
+        if (nextLabel == null) return;
+        const nextAmount = prompt("Amount:", String(entry.amount || 0));
+        if (nextAmount == null) return;
+        const nextDate = prompt("Date (YYYY-MM-DD):", String(entry.date || ""));
+        if (nextDate == null) return;
+        const amount = Number(nextAmount || 0);
+        if (!Number.isFinite(amount) || amount <= 0) {
+          themedNotice("Enter a valid amount.");
+          return;
+        }
+        entry.label = String(nextLabel || "").trim() || entry.label;
+        entry.amount = amount;
+        entry.date = String(nextDate || "").trim() || entry.date;
+        saveBudgetData("budget_entry_edit");
+        renderBudget();
+      }
+
+      async function removeBudgetEntry(id) {
+        if (!budgetData) return;
+        if (!(await themedConfirm("Remove this entry?"))) return;
+        budgetData.entries = budgetData.entries.filter((e) => e.id !== id);
+        saveBudgetData("budget_entry_remove");
+        renderBudget();
+      }
+
       function updateBudgetAllocationField(id, field, value) {
         if (!budgetData) return;
         const bucket = budgetData.allocations.find((b) => b.id === id);
         if (!bucket) return;
         if (field === "label") bucket.label = String(value || "").trim() || bucket.label;
-        if (field === "percent") bucket.percent = Math.max(0, Number(value || 0));
+        if (field === "importance") bucket.importance = Math.max(1, Math.min(3, Math.round(Number(value || 1))));
+        if (field === "percent") bucket.percent = Math.max(0, Math.min(100, Math.round(Number(value || 0))));
+        if (field === "color") bucket.color = String(value || "").trim() || bucket.color;
+        ensureAllocationPercents();
         saveBudgetData("budget_alloc");
+        renderBudget();
+      }
+
+      async function editBudgetAllocation(id) {
+        if (!budgetData) return;
+        const bucket = budgetData.allocations.find((b) => b.id === id);
+        if (!bucket) return;
+        const nextLabel = prompt("Pot name:", bucket.label || "");
+        if (nextLabel == null) return;
+        if (budgetData?.potInputMode === "percent") {
+          const nextPercent = prompt("Percent (0-100):", String(bucket.percent || 0));
+          if (nextPercent == null) return;
+          bucket.percent = Math.max(0, Math.min(100, Math.round(Number(nextPercent || bucket.percent || 0))));
+        } else {
+          const nextImportance = prompt("Importance (1-3):", String(bucket.importance || 2));
+          if (nextImportance == null) return;
+          bucket.importance = Math.max(1, Math.min(3, Math.round(Number(nextImportance || bucket.importance || 2))));
+        }
+        bucket.label = String(nextLabel || "").trim() || bucket.label;
+        ensureAllocationPercents();
+        saveBudgetData("budget_alloc");
+        renderBudget();
+      }
+
+      async function removeBudgetAllocation(id) {
+        if (!budgetData) return;
+        if (!(await themedConfirm("Remove this pot?"))) return;
+        budgetData.allocations = budgetData.allocations.filter((b) => b.id !== id);
+        ensureAllocationPercents();
+        saveBudgetData("budget_alloc_remove");
+        renderBudget();
+      }
+
+      function addBudgetAllocation() {
+        if (!budgetData) loadBudgetData();
+        const label = String(document.getElementById("budget-new-category")?.value || "").trim();
+        const importanceInput = document.getElementById("budget-new-importance");
+        const percentInput = document.getElementById("budget-new-percent");
+        const rawImportance = Number(importanceInput?.value || 2);
+        const rawPercent = Number(percentInput?.value || 0);
+        const color = "#22c55e";
+        if (!label) {
+          themedNotice("Enter a pot name.");
+          return;
+        }
+        const usePercent = budgetData?.potInputMode === "percent";
+        budgetData.allocations.push({
+          id: createBudgetId("alloc"),
+          label,
+          percent: usePercent ? Math.max(0, Math.min(100, Math.round(rawPercent || 0))) : 0,
+          importance: Math.max(1, Math.min(3, Math.round(rawImportance || 2))),
+          color,
+          balance: 0,
+        });
+        if (usePercent) {
+          budgetData.allocations[budgetData.allocations.length - 1].importance =
+            deriveImportanceFromPercent(rawPercent);
+        }
+        ensureAllocationPercents();
+        saveBudgetData("budget_alloc_add");
+        const labelEl = document.getElementById("budget-new-category");
+        if (labelEl) labelEl.value = "";
+        if (importanceInput) importanceInput.value = "2";
+        if (percentInput) percentInput.value = "";
         renderBudget();
       }
 
@@ -11169,6 +11590,7 @@
           ...row,
           balance: 0,
         }));
+        ensureAllocationPercents();
         saveBudgetData("budget_alloc_reset");
         renderBudget();
       }
@@ -11178,7 +11600,7 @@
         const name = String(document.getElementById("budget-bill-name")?.value || "").trim();
         const amount = Number(document.getElementById("budget-bill-amount")?.value || 0);
         const dueDate = String(document.getElementById("budget-bill-date")?.value || "").trim();
-        const cadence = String(document.getElementById("budget-bill-cadence")?.value || "monthly");
+        const cadence = String(document.getElementById("budget-bill-cadence")?.value || "monthly").toLowerCase();
         const leadDays = Number(document.getElementById("budget-bill-lead")?.value || 0);
         if (!name || !Number.isFinite(amount) || amount <= 0 || !dueDate) {
           themedNotice("Enter name, amount, and due date.");
@@ -11203,6 +11625,32 @@
         if (!budgetData) return;
         budgetData.bills = budgetData.bills.filter((bill) => bill.id !== id);
         saveBudgetData("budget_bill_remove");
+        syncBudgetBillReminders();
+        renderBudget();
+      }
+
+      async function editBudgetBill(id) {
+        if (!budgetData) return;
+        const bill = budgetData.bills.find((b) => b.id === id);
+        if (!bill) return;
+        const nextName = prompt("Bill name:", bill.name || "");
+        if (nextName == null) return;
+        const nextAmount = prompt("Amount:", String(bill.amount || 0));
+        if (nextAmount == null) return;
+        const nextDue = prompt("Due date (YYYY-MM-DD):", String(bill.dueDate || ""));
+        if (nextDue == null) return;
+        const nextCadence = prompt("Cadence (monthly/weekly/yearly/one-time):", String(bill.cadence || "monthly"));
+        if (nextCadence == null) return;
+        const amount = Number(nextAmount || 0);
+        if (!Number.isFinite(amount) || amount <= 0) {
+          themedNotice("Enter a valid amount.");
+          return;
+        }
+        bill.name = String(nextName || "").trim() || bill.name;
+        bill.amount = amount;
+        bill.dueDate = String(nextDue || "").trim() || bill.dueDate;
+        bill.cadence = String(nextCadence || "monthly").trim().toLowerCase() || bill.cadence;
+        saveBudgetData("budget_bill_edit");
         syncBudgetBillReminders();
         renderBudget();
       }
