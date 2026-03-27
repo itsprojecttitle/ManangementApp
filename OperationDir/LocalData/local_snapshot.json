@@ -1,5 +1,5 @@
 {
-  "saved_at": "2026-03-26T18:38:01.424349+00:00",
+  "saved_at": "2026-03-27T17:54:47.187866+00:00",
   "local_snapshot": {
     "counts": {
       "datawells": 0,
@@ -21838,6 +21838,213 @@
           "kind": "break",
           "createdAt": "2026-03-26T18:25:18.683Z",
           "dismissedAt": "2026-03-26T18:35:12.250Z"
+        },
+        {
+          "id": "h_1774559384180_59359",
+          "key": "checklist:2026-03-26:164311",
+          "title": "Checklist Pending",
+          "message": "72 item(s) pending. Clean Opencalow | Fix Openclaw",
+          "kind": "checklist",
+          "createdAt": "2026-03-26T21:09:44.180Z",
+          "dismissedAt": ""
+        },
+        {
+          "id": "h_1774572188931_40387",
+          "key": "checklist:2026-03-26:164312",
+          "title": "Checklist Pending",
+          "message": "72 item(s) pending. Clean Opencalow | Fix Openclaw",
+          "kind": "checklist",
+          "createdAt": "2026-03-27T00:43:08.931Z",
+          "dismissedAt": ""
+        },
+        {
+          "id": "h_1774580451991_4283",
+          "key": "hour:2026-03-26:Q8:H3",
+          "title": "HOUR START",
+          "message": "SLEEP WINDOW hour 3/3 is live. Stay quiet and protected.",
+          "kind": "hour",
+          "createdAt": "2026-03-27T03:00:51.992Z",
+          "dismissedAt": ""
+        },
+        {
+          "id": "h_1774580451993_92738",
+          "key": "checklist:2026-03-26:164313",
+          "title": "Checklist Pending",
+          "message": "72 item(s) pending. Clean Opencalow | Fix Openclaw",
+          "kind": "checklist",
+          "createdAt": "2026-03-27T03:00:51.993Z",
+          "dismissedAt": ""
+        },
+        {
+          "id": "h_1774584007991_55807",
+          "key": "quarter:2026-03-27:Q1",
+          "title": "Morning Routine",
+          "message": "7 task(s) pending. Next: Eat / Shower",
+          "kind": "quarter",
+          "createdAt": "2026-03-27T04:00:07.991Z",
+          "dismissedAt": ""
+        },
+        {
+          "id": "h_1774584007995_99147",
+          "key": "checklist:2026-03-27:164313",
+          "title": "Checklist Pending",
+          "message": "72 item(s) pending. Clean Opencalow | Fix Openclaw",
+          "kind": "checklist",
+          "createdAt": "2026-03-27T04:00:07.995Z",
+          "dismissedAt": ""
+        },
+        {
+          "id": "h_1774620409622_81305",
+          "key": "checklist:2026-03-27:164316",
+          "title": "Checklist Pending",
+          "message": "72 item(s) pending. Clean Opencalow | Fix Openclaw",
+          "kind": "checklist",
+          "createdAt": "2026-03-27T14:06:49.622Z",
+          "dismissedAt": ""
+        },
+        {
+          "id": "h_1774621489315_12943",
+          "key": "upcoming:block:2026-03-27:Q4:S4:2026-03-27T14:30:00.000Z",
+          "title": "Upcoming Task",
+          "message": "Q4 Block 4 in 5m: Operation - Mission Task",
+          "kind": "upcoming",
+          "createdAt": "2026-03-27T14:24:49.315Z",
+          "dismissedAt": ""
+        },
+        {
+          "id": "h_1774621549257_58203",
+          "key": "break:2026-03-27:Q4:B3",
+          "title": "BREAK START",
+          "message": "Q4/8 break 3/6 is live now (after block 3).",
+          "kind": "break",
+          "createdAt": "2026-03-27T14:25:49.257Z",
+          "dismissedAt": ""
+        },
+        {
+          "id": "h_1774623349272_89282",
+          "key": "break:2026-03-27:Q4:B4",
+          "title": "BREAK START",
+          "message": "Q4/8 break 4/6 is live now (after block 4).",
+          "kind": "break",
+          "createdAt": "2026-03-27T14:55:49.272Z",
+          "dismissedAt": ""
+        },
+        {
+          "id": "h_1774623649276_12410",
+          "key": "hour:2026-03-27:Q4:H3",
+          "title": "HOUR START",
+          "message": "Q4/8 hour 3/3 is live now.",
+          "kind": "hour",
+          "createdAt": "2026-03-27T15:00:49.276Z",
+          "dismissedAt": ""
+        },
+        {
+          "id": "h_1774623649279_76779",
+          "key": "checklist:2026-03-27:164317",
+          "title": "Checklist Pending",
+          "message": "72 item(s) pending. Clean Opencalow | Fix Openclaw",
+          "kind": "checklist",
+          "createdAt": "2026-03-27T15:00:49.279Z",
+          "dismissedAt": ""
+        },
+        {
+          "id": "h_1774625149337_70112",
+          "key": "break:2026-03-27:Q4:B5",
+          "title": "BREAK START",
+          "message": "Q4/8 break 5/6 is live now (after recovery block 5).",
+          "kind": "break",
+          "createdAt": "2026-03-27T15:25:49.337Z",
+          "dismissedAt": ""
+        },
+        {
+          "id": "h_1774626889386_69917",
+          "key": "upcoming:block:2026-03-27:Q5:S1:2026-03-27T16:00:00.000Z",
+          "title": "Upcoming Task",
+          "message": "Q5 Block 1 in 5m: Operation - Mission Task",
+          "kind": "upcoming",
+          "createdAt": "2026-03-27T15:54:49.386Z",
+          "dismissedAt": ""
+        },
+        {
+          "id": "h_1774626949387_39356",
+          "key": "break:2026-03-27:Q4:B6",
+          "title": "BREAK START",
+          "message": "Q4/8 break 6/6 is live now (final reset window).",
+          "kind": "break",
+          "createdAt": "2026-03-27T15:55:49.387Z",
+          "dismissedAt": ""
+        },
+        {
+          "id": "h_1774627249394_3772",
+          "key": "quarter:2026-03-27:Q5",
+          "title": "QUARTER START",
+          "message": "Q5/8 is live now.",
+          "kind": "quarter",
+          "createdAt": "2026-03-27T16:00:49.394Z",
+          "dismissedAt": ""
+        },
+        {
+          "id": "h_1774628689431_54884",
+          "key": "upcoming:block:2026-03-27:Q5:S2:2026-03-27T16:30:00.000Z",
+          "title": "Upcoming Task",
+          "message": "Q5 Block 2 in 5m: Operation - Mission Task",
+          "kind": "upcoming",
+          "createdAt": "2026-03-27T16:24:49.431Z",
+          "dismissedAt": ""
+        },
+        {
+          "id": "h_1774628749433_12777",
+          "key": "break:2026-03-27:Q5:B1",
+          "title": "BREAK START",
+          "message": "Q5/8 break 1/6 is live now (after block 1).",
+          "kind": "break",
+          "createdAt": "2026-03-27T16:25:49.433Z",
+          "dismissedAt": ""
+        },
+        {
+          "id": "h_1774630446027_53392",
+          "key": "upcoming:block:2026-03-27:Q5:S3:2026-03-27T17:00:00.000Z",
+          "title": "Upcoming Task",
+          "message": "Q5 Block 3 in 5m: Operation - Mission Task",
+          "kind": "upcoming",
+          "createdAt": "2026-03-27T16:54:06.027Z",
+          "dismissedAt": ""
+        },
+        {
+          "id": "h_1774630507017_9996",
+          "key": "break:2026-03-27:Q5:B2",
+          "title": "BREAK START",
+          "message": "Q5/8 break 2/6 is live now (after block 2).",
+          "kind": "break",
+          "createdAt": "2026-03-27T16:55:07.017Z",
+          "dismissedAt": ""
+        },
+        {
+          "id": "h_1774630812016_26746",
+          "key": "hour:2026-03-27:Q5:H2",
+          "title": "HOUR START",
+          "message": "Q5/8 hour 2/3 is live now.",
+          "kind": "hour",
+          "createdAt": "2026-03-27T17:00:12.016Z",
+          "dismissedAt": ""
+        },
+        {
+          "id": "h_1774632276040_90087",
+          "key": "upcoming:block:2026-03-27:Q5:S4:2026-03-27T17:30:00.000Z",
+          "title": "Upcoming Task",
+          "message": "Q5 Block 4 in 5m: Operation - Mission Task",
+          "kind": "upcoming",
+          "createdAt": "2026-03-27T17:24:36.040Z",
+          "dismissedAt": ""
+        },
+        {
+          "id": "h_1774632337034_36511",
+          "key": "break:2026-03-27:Q5:B3",
+          "title": "BREAK START",
+          "message": "Q5/8 break 3/6 is live now (after block 3).",
+          "kind": "break",
+          "createdAt": "2026-03-27T17:25:37.034Z",
+          "dismissedAt": ""
         }
       ],
       "fired_notifications": [
@@ -21971,7 +22178,30 @@
         "hour:2026-03-26:Q5:H2",
         "break:2026-03-26:Q5:B4",
         "hour:2026-03-26:Q5:H3",
-        "checklist:2026-03-26:164310"
+        "checklist:2026-03-26:164310",
+        "checklist:2026-03-26:164311",
+        "checklist:2026-03-26:164312",
+        "hour:2026-03-26:Q8:H3",
+        "checklist:2026-03-26:164313",
+        "quarter:2026-03-27:Q1",
+        "checklist:2026-03-27:164313",
+        "checklist:2026-03-27:164316",
+        "upcoming:block:2026-03-27:Q4:S4:2026-03-27T14:30:00.000Z",
+        "break:2026-03-27:Q4:B3",
+        "break:2026-03-27:Q4:B4",
+        "hour:2026-03-27:Q4:H3",
+        "checklist:2026-03-27:164317",
+        "break:2026-03-27:Q4:B5",
+        "upcoming:block:2026-03-27:Q5:S1:2026-03-27T16:00:00.000Z",
+        "break:2026-03-27:Q4:B6",
+        "quarter:2026-03-27:Q5",
+        "upcoming:block:2026-03-27:Q5:S2:2026-03-27T16:30:00.000Z",
+        "break:2026-03-27:Q5:B1",
+        "upcoming:block:2026-03-27:Q5:S3:2026-03-27T17:00:00.000Z",
+        "break:2026-03-27:Q5:B2",
+        "hour:2026-03-27:Q5:H2",
+        "upcoming:block:2026-03-27:Q5:S4:2026-03-27T17:30:00.000Z",
+        "break:2026-03-27:Q5:B3"
       ],
       "view_sorts": null,
       "operation_colors": null,
@@ -21989,18 +22219,18 @@
     },
     "local_storage_index": {
       "key_count": 17,
-      "bytes": 650028,
+      "bytes": 653551,
       "keys": [
-        "missionPlan:2026-03-26",
         "omniAppBuild",
         "checklistItems:v1",
         "swissknifeFailLog:v1",
+        "missionPlan:2026-03-27",
         "omniSyncShadow:v1",
-        "omniSyncQueue:v1",
         "managementapp:datawells:v1",
-        "swissknife_output_dir",
+        "omniSyncQueue:v1",
         "omniIssueLog:v1",
         "notificationHistory:v1",
+        "swissknife_output_dir",
         "routineData:v2",
         "omniAppVersion",
         "budgetData:v1",

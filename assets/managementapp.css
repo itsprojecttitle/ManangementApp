@@ -5560,6 +5560,7 @@
         background: rgba(0, 10, 0, 0.75);
         display: grid;
         gap: 6px;
+        overflow: hidden;
       }
       .budget-dash-head {
         display: flex;
@@ -5575,6 +5576,8 @@
       .budget-dash-actions {
         display: flex;
         gap: 6px;
+        flex-wrap: wrap;
+        justify-content: flex-end;
       }
       .budget-progress {
         height: 6px;
