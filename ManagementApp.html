@@ -663,77 +663,79 @@
           <div class="swissknife-main">
             <div id="swissknife-view-downloads" class="swissknife-view active">
               <h2>// UNIVERSAL DOWNLOADER</h2>
-              <div class="swissknife-block">
-                <h3>// LINKS QUEUE</h3>
-                <div class="swissknife-form-group">
-                  <label for="swissknife-links">LINKS (ONE PER LINE)</label>
-                  <textarea id="swissknife-links" class="swissknife-textarea" rows="5" placeholder="https://www.instagram.com/p/SHORTCODE/"></textarea>
-                </div>
-                <div class="swissknife-grid">
+              <div class="swissknife-downloads-stack">
+                <div class="swissknife-block">
+                  <h3>// LINKS QUEUE</h3>
                   <div class="swissknife-form-group">
-                    <label for="swissknife-format">TARGET FORMAT</label>
-                    <select id="swissknife-format" class="search-input">
-                      <option value="original">ORIGINAL (INSTALOADER)</option>
-                      <option value="mp4">MP4</option>
-                      <option value="mp3">MP3</option>
-                      <option value="wav">WAV</option>
-                      <option value="m4a">M4A</option>
-                    </select>
+                    <label for="swissknife-links">LINKS (ONE PER LINE)</label>
+                    <textarea id="swissknife-links" class="swissknife-textarea" rows="5" placeholder="https://www.instagram.com/p/SHORTCODE/"></textarea>
+                  </div>
+                  <div class="swissknife-grid">
+                    <div class="swissknife-form-group">
+                      <label for="swissknife-format">TARGET FORMAT</label>
+                      <select id="swissknife-format" class="search-input">
+                        <option value="original">ORIGINAL (INSTALOADER)</option>
+                        <option value="mp4">MP4</option>
+                        <option value="mp3">MP3</option>
+                        <option value="wav">WAV</option>
+                        <option value="m4a">M4A</option>
+                      </select>
+                    </div>
+                    <div class="swissknife-form-group">
+                      <label for="swissknife-quality">VIDEO / PHOTO QUALITY</label>
+                      <select id="swissknife-quality" class="search-input">
+                        <option value="highest">HIGHEST</option>
+                        <option value="4k-h264">4K (H.264 / QUICKTIME)</option>
+                        <option value="4k">4K (2160P)</option>
+                        <option value="1440">1440P</option>
+                        <option value="high">1080P (HIGH)</option>
+                        <option value="medium">720P (MEDIUM)</option>
+                        <option value="low">480P (LOW)</option>
+                        <option value="360">360P</option>
+                        <option value="320">320P</option>
+                        <option value="240">240P</option>
+                        <option value="144">144P</option>
+                      </select>
+                    </div>
+                    <div class="swissknife-form-group">
+                      <label for="swissknife-audio-quality">AUDIO QUALITY</label>
+                      <select id="swissknife-audio-quality" class="search-input">
+                        <option value="320">320 KBPS</option>
+                        <option value="256">256 KBPS</option>
+                        <option value="192">192 KBPS</option>
+                        <option value="160">160 KBPS</option>
+                        <option value="128">128 KBPS</option>
+                        <option value="96">96 KBPS</option>
+                        <option value="64">64 KBPS</option>
+                      </select>
+                    </div>
                   </div>
                   <div class="swissknife-form-group">
-                    <label for="swissknife-quality">VIDEO / PHOTO QUALITY</label>
-                    <select id="swissknife-quality" class="search-input">
-                      <option value="highest">HIGHEST</option>
-                      <option value="4k-h264">4K (H.264 / QUICKTIME)</option>
-                      <option value="4k">4K (2160P)</option>
-                      <option value="1440">1440P</option>
-                      <option value="high">1080P (HIGH)</option>
-                      <option value="medium">720P (MEDIUM)</option>
-                      <option value="low">480P (LOW)</option>
-                      <option value="360">360P</option>
-                      <option value="320">320P</option>
-                      <option value="240">240P</option>
-                      <option value="144">144P</option>
-                    </select>
+                    <label for="swissknife-output-dir">DOWNLOAD FOLDER (OPTIONAL)</label>
+                    <div class="swissknife-dir-row">
+                      <input class="search-input" id="swissknife-output-dir" type="text" placeholder="e.g. /Users/samuelapata/Downloads/Swissknife" />
+                      <button class="submit-btn" type="button" onclick="pickSwissknifeOutputDir()">CHOOSE</button>
+                    </div>
                   </div>
-                  <div class="swissknife-form-group">
-                    <label for="swissknife-audio-quality">AUDIO QUALITY</label>
-                    <select id="swissknife-audio-quality" class="search-input">
-                      <option value="320">320 KBPS</option>
-                      <option value="256">256 KBPS</option>
-                      <option value="192">192 KBPS</option>
-                      <option value="160">160 KBPS</option>
-                      <option value="128">128 KBPS</option>
-                      <option value="96">96 KBPS</option>
-                      <option value="64">64 KBPS</option>
-                    </select>
+                  <div class="swissknife-inline">
+                    <label><input id="swissknife-login" type="checkbox" checked /> Use IG login (--login)</label>
                   </div>
+                  <button class="submit-btn" type="button" onclick="runSwissknifeBatchDownload()">RUN BATCH</button>
+                  <div id="swissknife-progress-section" class="swissknife-progress-container">
+                    <div class="swissknife-progress-label">
+                      <span id="swissknife-progress-status">READY</span>
+                      <span id="swissknife-progress-percent">0%</span>
+                    </div>
+                    <div class="swissknife-progress-outer">
+                      <div id="swissknife-progress-bar" class="swissknife-progress-inner"></div>
+                    </div>
+                  </div>
+                  <div id="swissknife-batch-status" class="swissknife-status-line">Queue idle.</div>
                 </div>
-                <div class="swissknife-form-group">
-                  <label for="swissknife-output-dir">DOWNLOAD FOLDER (OPTIONAL)</label>
-                  <div class="swissknife-dir-row">
-                    <input class="search-input" id="swissknife-output-dir" type="text" placeholder="e.g. /Users/samuelapata/Downloads/Swissknife" />
-                    <button class="submit-btn" type="button" onclick="pickSwissknifeOutputDir()">CHOOSE</button>
-                  </div>
+                <div class="swissknife-block swissknife-bordered">
+                  <h3>// LATEST ACQUISITIONS</h3>
+                  <div id="swissknife-recent-downloads" class="swissknife-recent-list">Waiting for input...</div>
                 </div>
-                <div class="swissknife-inline">
-                  <label><input id="swissknife-login" type="checkbox" checked /> Use IG login (--login)</label>
-                </div>
-                <button class="submit-btn" type="button" onclick="runSwissknifeBatchDownload()">RUN BATCH</button>
-                <div id="swissknife-progress-section" class="swissknife-progress-container">
-                  <div class="swissknife-progress-label">
-                    <span id="swissknife-progress-status">READY</span>
-                    <span id="swissknife-progress-percent">0%</span>
-                  </div>
-                  <div class="swissknife-progress-outer">
-                    <div id="swissknife-progress-bar" class="swissknife-progress-inner"></div>
-                  </div>
-                </div>
-                <div id="swissknife-batch-status" class="swissknife-status-line">Queue idle.</div>
-              </div>
-              <div class="swissknife-block swissknife-bordered">
-                <h3>// LATEST ACQUISITIONS</h3>
-                <div id="swissknife-recent-downloads" class="swissknife-recent-list">Waiting for input...</div>
               </div>
             </div>
             <div id="swissknife-view-history" class="swissknife-view">

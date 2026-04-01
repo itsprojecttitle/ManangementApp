@@ -32,6 +32,9 @@
       let blackbookSearchQuery = "";
       let hviSearchQuery = "";
       let contactsSearchQuery = "";
+      let datawellsLoaded = false;
+      let hviLoaded = false;
+      let contactsLoaded = false;
       let datawellSearchQuery = "";
       let hviFilterCategory = [];
       let hviFilterParam = "";
@@ -5586,6 +5589,7 @@
         } catch (e) {
           allDatawells = [];
         }
+        datawellsLoaded = true;
         pruneMissionDatawellLinks();
         saveDatawells(true);
       }
@@ -5693,6 +5697,10 @@
       function renderDatawells() {
         const container = document.getElementById("datawells-container");
         if (!container) return;
+        if (!datawellsLoaded && (!Array.isArray(allDatawells) || !allDatawells.length)) {
+          container.innerHTML = "<div class='hvi-card'><p>Loading Datawells...</p></div>";
+          return;
+        }
         ensureViewSortBar("datawells-sort-slot", "datawells", container);
         let rows = Array.isArray(allDatawells) ? allDatawells.slice() : [];
         const typeSelect = document.getElementById("datawells-filter-type");
@@ -19679,6 +19687,10 @@
       function renderHvi() {
         const container = document.getElementById("hvi-container");
         if (!container) return;
+        if (!hviLoaded && (!Array.isArray(allHvi) || !allHvi.length)) {
+          container.innerHTML = "<div class='hvi-card'><p>Loading HVI profiles...</p></div>";
+          return;
+        }
         ensureViewSortBar("hvi-sort-slot", "hvi", container);
         let data = allHvi.map((h) => augmentHvi(h));
         const categorySelect = document.getElementById("hvi-filter-category");
@@ -19759,6 +19771,10 @@
       function renderContacts() {
         const container = document.getElementById("contacts-container");
         if (!container) return;
+        if (!contactsLoaded && (!Array.isArray(allContacts) || !allContacts.length)) {
+          container.innerHTML = "<div class='hvi-card'><p>Loading contacts...</p></div>";
+          return;
+        }
         ensureViewSortBar("contacts-sort-slot", "contacts", container);
         let data = Array.isArray(allContacts) ? allContacts.slice() : [];
         if (contactsSearchQuery) {
@@ -21565,12 +21581,14 @@
 
           if (Array.isArray(hviData)) {
             allHvi = hviData;
+            hviLoaded = true;
             const hviCount = document.getElementById("hvi-count");
             if (hviCount) hviCount.innerText = String(hviData.length);
           }
 
           if (Array.isArray(contactsData)) {
             allContacts = contactsData;
+            contactsLoaded = true;
             const contactCount = document.getElementById("contact-count");
             if (contactCount) contactCount.innerText = String(contactsData.length);
           }
