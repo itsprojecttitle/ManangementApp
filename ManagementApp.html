@@ -67,8 +67,8 @@
         }, 2500);
       })();
     </script>
-    <link rel="stylesheet" href="assets/managementapp.css?v=20260322-repolive35" />
-    <link rel="stylesheet" href="assets/managementapp-draft.css?v=20260316-task-3" />
+    <link rel="stylesheet" href="/assets/managementapp.css?v=20260322-repolive35" />
+    <link rel="stylesheet" href="/assets/managementapp-draft.css?v=20260316-task-3" />
 
   </head>
   <body>
@@ -111,19 +111,8 @@
     <main id="main-screen">
       <!-- DASHBOARD VIEW -->
       <div id="view-dashboard" class="view-panel active">
-        <div class="view-header">
-          <div>
-            <h2 class="view-title">// SYSTEM OVERVIEW</h2>
-            <div class="view-subtitle">Operational pulse across missions, intel, and contacts.</div>
-          </div>
-          <div class="view-actions">
-            <button id="notify-history-toggle-btn" class="confirm-btn" type="button" onclick="toggleNotificationHistoryPanel()">NOTIFICATION HISTORY</button>
-            <button class="confirm-btn" type="button" onclick="applyOperationDayFocus()">APPLY ASSIGNMENTS</button>
-            <button class="confirm-btn" type="button" onclick="resetDashboardSession()">RESET SESSION</button>
-            <button class="confirm-btn" type="button" onclick="editMissionTaskTemplates()">EDIT TASKS</button>
-          </div>
-        </div>
-        <div class="dashboard-metrics panel-card">
+        <h2>// SYSTEM OVERVIEW</h2>
+        <div class="dashboard-metrics" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px">
           <div class="op-card" onclick="switchView('operations')">
             <span class="op-icon">📁</span>
             <h3>OPERATIONS</h3>
@@ -145,41 +134,40 @@
             <h1 style="margin: 0" id="contact-count">0</h1>
           </div>
         </div>
-        <div class="panel-card">
-          <div class="panel-card-head">
-            <h3>// TOP MISSIONS OF THE DAY</h3>
+        <br />
+        <h3>// TOP MISSIONS OF THE DAY</h3>
+        <div style="margin-bottom:8px;">
+          <button id="notify-history-toggle-btn" class="confirm-btn" type="button" onclick="toggleNotificationHistoryPanel()">NOTIFICATION HISTORY</button>
+          <button class="confirm-btn" type="button" onclick="applyOperationDayFocus()">APPLY ASSIGNMENTS</button>
+          <button class="confirm-btn" type="button" onclick="resetDashboardSession()">RESET DASHBOARD SESSION</button>
+          <button class="confirm-btn" type="button" onclick="editMissionTaskTemplates()">EDIT TASKS</button>
+        </div>
+        <div id="notify-history-box" class="notify-history-box sticky-top hidden">
+          <div class="notify-history-head">
+            <strong>// NOTIFICATION HISTORY (DISMISSED)</strong>
+            <button class="confirm-btn" type="button" onclick="clearNotificationHistory()">CLEAR</button>
           </div>
-          <div id="notify-history-box" class="notify-history-box sticky-top hidden">
-            <div class="notify-history-head">
-              <strong>// NOTIFICATION HISTORY (DISMISSED)</strong>
-              <button class="confirm-btn" type="button" onclick="clearNotificationHistory()">CLEAR</button>
-            </div>
-            <div id="notify-history-list" class="notify-history-list">
-              <div class="notify-history-row" style="color:var(--term-dim);">No dismissed alerts yet.</div>
-            </div>
+          <div id="notify-history-list" class="notify-history-list">
+            <div class="notify-history-row" style="color:var(--term-dim);">No dismissed alerts yet.</div>
           </div>
-          <div id="operation-focus-list">
-            <div class="hvi-card" style="border-color: var(--term-green)">
-              No mission activity yet.
-            </div>
+        </div>
+        <div id="operation-focus-list">
+          <div class="hvi-card" style="border-color: var(--term-green)">
+            No mission activity yet.
           </div>
         </div>
       </div>
 
       <div id="view-routines" class="view-panel">
-        <div class="view-header">
-          <div>
-            <h2 class="view-title">// MORNING + NIGHT ROUTINES</h2>
-            <div class="view-subtitle">Structured daily flow with descriptions.</div>
-          </div>
-          <div class="view-actions">
-            <button class="confirm-btn" type="button" onclick="carryIncompleteRoutineTasksToReminders()">CARRY INCOMPLETE -> REMINDERS</button>
-            <button class="confirm-btn" type="button" onclick="snoozeIncompleteRoutineTasks(60)">SNOOZE INCOMPLETE +1H</button>
-            <button class="confirm-btn" type="button" onclick="resetRoutineProgress()">RESET ROUTINE CHECKS</button>
-          </div>
+        <h2>// MORNING + NIGHT ROUTINES</h2>
+        <p>Structured daily flow with descriptions. Use the Gym Planner page for workout catalog and daily training checklist.</p>
+        <div class="settings-actions" style="margin-bottom:10px;">
+          <button class="confirm-btn" type="button" onclick="carryIncompleteRoutineTasksToReminders()">CARRY INCOMPLETE -> REMINDERS</button>
+          <button class="confirm-btn" type="button" onclick="snoozeIncompleteRoutineTasks(60)">SNOOZE INCOMPLETE +1H</button>
+          <button class="confirm-btn" type="button" onclick="resetRoutineProgress()">RESET ROUTINE CHECKS</button>
         </div>
         <div class="routine-grid">
-          <div class="routine-box panel-card">
+          <div class="routine-box">
             <div class="routine-head">
               <h3 class="routine-title">// MORNING ROUTINE</h3>
             </div>
@@ -191,7 +179,7 @@
               <button class="submit-btn" type="button" onclick="addRoutineTask('morning')">ADD</button>
             </div>
           </div>
-          <div class="routine-box panel-card">
+          <div class="routine-box">
             <div class="routine-head">
               <h3 class="routine-title">// NIGHT ROUTINE</h3>
             </div>
@@ -207,14 +195,10 @@
       </div>
 
       <div id="view-gym-planner" class="view-panel">
-        <div class="view-header">
-          <div>
-            <h2 class="view-title">// GYM PLANNER</h2>
-            <div class="view-subtitle">Select a block category, then manage exercises in a focused subpage.</div>
-          </div>
-        </div>
+        <h2>// GYM PLANNER</h2>
+        <p>Select a block category first, then manage exercises in a focused subpage.</p>
         <div class="routine-gym">
-          <div class="gym-global-session-bar panel-card">
+          <div class="gym-global-session-bar">
             <div class="gym-global-session-main">
               <strong style="color:var(--warning-yellow);">PICKED SESSION</strong>
               <div id="gym-session-status" class="gym-session-status">Pick exercises anywhere in Gym to build a mixed manual session.</div>
@@ -225,7 +209,7 @@
               <button id="gym-session-play-btn" class="submit-btn" type="button" onclick="openGymSessionRunner()" disabled>PLAY SESSION</button>
             </div>
           </div>
-          <div class="gym-saved-session-bar panel-card">
+          <div class="gym-saved-session-bar">
             <div class="gym-global-session-main">
               <strong style="color:var(--warning-yellow);">PRELOAD PREVIOUS SESSION</strong>
               <div id="gym-saved-session-status" class="gym-session-status">No saved sessions yet.</div>
@@ -236,13 +220,13 @@
             </div>
           </div>
           <div id="gym-top-add-launch" class="add-launch-row"><button class="add-plus-btn" type="button" onclick="openAddPopup('gym-category-add-panel')">+</button></div>
-          <div id="gym-category-home" class="gym-category-home panel-card"></div>
+          <div id="gym-category-home" class="gym-category-home"></div>
           <div id="gym-category-add-panel" class="gym-category-add add-popup-panel submission-area">
             <button class="add-popup-close" type="button" onclick="closeAllAddPopups()">X</button>
             <input id="gym-new-category-input" class="search-input" type="text" placeholder="Add new category..." onkeydown="onGymCategoryInputKey(event)" />
             <button class="submit-btn" type="button" onclick="addGymCategory()">ADD</button>
           </div>
-          <div id="gym-category-view" class="gym-category-view panel-card" style="display:none;">
+          <div id="gym-category-view" class="gym-category-view" style="display:none;">
             <div class="gym-focus-head">
               <button class="confirm-btn" type="button" onclick="backGymLevel()">BACK</button>
               <strong id="gym-category-title" style="color:var(--warning-yellow);"></strong>
@@ -274,49 +258,34 @@
 
       <!-- MISSION LOG VIEW -->
       <div id="view-mission-log" class="view-panel">
-        <div class="view-header">
-          <div>
-            <h2 id="mission-header" class="view-title">// MASTER MISSION INDEX</h2>
-            <div class="view-subtitle">Source: <code id="mission-source-code">OperationDir/Operations/[OP]/Missions/[BRIEF]</code></div>
-          </div>
-          <div class="view-actions">
-            <button class="confirm-btn" type="button" onclick="switchView('operations')">BACK TO OPERATIONS</button>
-          </div>
+        <button class="back-btn" onclick="switchView('operations')">< BACK TO OPERATIONS</button>
+        <h2 id="mission-header">// MASTER MISSION INDEX</h2>
+        <p>Source: <code id="mission-source-code">OperationDir/Operations/[OP]/Missions/[BRIEF]</code></p>
+        <div class="search-toolbar">
+          <input class="search-input" id="mission-search-input" type="text" placeholder="Search missions or operation..." oninput="setMissionSearch()" onkeydown="if(event.key==='Enter') setMissionSearch()" />
+          <button class="submit-btn" type="button" onclick="setMissionSearch()">SEARCH</button>
         </div>
-        <div class="panel-card">
-          <div class="panel-card-head">
-            <h3>// FILTERS</h3>
-          </div>
-          <div class="search-toolbar">
-            <input class="search-input" id="mission-search-input" type="text" placeholder="Search missions or operation..." oninput="setMissionSearch()" onkeydown="if(event.key==='Enter') setMissionSearch()" />
-            <button class="submit-btn" type="button" onclick="setMissionSearch()">SEARCH</button>
-          </div>
-          <div class="search-toolbar">
-            <select id="mission-type-filter" class="search-input" onchange="setMissionTypeFilter()">
-              <option value="">ALL TYPES</option>
-              <option value="Probe/Index">PROBE & INDEX (EXECUTION)</option>
-              <option value="SpecialOps">SPECIALOPS (PLANNING/TREATMENTS)</option>
-            </select>
-            <button class="submit-btn" type="button" onclick="clearMissionTypeFilter()">CLEAR TYPE</button>
-          </div>
-          <div class="search-toolbar">
-            <select class="search-input mission-task-filter" onchange="setMissionTaskFilter(this)">
-              <option value="">ALL TASKS</option>
-            </select>
-            <button class="submit-btn" type="button" onclick="clearMissionTaskFilter()">CLEAR TASK</button>
-            <input class="search-input mission-task-new" type="text" placeholder="Add new task..." />
-            <button class="submit-btn" type="button" onclick="addMissionTaskTemplate(this)">ADD TASK</button>
-            <button class="submit-btn" type="button" onclick="editMissionTaskTemplates()">EDIT TASKS</button>
-          </div>
+        <div class="search-toolbar">
+          <select id="mission-type-filter" class="search-input" onchange="setMissionTypeFilter()">
+            <option value="">ALL TYPES</option>
+            <option value="Probe/Index">PROBE & INDEX (EXECUTION)</option>
+            <option value="SpecialOps">SPECIALOPS (PLANNING/TREATMENTS)</option>
+          </select>
+          <button class="submit-btn" type="button" onclick="clearMissionTypeFilter()">CLEAR TYPE</button>
         </div>
-        <div class="panel-card">
-          <div class="panel-card-head">
-            <h3>// LOG NEW MISSION</h3>
-            <button class="add-plus-btn" type="button" onclick="openAddPopup('mission-submission-area')">+</button>
-          </div>
-          <div id="mission-submission-area" class="submission-area add-popup-panel">
-            <button class="add-popup-close" type="button" onclick="closeAllAddPopups()">X</button>
-            <h3>+ LOG NEW MISSION</h3>
+        <div class="search-toolbar">
+          <select class="search-input mission-task-filter" onchange="setMissionTaskFilter(this)">
+            <option value="">ALL TASKS</option>
+          </select>
+          <button class="submit-btn" type="button" onclick="clearMissionTaskFilter()">CLEAR TASK</button>
+          <input class="search-input mission-task-new" type="text" placeholder="Add new task..." />
+          <button class="submit-btn" type="button" onclick="addMissionTaskTemplate(this)">ADD TASK</button>
+          <button class="submit-btn" type="button" onclick="editMissionTaskTemplates()">EDIT TASKS</button>
+        </div>
+        <div class="add-launch-row"><button class="add-plus-btn" type="button" onclick="openAddPopup('mission-submission-area')">+</button></div>
+        <div id="mission-submission-area" class="submission-area add-popup-panel">
+          <button class="add-popup-close" type="button" onclick="closeAllAddPopups()">X</button>
+          <h3>+ LOG NEW MISSION</h3>
           <div class="form-group">
             <label for="new-mission-name">Mission Name:</label>
             <input type="text" id="new-mission-name" placeholder="e.g., Acquire Target X Data" />
@@ -358,129 +327,63 @@
           <button class="submit-btn" onclick="submitNewMission()">LOG MISSION</button>
           <p id="submission-message" style="margin-top: 10px"></p>
         </div>
-        </div>
 
-        <div class="panel-card panel-card-table">
-          <table id="mission-table">
-            <thead>
-              <tr>
-                <th>CREATED</th>
-                <th>OPERATION</th>
-                <th>MISSION</th>
-                <th>TYPE</th>
-                <th>TASK</th>
-                <th>STATUS</th>
-                <th style="width: 120px;">ACTIONS</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr><td colspan="7">Loading missions...</td></tr>
-            </tbody>
-          </table>
-        </div>
+        <table id="mission-table">
+          <thead>
+            <tr>
+              <th>CREATED</th>
+              <th>OPERATION</th>
+              <th>MISSION</th>
+              <th>TYPE</th>
+              <th>TASK</th>
+              <th>STATUS</th>
+              <th style="width: 120px;">ACTIONS</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td colspan="7">Loading missions...</td></tr>
+          </tbody>
+        </table>
       </div>
 
       <!-- OPERATIONS VIEW -->
       <div id="view-operations" class="view-panel">
-        <div class="view-header">
-          <div>
-            <h2 class="view-title">// ACTIVE THEATERS</h2>
-            <div class="view-subtitle">Source: <code>OperationDir/Operations/</code></div>
-          </div>
+        <h2>// ACTIVE THEATERS</h2>
+        <div class="search-toolbar">
+          <select class="search-input mission-task-filter" onchange="setMissionTaskFilter(this)">
+            <option value="">ALL TASKS</option>
+          </select>
+          <button class="submit-btn" type="button" onclick="clearMissionTaskFilter()">CLEAR TASK</button>
+          <input class="search-input mission-task-new" type="text" placeholder="Add new task..." />
+          <button class="submit-btn" type="button" onclick="addMissionTaskTemplate(this)">ADD TASK</button>
+          <button class="submit-btn" type="button" onclick="editMissionTaskTemplates()">EDIT TASKS</button>
         </div>
-        <div class="view-grid">
-          <div class="span-7">
-            <div class="panel-card">
-              <div class="panel-card-head">
-                <h3>// TASK FILTERS</h3>
-              </div>
-              <div class="search-toolbar">
-                <select class="search-input mission-task-filter" onchange="setMissionTaskFilter(this)">
-                  <option value="">ALL TASKS</option>
-                </select>
-                <button class="submit-btn" type="button" onclick="clearMissionTaskFilter()">CLEAR TASK</button>
-                <input class="search-input mission-task-new" type="text" placeholder="Add new task..." />
-                <button class="submit-btn" type="button" onclick="addMissionTaskTemplate(this)">ADD TASK</button>
-                <button class="submit-btn" type="button" onclick="editMissionTaskTemplates()">EDIT TASKS</button>
-              </div>
-            </div>
 
-            <div class="panel-card">
-              <div class="panel-card-head">
-                <h3>// CREATE NEW OPERATION</h3>
-                <button class="add-plus-btn" type="button" onclick="openAddPopup('operation-submission-area')">+</button>
-              </div>
-              <div id="operation-submission-area" class="submission-area add-popup-panel">
-                <button class="add-popup-close" type="button" onclick="closeAllAddPopups()">X</button>
-                <h3>+ CREATE NEW OPERATION</h3>
-                <div class="form-group">
-                  <label for="new-op-name">Operation Name:</label>
-                  <input type="text" id="new-op-name" placeholder="e.g., TargetRecon" />
-                </div>
-                <button class="submit-btn" onclick="submitNewOperation()">INITIALIZE OPERATION</button>
-                <p id="op-submission-message" style="margin-top: 10px"></p>
-              </div>
-            </div>
-
-            <div class="panel-card">
-              <div class="panel-card-head">
-                <h3>// OPERATIONS</h3>
-              </div>
-              <div class="search-toolbar">
-                <input class="search-input" id="operation-search-input" type="text" placeholder="Search operations..." oninput="setOperationSearch()" onkeydown="if(event.key==='Enter') setOperationSearch()" />
-                <button class="submit-btn" type="button" onclick="setOperationSearch()">SEARCH</button>
-              </div>
-              <div class="ops-grid"></div>
-            </div>
+        <div class="add-launch-row"><button class="add-plus-btn" type="button" onclick="openAddPopup('operation-submission-area')">+</button></div>
+        <div id="operation-submission-area" class="submission-area add-popup-panel">
+          <button class="add-popup-close" type="button" onclick="closeAllAddPopups()">X</button>
+          <h3>+ CREATE NEW OPERATION</h3>
+          <div class="form-group">
+            <label for="new-op-name">Operation Name:</label>
+            <input type="text" id="new-op-name" placeholder="e.g., TargetRecon" />
           </div>
-          <div class="span-5">
-            <div class="panel-card panel-card-table">
-              <div class="panel-card-head">
-                <h3>// BLACK BOOK REFERENCE</h3>
-              </div>
-              <div class="search-toolbar">
-                <input class="search-input" id="blackbook-search-input-ops" type="text" placeholder="Search black book..." oninput="setBlackbookSearch(this)" onkeydown="if(event.key==='Enter') setBlackbookSearch(this)" />
-                <button class="submit-btn" type="button" onclick="setBlackbookSearch(document.getElementById('blackbook-search-input-ops'))">SEARCH</button>
-                <button class="submit-btn" type="button" onclick="syncIntelFromBriefs()">SYNC FROM BRIEFS</button>
-              </div>
-              <div class="ops-blackbook-reference">
-                <table class="blackbook-table">
-                  <thead>
-                    <tr>
-                      <th>OPERATION</th>
-                      <th>MISSION</th>
-                      <th>STATUS</th>
-                      <th>DESCRIPTION</th>
-                      <th style="width: 70px;">ACTIONS</th>
-                    </tr>
-                  </thead>
-                  <tbody id="operations-blackbook-tbody">
-                    <tr><td colspan="5">Loading probes...</td></tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
+          <button class="submit-btn" onclick="submitNewOperation()">INITIALIZE OPERATION</button>
+          <p id="op-submission-message" style="margin-top: 10px"></p>
         </div>
-      </div>
 
-      <!-- BLACK BOOK VIEW -->
-      <div id="view-blackbook" class="view-panel">
-        <div class="view-header">
-          <div>
-            <h2 class="view-title">// BLACK BOOK LAB RESULTS</h2>
-            <div class="view-subtitle">Source: <code>OperationDir/BLACK_BOOK.md</code></div>
-          </div>
+        <p>Source: <code>OperationDir/Operations/</code></p>
+        <div class="search-toolbar">
+          <input class="search-input" id="operation-search-input" type="text" placeholder="Search operations..." oninput="setOperationSearch()" onkeydown="if(event.key==='Enter') setOperationSearch()" />
+          <button class="submit-btn" type="button" onclick="setOperationSearch()">SEARCH</button>
         </div>
-        <div class="panel-card panel-card-table">
-          <div class="panel-card-head">
-            <h3>// SEARCH + INDEX</h3>
-          </div>
-          <div class="search-toolbar">
-            <input class="search-input" id="blackbook-search-input" type="text" placeholder="Search black book..." oninput="setBlackbookSearch(this)" onkeydown="if(event.key==='Enter') setBlackbookSearch(this)" />
-            <button class="submit-btn" type="button" onclick="setBlackbookSearch(document.getElementById('blackbook-search-input'))">SEARCH</button>
-            <button class="submit-btn" type="button" onclick="syncIntelFromBriefs()">SYNC FROM BRIEFS</button>
-          </div>
+        <div class="ops-grid"></div>
+        <h3 style="margin-top: 24px;">// BLACK BOOK REFERENCE</h3>
+        <div class="search-toolbar">
+          <input class="search-input" id="blackbook-search-input-ops" type="text" placeholder="Search black book..." oninput="setBlackbookSearch(this)" onkeydown="if(event.key==='Enter') setBlackbookSearch(this)" />
+          <button class="submit-btn" type="button" onclick="setBlackbookSearch(document.getElementById('blackbook-search-input-ops'))">SEARCH</button>
+          <button class="submit-btn" type="button" onclick="syncIntelFromBriefs()">SYNC FROM BRIEFS</button>
+        </div>
+        <div class="ops-blackbook-reference">
           <table class="blackbook-table">
             <thead>
               <tr>
@@ -491,59 +394,57 @@
                 <th style="width: 70px;">ACTIONS</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody id="operations-blackbook-tbody">
               <tr><td colspan="5">Loading probes...</td></tr>
             </tbody>
           </table>
         </div>
       </div>
 
+      <!-- BLACK BOOK VIEW -->
+      <div id="view-blackbook" class="view-panel">
+        <h2>// BLACK BOOK LAB RESULTS</h2>
+        <p>Source: <code>OperationDir/BLACK_BOOK.md</code></p>
+        <div class="search-toolbar">
+          <input class="search-input" id="blackbook-search-input" type="text" placeholder="Search black book..." oninput="setBlackbookSearch(this)" onkeydown="if(event.key==='Enter') setBlackbookSearch(this)" />
+          <button class="submit-btn" type="button" onclick="setBlackbookSearch(document.getElementById('blackbook-search-input'))">SEARCH</button>
+          <button class="submit-btn" type="button" onclick="syncIntelFromBriefs()">SYNC FROM BRIEFS</button>
+        </div>
+        <table class="blackbook-table">
+          <thead>
+            <tr>
+              <th>OPERATION</th>
+              <th>MISSION</th>
+              <th>STATUS</th>
+              <th>DESCRIPTION</th>
+              <th style="width: 70px;">ACTIONS</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td colspan="5">Loading probes...</td></tr>
+          </tbody>
+        </table>
+      </div>
+
       <div id="view-blueprints" class="view-panel">
-        <div class="view-header">
-          <div>
-            <h2 class="view-title">// ORACLE ARCHIVE</h2>
-            <div class="view-subtitle">Source: <code>BLUEPRINT_*.md</code> | Domains: Compute Sovereignty, Transport Layer, Intelligence &amp; VISINT, Stealth &amp; OSINT, Private Communication.</div>
-          </div>
+        <h2>// ORACLE ARCHIVE</h2>
+        <p>Source: <code>BLUEPRINT_*.md</code> | Domains: Compute Sovereignty, Transport Layer, Intelligence & VISINT, Stealth & OSINT, Private Communication.</p>
+        <div class="search-toolbar">
+          <input class="search-input" id="blueprint-search-input" type="text" placeholder="Search oracle docs..." oninput="setBlueprintSearch()" onkeydown="if(event.key==='Enter') setBlueprintSearch()" />
+          <button class="submit-btn" type="button" onclick="setBlueprintSearch()">SEARCH</button>
         </div>
-        <div class="panel-card">
-          <div class="panel-card-head">
-            <h3>// SEARCH</h3>
-          </div>
-          <div class="search-toolbar">
-            <input class="search-input" id="blueprint-search-input" type="text" placeholder="Search oracle docs..." oninput="setBlueprintSearch()" onkeydown="if(event.key==='Enter') setBlueprintSearch()" />
-            <button class="submit-btn" type="button" onclick="setBlueprintSearch()">SEARCH</button>
-          </div>
-        </div>
-        <div class="panel-card">
-          <div class="panel-card-head">
-            <h3>// BLUEPRINTS</h3>
-          </div>
-          <div id="blueprint-grid" class="ops-grid"></div>
-        </div>
+        <h3>// BLUEPRINTS</h3>
+        <div id="blueprint-grid" class="ops-grid"></div>
       </div>
 
       <div id="view-books" class="view-panel">
-        <div class="view-header">
-          <div>
-            <h2 class="view-title">// BOOKS</h2>
-            <div class="view-subtitle">Source: <code>OperationDir/Manuel/</code> (PDF + Markdown + Text)</div>
-          </div>
+        <h2>// BOOKS</h2>
+        <p>Source: <code>OperationDir/Manuel/</code> (PDF + Markdown + Text)</p>
+        <div class="search-toolbar">
+          <input class="search-input" id="book-search-input" type="text" placeholder="Search books/manuals..." oninput="setBookSearch()" onkeydown="if(event.key==='Enter') setBookSearch()" />
+          <button class="submit-btn" type="button" onclick="setBookSearch()">SEARCH</button>
         </div>
-        <div class="panel-card">
-          <div class="panel-card-head">
-            <h3>// SEARCH</h3>
-          </div>
-          <div class="search-toolbar">
-            <input class="search-input" id="book-search-input" type="text" placeholder="Search books/manuals..." oninput="setBookSearch()" onkeydown="if(event.key==='Enter') setBookSearch()" />
-            <button class="submit-btn" type="button" onclick="setBookSearch()">SEARCH</button>
-          </div>
-        </div>
-        <div class="panel-card">
-          <div class="panel-card-head">
-            <h3>// LIBRARY</h3>
-          </div>
-          <div id="book-grid" class="ops-grid"></div>
-        </div>
+        <div id="book-grid" class="ops-grid"></div>
       </div>
 
       <div id="view-budget" class="view-panel">
@@ -762,9 +663,7 @@
           <div class="swissknife-main">
             <div id="swissknife-view-downloads" class="swissknife-view active">
               <h2>// UNIVERSAL DOWNLOADER</h2>
-              <div class="swissknife-layout">
-                <div class="swissknife-col">
-                  <div class="swissknife-block">
+              <div class="swissknife-block">
                 <h3>// LINKS QUEUE</h3>
                 <div class="swissknife-form-group">
                   <label for="swissknife-links">LINKS (ONE PER LINE)</label>
@@ -832,13 +731,9 @@
                 </div>
                 <div id="swissknife-batch-status" class="swissknife-status-line">Queue idle.</div>
               </div>
-                </div>
-                <div class="swissknife-col">
-                  <div class="swissknife-block swissknife-bordered">
+              <div class="swissknife-block swissknife-bordered">
                 <h3>// LATEST ACQUISITIONS</h3>
                 <div id="swissknife-recent-downloads" class="swissknife-recent-list">Waiting for input...</div>
-              </div>
-                </div>
               </div>
             </div>
             <div id="swissknife-view-history" class="swissknife-view">
@@ -995,12 +890,7 @@
       </div>
 
       <div id="view-settings" class="view-panel">
-        <div class="view-header">
-          <div>
-            <h2 class="view-title">// SETTINGS</h2>
-            <div class="view-subtitle">System controls, appearance, sync, and diagnostics.</div>
-          </div>
-        </div>
+        <h2>// SETTINGS</h2>
         <div class="settings-grid">
           <div class="settings-card">
             <h3>// SYSTEM</h3>
@@ -1118,14 +1008,6 @@
               </select>
               <button class="confirm-btn settings-reset-mini" type="button" onclick="resetAppearanceField('titleFontTheme')">RESET</button>
             </div>
-            <div class="settings-row">
-              <label for="ui-detail-level">Detail Level</label>
-              <select id="ui-detail-level" class="search-input matrix-select" onchange="saveAppearanceSettings()" ondblclick="resetAppearanceField('detailLevel')">
-                <option value="full">Full Details</option>
-                <option value="compact">Compact</option>
-              </select>
-              <button class="confirm-btn settings-reset-mini" type="button" onclick="resetAppearanceField('detailLevel')">RESET</button>
-            </div>
             <div class="settings-actions" ondblclick="resetAppearanceSettings()">
               <button class="confirm-btn" type="button" onclick="cycleFontTheme()">CYCLE FONT</button>
               <button class="confirm-btn" type="button" onclick="resetAppearanceSettings()">RESET UI</button>
@@ -1174,16 +1056,6 @@
             </div>
             <div id="health-panel-output" class="manual-view">Loading health status...</div>
           </div>
-          <div class="settings-card settings-card-span">
-            <h3>// EVENT LOG</h3>
-            <div class="settings-help">Recent notices, warnings, and errors captured during this session.</div>
-            <div class="settings-actions" style="margin-bottom:10px;">
-              <button class="confirm-btn" type="button" onclick="renderUiEventLog()">REFRESH</button>
-              <button class="confirm-btn" type="button" onclick="copyUiEventLog()">COPY LOG</button>
-              <button class="confirm-btn" type="button" onclick="clearUiEventLog()">CLEAR LOG</button>
-            </div>
-            <div id="ui-event-log-output" class="manual-view">No events yet.</div>
-          </div>
           <div class="settings-card settings-card-span" id="settings-sync-center-panel">
             <h3>// SYNC CENTER</h3>
             <div class="settings-help">Build info, manual backup/export, offline sync queue state, upcoming alert preview, dismissed notification history, and Mac-side iPhone live controls. This is the control panel for keeping phone and Mac data in step.</div>
@@ -1217,13 +1089,9 @@
       </div>
 
       <div id="view-terminal-lab" class="view-panel">
-        <div class="view-header">
-          <div>
-            <h2 class="view-title">// TERMINAL LAB (PYTHON SANDBOX)</h2>
-            <div class="view-subtitle">Offline Python and restricted Bash practice.</div>
-          </div>
-        </div>
-        <div class="terminal-wrap panel-card">
+        <h2>// TERMINAL LAB (PYTHON SANDBOX)</h2>
+        <p>Study mode is now terminal-only. Use this local sandbox for offline Python and limited Bash practice without the old lesson and quiz blocks.</p>
+        <div class="terminal-wrap">
           <div class="terminal-grid">
             <div class="terminal-actions">
               <label for="terminal-mode">Mode</label>
@@ -1246,20 +1114,12 @@ for i in range(3):
       </div>
 
       <div id="view-datawells" class="view-panel">
-        <div class="view-header">
-          <div>
-            <h2 class="view-title">// DATAWELLS</h2>
-            <div class="view-subtitle">Map source wells that expose painpoints, community entry points, and indexing paths.</div>
-          </div>
-        </div>
-        <div class="panel-card">
-          <div class="panel-card-head">
-            <h3>// ADD SOURCE</h3>
-            <button class="add-plus-btn" type="button" onclick="openAddPopup('datawells-submission-area')">+</button>
-          </div>
-          <div id="datawells-submission-area" class="submission-area add-popup-panel" style="margin-top:10px;">
-            <button class="add-popup-close" type="button" onclick="closeAllAddPopups()">X</button>
-            <h3>+ ADD DATAWELL SOURCE</h3>
+        <h2>// DATAWELLS</h2>
+        <p>Map source wells that expose painpoints, community entry points, and indexing paths. Add social accounts, websites, articles, or comment sections, then keep links and notes editable.</p>
+        <div class="add-launch-row"><button class="add-plus-btn" type="button" onclick="openAddPopup('datawells-submission-area')">+</button></div>
+        <div id="datawells-submission-area" class="submission-area add-popup-panel" style="margin-top:10px;">
+          <button class="add-popup-close" type="button" onclick="closeAllAddPopups()">X</button>
+          <h3>+ ADD DATAWELL SOURCE</h3>
           <div class="form-group">
             <label for="new-datawell-title">Title</label>
             <input class="search-input" id="new-datawell-title" type="text" placeholder="Source title / profile / community name" />
@@ -1301,55 +1161,36 @@ for i in range(3):
             <input class="search-input" id="new-datawell-tags" type="text" placeholder="music, comments, youth, finance, cyber, law..." />
           </div>
           <button class="submit-btn" type="button" onclick="submitNewDatawell()">ADD SOURCE</button>
+        </div>
+        <div class="search-toolbar">
+          <input class="search-input" id="datawells-search-input" type="text" placeholder="Search Datawells..." oninput="setDatawellSearch()" onkeydown="if(event.key==='Enter') setDatawellSearch()" />
+          <button class="submit-btn" type="button" onclick="setDatawellSearch()">SEARCH</button>
+          <button class="submit-btn" type="button" onclick="syncIntelFromBriefs()">SYNC FROM BRIEFS</button>
+        </div>
+        <div class="hvi-filter-bar">
+          <div class="hvi-filter-grid">
+            <select id="datawells-filter-type" class="search-input" onchange="setDatawellFilters()">
+              <option value="">All Source Types</option>
+            </select>
+            <div class="hvi-meta" style="align-self:center;">Source wells reveal painpoints and community entry points for indexing.</div>
+            <div></div>
+            <div></div>
+            <button class="submit-btn" type="button" onclick="clearDatawellFilters()">RESET</button>
           </div>
         </div>
-        <div class="panel-card">
-          <div class="panel-card-head">
-            <h3>// SEARCH + FILTERS</h3>
-          </div>
-          <div class="search-toolbar">
-            <input class="search-input" id="datawells-search-input" type="text" placeholder="Search Datawells..." oninput="setDatawellSearch()" onkeydown="if(event.key==='Enter') setDatawellSearch()" />
-            <button class="submit-btn" type="button" onclick="setDatawellSearch()">SEARCH</button>
-            <button class="submit-btn" type="button" onclick="syncIntelFromBriefs()">SYNC FROM BRIEFS</button>
-          </div>
-          <div class="hvi-filter-bar">
-            <div class="hvi-filter-grid">
-              <select id="datawells-filter-type" class="search-input" onchange="setDatawellFilters()">
-                <option value="">All Source Types</option>
-              </select>
-              <div class="hvi-meta" style="align-self:center;">Source wells reveal painpoints and community entry points for indexing.</div>
-              <div></div>
-              <div></div>
-              <button class="submit-btn" type="button" onclick="clearDatawellFilters()">RESET</button>
-            </div>
-          </div>
-        </div>
-        <div class="panel-card">
-          <div class="panel-card-head">
-            <h3>// SOURCES</h3>
-          </div>
-          <div id="datawells-container">
-            <div class="hvi-card"><p>No Datawells yet.</p></div>
-          </div>
+        <div id="datawells-container">
+          <div class="hvi-card"><p>No Datawells yet.</p></div>
         </div>
       </div>
 
       <!-- HVI VIEW -->
       <div id="view-hvi-intel" class="view-panel">
-        <div class="view-header">
-          <div>
-            <h2 class="view-title">// HIGH VALUE INDIVIDUALS (Summary)</h2>
-            <div class="view-subtitle">Source: <code>OperationDir/HVI_INDEX.md</code></div>
-          </div>
-        </div>
-        <div class="panel-card">
-          <div class="panel-card-head">
-            <h3>// ADD HVI TARGET</h3>
-            <button class="add-plus-btn" type="button" onclick="openAddPopup('hvi-submission-area')">+</button>
-          </div>
-          <div id="hvi-submission-area" class="submission-area add-popup-panel" style="margin-top:10px;">
-            <button class="add-popup-close" type="button" onclick="closeAllAddPopups()">X</button>
-            <h3>+ ADD HVI TARGET</h3>
+        <h2>// HIGH VALUE INDIVIDUALS (Summary)</h2>
+        <p>Source: <code>OperationDir/HVI_INDEX.md</code></p>
+        <div class="add-launch-row"><button class="add-plus-btn" type="button" onclick="openAddPopup('hvi-submission-area')">+</button></div>
+        <div id="hvi-submission-area" class="submission-area add-popup-panel" style="margin-top:10px;">
+          <button class="add-popup-close" type="button" onclick="closeAllAddPopups()">X</button>
+          <h3>+ ADD HVI TARGET</h3>
           <div class="form-group">
             <label for="new-hvi-handle">Handle</label>
             <input class="search-input" id="new-hvi-handle" type="text" placeholder="@target_handle" />
@@ -1388,56 +1229,37 @@ for i in range(3):
           </div>
           <div class="hvi-meta" id="new-hvi-time-meta">Time added: auto</div>
           <button class="submit-btn" type="button" onclick="submitNewHvi()">ADD HVI</button>
+        </div>
+        <div class="search-toolbar">
+          <input class="search-input" id="hvi-search-input" type="text" placeholder="Search HVI..." oninput="setHviSearch()" onkeydown="if(event.key==='Enter') setHviSearch()" />
+          <button class="submit-btn" type="button" onclick="setHviSearch()">SEARCH</button>
+        </div>
+        <div class="hvi-filter-bar">
+          <div class="hvi-filter-grid">
+            <input id="hvi-filter-category-search" class="search-input" type="text" placeholder="Search categories..." oninput="setHviCategorySearch()" />
+            <select id="hvi-filter-category" class="search-input" multiple onchange="setHviFilters()">
+              <option value="">All Categories</option>
+            </select>
+            <input id="hvi-filter-param" class="search-input" type="text" placeholder="Filter by parameter key/value..." oninput="setHviFilters()" />
+            <input id="hvi-filter-date-from" class="search-input" type="date" onchange="setHviFilters()" />
+            <input id="hvi-filter-date-to" class="search-input" type="date" onchange="setHviFilters()" />
+            <button class="submit-btn" type="button" onclick="clearHviFilters()">RESET</button>
           </div>
         </div>
-        <div class="panel-card">
-          <div class="panel-card-head">
-            <h3>// SEARCH + FILTERS</h3>
-          </div>
-          <div class="search-toolbar">
-            <input class="search-input" id="hvi-search-input" type="text" placeholder="Search HVI..." oninput="setHviSearch()" onkeydown="if(event.key==='Enter') setHviSearch()" />
-            <button class="submit-btn" type="button" onclick="setHviSearch()">SEARCH</button>
-          </div>
-          <div class="hvi-filter-bar">
-            <div class="hvi-filter-grid">
-              <input id="hvi-filter-category-search" class="search-input" type="text" placeholder="Search categories..." oninput="setHviCategorySearch()" />
-              <select id="hvi-filter-category" class="search-input" multiple onchange="setHviFilters()">
-                <option value="">All Categories</option>
-              </select>
-              <input id="hvi-filter-param" class="search-input" type="text" placeholder="Filter by parameter key/value..." oninput="setHviFilters()" />
-              <input id="hvi-filter-date-from" class="search-input" type="date" onchange="setHviFilters()" />
-              <input id="hvi-filter-date-to" class="search-input" type="date" onchange="setHviFilters()" />
-              <button class="submit-btn" type="button" onclick="clearHviFilters()">RESET</button>
-            </div>
-          </div>
-        </div>
-        <div class="panel-card">
-          <div class="panel-card-head">
-            <h3>// PROFILES</h3>
-          </div>
-          <div id="hvi-container">
-            <div class="hvi-card"><p>Loading HVI profiles...</p></div>
-          </div>
+        <div id="hvi-container">
+          <div class="hvi-card"><p>Loading HVI profiles...</p></div>
         </div>
       </div>
 
       <!-- CONTACTS VIEW -->
       <div id="view-contacts" class="view-panel">
-        <div class="view-header">
-          <div>
-            <h2 class="view-title">// CONTACTS (Booked / Clients)</h2>
-            <div class="view-subtitle">Source: <code>OperationDir/CONTACTS_INDEX.json</code></div>
-          </div>
-        </div>
-        <div class="panel-card">
-          <div class="panel-card-head">
-            <h3>// ADD CONTACT</h3>
-            <button class="add-plus-btn" type="button" onclick="openAddPopup('contacts-submission-area')">+</button>
-          </div>
-          <div class="hvi-meta">Contract fields are placeholders for your UK agreement terms (rights, royalties, usage, territory, term).</div>
-          <div id="contacts-submission-area" class="submission-area add-popup-panel" style="margin-top:10px;">
-            <button class="add-popup-close" type="button" onclick="closeAllAddPopups()">X</button>
-            <h3>+ ADD CONTACT</h3>
+        <h2>// CONTACTS (Booked / Clients)</h2>
+        <p>Source: <code>OperationDir/CONTACTS_INDEX.json</code></p>
+        <div class="hvi-meta">Contract fields are placeholders for your UK agreement terms (rights, royalties, usage, territory, term).</div>
+        <div class="add-launch-row"><button class="add-plus-btn" type="button" onclick="openAddPopup('contacts-submission-area')">+</button></div>
+        <div id="contacts-submission-area" class="submission-area add-popup-panel" style="margin-top:10px;">
+          <button class="add-popup-close" type="button" onclick="closeAllAddPopups()">X</button>
+          <h3>+ ADD CONTACT</h3>
           <div class="form-group">
             <label for="new-contact-name">Name / Handle</label>
             <input class="search-input" id="new-contact-name" type="text" placeholder="Client name" />
@@ -1567,114 +1389,72 @@ for i in range(3):
             <input class="search-input" id="new-contact-deliverables" type="text" placeholder="Final outputs, formats..." />
           </div>
           <button class="submit-btn" type="button" onclick="submitNewContact()">ADD CONTACT</button>
-          </div>
         </div>
-        <div class="panel-card">
-          <div class="panel-card-head">
-            <h3>// SEARCH</h3>
-          </div>
-          <div class="search-toolbar">
-            <input class="search-input" id="contacts-search-input" type="text" placeholder="Search contacts..." oninput="setContactsSearch()" onkeydown="if(event.key==='Enter') setContactsSearch()" />
-            <button class="submit-btn" type="button" onclick="setContactsSearch()">SEARCH</button>
-          </div>
+        <div class="search-toolbar">
+          <input class="search-input" id="contacts-search-input" type="text" placeholder="Search contacts..." oninput="setContactsSearch()" onkeydown="if(event.key==='Enter') setContactsSearch()" />
+          <button class="submit-btn" type="button" onclick="setContactsSearch()">SEARCH</button>
         </div>
-        <div class="panel-card">
-          <div class="panel-card-head">
-            <h3>// CONTACTS</h3>
-          </div>
-          <div id="contacts-container">
-            <div class="hvi-card"><p>Loading contacts...</p></div>
-          </div>
+        <div id="contacts-container">
+          <div class="hvi-card"><p>Loading contacts...</p></div>
         </div>
       </div>
 
       <div id="view-brief-studio" class="view-panel">
-        <div class="view-header">
-          <div>
-            <h2 class="view-title">// BRIEF STUDIO</h2>
-            <div class="view-subtitle">Paste a consistent mission brief template, auto-fill the profile offline, and save phase versions.</div>
-          </div>
+        <h2>// BRIEF STUDIO</h2>
+        <p>Paste a consistent mission brief template, auto-fill the profile offline, save phase versions, and load previous versions.</p>
+        <div class="brief-toolbar">
+          <select id="brief-operation-filter" onchange="onBriefOperationFilterChange()"></select>
+          <select id="brief-mission-select" onchange="onBriefMissionChange()"></select>
+          <input id="brief-phase" type="number" min="1" value="1" title="Phase" />
+          <button class="submit-btn" type="button" onclick="loadBriefForSelectedMission()">LOAD</button>
+          <button class="submit-btn" type="button" onclick="saveBriefPhase()">SAVE PHASE</button>
         </div>
-        <div class="panel-card">
-          <div class="panel-card-head">
-            <h3>// BRIEF CONTROLS</h3>
-          </div>
-          <div class="brief-toolbar">
-            <select id="brief-operation-filter" onchange="onBriefOperationFilterChange()"></select>
-            <select id="brief-mission-select" onchange="onBriefMissionChange()"></select>
-            <input id="brief-phase" type="number" min="1" value="1" title="Phase" />
-            <button class="submit-btn" type="button" onclick="loadBriefForSelectedMission()">LOAD</button>
-            <button class="submit-btn" type="button" onclick="saveBriefPhase()">SAVE PHASE</button>
-          </div>
-        </div>
-        <div class="panel-card">
-          <div class="brief-grid">
-            <div class="brief-main">
-              <textarea id="brief-content" class="brief-editor" placeholder="Paste mission brief here..." oninput="onBriefEditorInput()" onpaste="onBriefEditorPaste()"></textarea>
-              <div class="brief-main-actions">
-                <button class="submit-btn" type="button" onclick="parseBriefVariablesFromEditor()">AUTO FILL PROFILE</button>
-                <button class="submit-btn" type="button" onclick="createNextBriefPhase()">NEXT PHASE (CLONE + COPY)</button>
-              </div>
+        <div class="brief-grid">
+          <div class="brief-main">
+            <textarea id="brief-content" class="brief-editor" placeholder="Paste mission brief here..." oninput="onBriefEditorInput()" onpaste="onBriefEditorPaste()"></textarea>
+            <div class="brief-main-actions">
+              <button class="submit-btn" type="button" onclick="parseBriefVariablesFromEditor()">AUTO FILL PROFILE</button>
+              <button class="submit-btn" type="button" onclick="createNextBriefPhase()">NEXT PHASE (CLONE + COPY)</button>
             </div>
-            <div class="brief-side">
-              <div class="brief-profile-shell">
-                <div class="brief-profile-head">
-                  <strong>// OFFLINE BRIEF PROFILE</strong>
-                  <span class="routine-ex-note">Consistent mission templates auto-fill this view offline.</span>
-                </div>
-                <div id="brief-profile-preview" class="brief-profile-body"></div>
+          </div>
+          <div class="brief-side">
+            <div class="brief-profile-shell">
+              <div class="brief-profile-head">
+                <strong>// OFFLINE BRIEF PROFILE</strong>
+                <span class="routine-ex-note">Consistent mission templates auto-fill this view offline.</span>
               </div>
-              <h4 style="margin-top:14px;">// EXTRACTED VARIABLES</h4>
-              <div id="brief-vars"></div>
-              <h4 style="margin-top:14px;">// PHASE HISTORY</h4>
-              <ul id="brief-history" class="brief-history-list"></ul>
+              <div id="brief-profile-preview" class="brief-profile-body"></div>
             </div>
+            <h4 style="margin-top:14px;">// EXTRACTED VARIABLES</h4>
+            <div id="brief-vars"></div>
+            <h4 style="margin-top:14px;">// PHASE HISTORY</h4>
+            <ul id="brief-history" class="brief-history-list"></ul>
           </div>
         </div>
       </div>
 
       <!-- PROBE SKILL VIEW -->
       <div id="view-probe-skill" class="view-panel">
-        <div class="view-header">
-          <div>
-            <h2 class="view-title">// PROBE SKILL</h2>
-            <div class="view-subtitle">Source: <code>OperationDir/Templates/ProbeSkill.md</code></div>
-          </div>
-          <div class="view-actions">
-            <button class="submit-btn" type="button" onclick="copyProbeSkill()">COPY</button>
-          </div>
-        </div>
-        <div class="panel-card">
-          <div class="manual-view">
-            <div id="probe-skill-content">Loading Probe Skill...</div>
-          </div>
+        <h2>// PROBE SKILL</h2>
+        <p>Source: <code>OperationDir/Templates/ProbeSkill.md</code></p>
+        <button class="submit-btn" type="button" onclick="copyProbeSkill()" style="margin-bottom: 10px;">COPY</button>
+        <div class="manual-view">
+          <div id="probe-skill-content">Loading Probe Skill...</div>
         </div>
       </div>
 
       <!-- PROBE MANUEL VIEW -->
       <div id="view-probe-manual" class="view-panel">
-        <div class="view-header">
-          <div>
-            <h2 class="view-title">// OFFICIAL PROBE MANUEL</h2>
-            <div class="view-subtitle">Source: <code>OperationDir/Templates/OfficialProbeManuel.md</code></div>
-          </div>
-        </div>
-        <div class="panel-card">
-          <div class="manual-view">
-            <div id="probe-manual-content">Loading Probe Manuel...</div>
-          </div>
+        <h2>// OFFICIAL PROBE MANUEL</h2>
+        <p>Source: <code>OperationDir/Templates/OfficialProbeManuel.md</code></p>
+        <div class="manual-view">
+          <div id="probe-manual-content">Loading Probe Manuel...</div>
         </div>
       </div>
 
       <div id="view-mission-probe" class="view-panel">
-        <div class="view-header">
-          <div>
-            <h2 class="view-title">// TEMPLATES</h2>
-            <div class="view-subtitle">Unified template workspace for mission ops.</div>
-          </div>
-        </div>
-        <div class="panel-card">
-          <div class="templates-launch-grid">
+        <h2>// TEMPLATES</h2>
+        <div class="templates-launch-grid">
           <button class="template-launch-card" type="button" data-template-nav="workflow" onclick="focusMissionProbeSection('workflow')">
             <span class="template-launch-title">FULL MISSION + PROBE</span>
             <span class="template-launch-desc">Combined AI bot instruction, workflow logic, and mission-probe operating context.</span>
@@ -1703,10 +1483,9 @@ for i in range(3):
             <span class="template-launch-title">PNS</span>
             <span class="template-launch-desc">Video styles and content types for business social media.</span>
           </button>
-          </div>
-          <p id="mission-probe-intro">Unified template workspace. Use Full Mission + Probe to copy the full AI-ready pack in the correct advised order, then work inside the individual templates when needed.</p>
         </div>
-        <div class="templates-summary-grid panel-card">
+        <p id="mission-probe-intro">Unified template workspace. Use Full Mission + Probe to copy the full AI-ready pack in the correct advised order, then work inside the individual templates when needed.</p>
+        <div class="templates-summary-grid">
           <section class="templates-summary-card">
             <div class="mission-probe-card-head">
               <strong>// TEMPLATE CONTROL</strong>
@@ -1844,21 +1623,17 @@ for i in range(3):
       </div>
 
       <div id="view-mission-briefing" class="view-panel">
-        <div class="view-header">
-          <div>
-            <h2 class="view-title">// MISSION BRIEFING</h2>
-            <div class="view-subtitle">Source: <code>OperationDir/Templates/MissionBriefing.md</code></div>
-          </div>
-          <div class="view-actions">
-            <button class="confirm-btn" type="button" onclick="goBackView('dashboard')">BACK</button>
-            <button class="submit-btn" type="button" onclick="copyMissionBriefing()">COPY</button>
-            <button class="submit-btn" type="button" onclick="saveMissionBriefingToFile()">SAVE FILE</button>
-            <button class="submit-btn" type="button" onclick="shareMissionBriefingFile()">SHARE FILE</button>
-            <button class="submit-btn" type="button" onclick="openDocEditor('OperationDir/Templates/MissionBriefing.md','// MISSION BRIEFING EDITOR','mission-briefing-content')">EDIT</button>
-            <button class="confirm-btn" type="button" onclick="openMissionBriefingViewer()">FULL VIEW</button>
-          </div>
+        <button class="back-btn" type="button" onclick="goBackView('dashboard')">< BACK</button>
+        <h2>// MISSION BRIEFING</h2>
+        <p>Source: <code>OperationDir/Templates/MissionBriefing.md</code></p>
+        <div class="mission-brief-actions">
+          <button class="submit-btn" type="button" onclick="copyMissionBriefing()">COPY</button>
+          <button class="submit-btn" type="button" onclick="saveMissionBriefingToFile()">SAVE FILE</button>
+          <button class="submit-btn" type="button" onclick="shareMissionBriefingFile()">SHARE FILE</button>
+          <button class="submit-btn" type="button" onclick="openDocEditor('OperationDir/Templates/MissionBriefing.md','// MISSION BRIEFING EDITOR','mission-briefing-content')">EDIT</button>
+          <button class="confirm-btn" type="button" onclick="openMissionBriefingViewer()">FULL VIEW</button>
         </div>
-        <div class="mission-brief-shell panel-card">
+        <div class="mission-brief-shell">
           <div class="mission-brief-shell-head">
             <strong>// LIVE BRIEF READER</strong>
             <span class="routine-ex-note">Full-height mission briefing panel. Use FULL VIEW for the modal reader.</span>
@@ -1870,67 +1645,42 @@ for i in range(3):
       </div>
 
       <div id="view-posting-template" class="view-panel">
-        <div class="view-header">
-          <div>
-            <h2 class="view-title">// TEMPLATES</h2>
-            <div class="view-subtitle">Posting Template now lives inside the Templates workspace with Mission Brief, Probe, and Datawell discovery.</div>
-          </div>
-          <div class="view-actions">
-            <button class="confirm-btn" type="button" onclick="goBackView('dashboard')">BACK</button>
-            <button class="submit-btn" type="button" onclick="switchView('templates')">OPEN TEMPLATES</button>
-            <button class="confirm-btn" type="button" onclick="focusMissionProbeSection('posting')">OPEN POSTING TEMPLATE SECTION</button>
-          </div>
+        <button class="back-btn" type="button" onclick="goBackView('dashboard')">< BACK</button>
+        <h2>// TEMPLATES</h2>
+        <p>Posting Template now lives inside the Templates workspace with Mission Brief, Probe, and Datawell discovery.</p>
+        <div class="mission-probe-actions">
+          <button class="submit-btn" type="button" onclick="switchView('templates')">OPEN TEMPLATES</button>
+          <button class="confirm-btn" type="button" onclick="focusMissionProbeSection('posting')">OPEN POSTING TEMPLATE SECTION</button>
         </div>
       </div>
 
       <div id="view-global-search" class="view-panel">
-        <div class="view-header">
-          <div>
-            <h2 class="view-title">// GLOBAL SEARCH</h2>
-            <div class="view-subtitle">Search missions, ops, HVI, blackbook, Datawells, routines, checklist, books, oracle docs, and gym.</div>
-          </div>
+        <h2>// GLOBAL SEARCH</h2>
+        <p>Search across missions, operations, HVI, blackbook, Datawells, routines, checklist, books, oracle docs, reminders, journal, and gym catalog from one place.</p>
+        <div class="search-toolbar">
+          <input class="search-input" id="global-search-input" type="text" placeholder="Search everything..." oninput="setGlobalSearch()" onkeydown="if(event.key==='Enter') setGlobalSearch()" />
+          <select id="global-search-scope" class="search-input" onchange="setGlobalSearch()">
+            <option value="all">All</option>
+            <option value="missions">Missions</option>
+            <option value="operations">Operations</option>
+            <option value="intel">Blackbook / HVI / Datawells</option>
+            <option value="docs">Books / Oracle</option>
+            <option value="routine">Routine / Checklist</option>
+            <option value="gym">Gym</option>
+          </select>
+          <button class="submit-btn" type="button" onclick="setGlobalSearch()">SEARCH</button>
         </div>
-        <div class="panel-card">
-          <div class="panel-card-head">
-            <h3>// QUERY</h3>
-          </div>
-          <div class="search-toolbar">
-            <input class="search-input" id="global-search-input" type="text" placeholder="Search everything..." oninput="setGlobalSearch()" onkeydown="if(event.key==='Enter') setGlobalSearch()" />
-            <select id="global-search-scope" class="search-input" onchange="setGlobalSearch()">
-              <option value="all">All</option>
-              <option value="missions">Missions</option>
-              <option value="operations">Operations</option>
-              <option value="intel">Blackbook / HVI / Datawells</option>
-              <option value="docs">Books / Oracle</option>
-              <option value="routine">Routine / Checklist</option>
-              <option value="gym">Gym</option>
-            </select>
-            <button class="submit-btn" type="button" onclick="setGlobalSearch()">SEARCH</button>
-          </div>
-        </div>
-        <div class="panel-card">
-          <div class="panel-card-head">
-            <h3>// RESULTS</h3>
-          </div>
-          <div id="global-search-results" class="manual-view">Type to search the app.</div>
-        </div>
+        <div id="global-search-results" class="manual-view">Type to search the app.</div>
       </div>
 
       <div id="view-checklist" class="view-panel">
-        <div class="view-header">
-          <div>
-            <h2 class="view-title">// CHECKLIST & REMINDERS</h2>
-            <div class="view-subtitle">Track priority actions, mark done, and drag to reorder by execution priority.</div>
-          </div>
-          <div class="view-actions">
-            <button class="submit-btn" type="button" onclick="openReminderPopup()">OPEN REMINDER CALENDAR</button>
-          </div>
+        <h2>// CHECKLIST & REMINDERS</h2>
+        <p>Track priority actions for this operation day. Add items, mark done, and drag to reorder by execution priority.</p>
+        <div style="margin-bottom:10px;">
+          <button class="submit-btn" type="button" onclick="openReminderPopup()">OPEN REMINDER CALENDAR</button>
         </div>
-        <div class="checklist-panel panel-card">
-          <div class="panel-card-head">
-            <h3>// TASKS</h3>
-            <button class="add-plus-btn" type="button" onclick="openAddPopup('checklist-add-panel')">+</button>
-          </div>
+        <div class="checklist-panel">
+          <div class="add-launch-row"><button class="add-plus-btn" type="button" onclick="openAddPopup('checklist-add-panel')">+</button></div>
           <div id="checklist-add-panel" class="checklist-toolbar add-popup-panel submission-area">
             <button class="add-popup-close" type="button" onclick="closeAllAddPopups()">X</button>
             <div class="checklist-add-fields">
@@ -1945,34 +1695,24 @@ for i in range(3):
       </div>
 
       <div id="view-journal" class="view-panel">
-        <div class="view-header">
-          <div>
-            <h2 class="view-title">// JOURNAL</h2>
-            <div class="view-subtitle">Date/time auto-filled on save. Add title, description, optional photo and optional link.</div>
+        <h2>// JOURNAL</h2>
+        <p>Date/time auto-filled on save. Add title, description, optional photo and optional link.</p>
+        <div class="journal-box">
+          <div class="add-launch-row"><button class="add-plus-btn" type="button" onclick="openAddPopup('journal-add-panel')">+</button></div>
+          <div id="journal-add-panel" class="add-popup-panel submission-area">
+            <button class="add-popup-close" type="button" onclick="closeAllAddPopups()">X</button>
+          <div class="journal-grid">
+            <input id="journal-title-input" class="search-input" type="text" placeholder="Title..." />
+            <input id="journal-desc-input" class="search-input" type="text" placeholder="Description..." />
+            <button class="submit-btn" type="button" onclick="addJournalEntry()">ADD ENTRY</button>
           </div>
-        </div>
-        <div class="journal-box panel-card">
-          <div class="journal-layout">
-            <div class="journal-form">
-              <div class="add-launch-row"><button class="add-plus-btn" type="button" onclick="openAddPopup('journal-add-panel')">+</button></div>
-              <div id="journal-add-panel" class="add-popup-panel submission-area">
-                <button class="add-popup-close" type="button" onclick="closeAllAddPopups()">X</button>
-                <div class="journal-grid">
-                  <input id="journal-title-input" class="search-input" type="text" placeholder="Title..." />
-                  <input id="journal-desc-input" class="search-input" type="text" placeholder="Description..." />
-                  <button class="submit-btn" type="button" onclick="addJournalEntry()">ADD ENTRY</button>
-                </div>
-                <div class="journal-grid" style="margin-top:8px;">
-                  <input id="journal-photo-input" class="search-input" type="text" placeholder="Photo URL (optional)..." />
-                  <input id="journal-photo-file" class="search-input" type="file" accept="image/*" />
-                  <input id="journal-link-input" class="search-input" type="text" placeholder="Link URL (optional)..." />
-                </div>
-              </div>
-            </div>
-            <div class="journal-list-wrap">
-              <div id="journal-list" class="journal-list"></div>
-            </div>
+          <div class="journal-grid" style="margin-top:8px;">
+            <input id="journal-photo-input" class="search-input" type="text" placeholder="Photo URL (optional)..." />
+            <input id="journal-photo-file" class="search-input" type="file" accept="image/*" />
+            <input id="journal-link-input" class="search-input" type="text" placeholder="Link URL (optional)..." />
           </div>
+          </div>
+          <div id="journal-list" class="journal-list"></div>
         </div>
       </div>
     </main>
@@ -2004,55 +1744,6 @@ for i in range(3):
         <div class="mission-editor-actions">
           <button class="confirm-btn" type="button" onclick="closeMissionEditor()">Close</button>
           <button class="submit-btn" type="button" onclick="saveMissionEditor()">Save</button>
-        </div>
-      </div>
-    </div>
-
-    <div id="command-palette" class="command-palette" aria-hidden="true">
-      <div class="command-palette-backdrop" onclick="closeCommandPalette()"></div>
-      <div class="command-palette-panel" role="dialog" aria-modal="true" aria-label="Command Palette">
-        <div class="command-palette-head">
-          <span>// COMMAND</span>
-          <button class="x-btn" type="button" onclick="closeCommandPalette()">X</button>
-        </div>
-        <input id="command-palette-input" class="search-input" type="text" placeholder="Type a command..." oninput="renderCommandPalette()" />
-        <div id="command-palette-list" class="command-palette-list"></div>
-      </div>
-    </div>
-
-    <div id="onboarding-overlay" class="onboarding-overlay" aria-hidden="true">
-      <div class="onboarding-backdrop" onclick="closeOnboarding()"></div>
-      <div class="onboarding-panel" role="dialog" aria-modal="true" aria-label="Setup Wizard">
-        <div class="onboarding-head">
-          <span>// SETUP WIZARD</span>
-          <button class="x-btn" type="button" onclick="closeOnboarding()">X</button>
-        </div>
-        <div id="onboarding-step-1" class="onboarding-step">
-          <h3>// THEME PRESET</h3>
-          <div class="onboarding-grid">
-            <label><input type="radio" name="onboard-theme" value="terminal-clean" checked /> Terminal Clean</label>
-            <label><input type="radio" name="onboard-theme" value="terminal-contrast" /> Terminal High Contrast</label>
-            <label><input type="radio" name="onboard-theme" value="minimal" /> Minimal</label>
-          </div>
-        </div>
-        <div id="onboarding-step-2" class="onboarding-step" style="display:none;">
-          <h3>// POTS</h3>
-          <div class="settings-help">Enter one pot per line. Optional rating with <code>:</code> (1-3). Example: <code>Bills:3</code>.</div>
-          <textarea id="onboard-pots" class="swissknife-textarea" rows="6" placeholder="Bills:3\nSavings:2\nSpending:2\nTransport:1"></textarea>
-        </div>
-        <div id="onboarding-step-3" class="onboarding-step" style="display:none;">
-          <h3>// DEFAULT BILL CADENCE</h3>
-          <select id="onboard-cadence" class="search-input">
-            <option value="monthly" selected>MONTHLY</option>
-            <option value="weekly">WEEKLY</option>
-            <option value="yearly">YEARLY</option>
-            <option value="one-time">ONE TIME</option>
-          </select>
-        </div>
-        <div class="onboarding-actions">
-          <button class="submit-btn budget-mini-btn" type="button" onclick="prevOnboardingStep()">BACK</button>
-          <button class="confirm-btn budget-mini-btn" type="button" onclick="nextOnboardingStep()">NEXT</button>
-          <button class="confirm-btn budget-mini-btn" type="button" onclick="finishOnboarding()" id="onboarding-finish" style="display:none;">FINISH</button>
         </div>
       </div>
     </div>
@@ -2256,8 +1947,8 @@ for i in range(3):
         <div id="lock-meta" class="lock-meta"></div>
       </div>
     </div>
-    <script src="assets/managementapp.js?v=20260322-repolive35"></script>
-    <script src="assets/managementapp-draft.js?v=20260316-swissknife-4k-2"></script>
+    <script src="/assets/managementapp.js?v=20260322-repolive35"></script>
+    <script src="/assets/managementapp-draft.js?v=20260316-swissknife-4k-2"></script>
 
   </body>
 </html>

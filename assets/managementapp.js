@@ -132,9 +132,6 @@
       let selectedSwissknifeSession = "";
       let swissknifeConvertHistory = [];
       let swissknifeNavBound = false;
-      let uiEventLog = [];
-      let commandPaletteActiveIndex = 0;
-      let commandPaletteResults = [];
       let reminderCalendarSelectedDate = "";
       let reminderCalendarMonthCursor = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
       let viewSortModes = {};
@@ -3586,72 +3583,12 @@
         panel.__popupOriginalParent = null;
       }
 
-      function loadUiEventLog() {
-        try {
-          const raw = localStorage.getItem("uiEventLog:v1");
-          const parsed = raw ? JSON.parse(raw) : [];
-          uiEventLog = Array.isArray(parsed) ? parsed : [];
-        } catch (_) {
-          uiEventLog = [];
-        }
-      }
-
-      function persistUiEventLog() {
-        try {
-          localStorage.setItem("uiEventLog:v1", JSON.stringify(uiEventLog.slice(0, 200)));
-        } catch (_) {}
-      }
-
-      function logUiEvent(type, message, meta = {}) {
-        const entry = {
-          id: `log_${Date.now()}_${Math.floor(Math.random() * 10000)}`,
-          at: new Date().toISOString(),
-          type: String(type || "notice"),
-          message: String(message || ""),
-          meta: meta && typeof meta === "object" ? meta : {},
-        };
-        uiEventLog.unshift(entry);
-        uiEventLog = uiEventLog.slice(0, 200);
-        persistUiEventLog();
-        renderUiEventLog();
-      }
-
-      function renderUiEventLog() {
-        const host = document.getElementById("ui-event-log-output");
-        if (!host) return;
-        if (!uiEventLog.length) {
-          host.textContent = "No events yet.";
-          return;
-        }
-        host.innerHTML = `<pre style="white-space:pre-wrap;">${uiEventLog.map((e) => `${e.at} :: ${String(e.type).toUpperCase()} :: ${e.message}`).join("\n")}</pre>`;
-      }
-
-      async function copyUiEventLog() {
-        if (!uiEventLog.length) {
-          themedNotice("No events to copy.");
-          return;
-        }
-        const text = uiEventLog.map((e) => `${e.at} :: ${String(e.type).toUpperCase()} :: ${e.message}`).join("\n");
-        const result = await copyTextWithFallback(text);
-        themedNotice(result === "manual" ? "Clipboard blocked. Manual copy view opened." : "Event log copied.");
-      }
-
-      async function clearUiEventLog() {
-        if (!(await themedConfirm("Clear event log?"))) return;
-        uiEventLog = [];
-        persistUiEventLog();
-        renderUiEventLog();
-        themedNotice("Event log cleared.");
-      }
-
       function themedNotice(message = "Done.") {
         const overlay = document.getElementById("notice-overlay");
         const msg = document.getElementById("notice-message");
         const ok = document.getElementById("notice-ok");
         if (!overlay || !msg || !ok) return;
-        const finalMessage = String(message || "Done.");
-        msg.textContent = finalMessage;
-        logUiEvent("notice", finalMessage);
+        msg.textContent = String(message || "Done.");
         overlay.classList.add("active");
         overlay.setAttribute("aria-hidden", "false");
         const close = () => {
@@ -4152,177 +4089,6 @@
           selectedOperation = null;
           updateMissionHeader();
         }
-      }
-
-      function buildCommandPaletteCommands() {
-        return [
-          { id: "view_dashboard", label: "Go to Dashboard", meta: "View", action: () => switchView("dashboard") },
-          { id: "view_operations", label: "Go to Operations", meta: "View", action: () => switchView("operations") },
-          { id: "view_missions", label: "Go to Mission Log", meta: "View", action: () => switchView("mission-log") },
-          { id: "view_budget", label: "Go to Budget", meta: "View", action: () => switchView("budget") },
-          { id: "view_swissknife", label: "Go to Swissknife", meta: "View", action: () => switchView("swissknife") },
-          { id: "view_journal", label: "Go to Journal", meta: "View", action: () => switchView("journal") },
-          { id: "view_settings", label: "Go to Settings", meta: "View", action: () => switchView("settings") },
-          { id: "view_search", label: "Open Global Search", meta: "View", action: () => switchView("global-search") },
-          { id: "budget_add_entry", label: "Budget: Add Entry", meta: "Action", action: () => {
-            switchView("budget");
-            setTimeout(() => document.getElementById("budget-entry-label")?.focus(), 150);
-          }},
-          { id: "budget_add_bill", label: "Budget: Add Bill", meta: "Action", action: () => {
-            switchView("budget");
-            setTimeout(() => document.getElementById("budget-bill-name")?.focus(), 150);
-          }},
-          { id: "swissknife_history", label: "Swissknife: History", meta: "Action", action: () => {
-            switchView("swissknife");
-            setTimeout(() => switchSwissknifeView("history"), 150);
-          }},
-          { id: "sync_now", label: "Sync: Run Now", meta: "Action", action: () => manualSyncNow() },
-        ];
-      }
-
-      function openCommandPalette() {
-        const palette = document.getElementById("command-palette");
-        const input = document.getElementById("command-palette-input");
-        if (!palette || !input) return;
-        palette.classList.add("active");
-        palette.setAttribute("aria-hidden", "false");
-        commandPaletteActiveIndex = 0;
-        renderCommandPalette();
-        setTimeout(() => {
-          input.focus();
-          input.select();
-        }, 50);
-      }
-
-      function closeCommandPalette() {
-        const palette = document.getElementById("command-palette");
-        if (!palette) return;
-        palette.classList.remove("active");
-        palette.setAttribute("aria-hidden", "true");
-      }
-
-      function renderCommandPalette() {
-        const input = document.getElementById("command-palette-input");
-        const list = document.getElementById("command-palette-list");
-        if (!input || !list) return;
-        const query = String(input.value || "").trim().toLowerCase();
-        const all = buildCommandPaletteCommands();
-        commandPaletteResults = all.filter((c) => !query || `${c.label} ${c.meta}`.toLowerCase().includes(query));
-        if (commandPaletteActiveIndex >= commandPaletteResults.length) commandPaletteActiveIndex = 0;
-        list.innerHTML = commandPaletteResults.map((c, idx) => `
-          <div class="command-palette-item ${idx === commandPaletteActiveIndex ? "is-active" : ""}" onclick="runCommandPalette('${escapeJsString(c.id)}')">
-            <span>${escapeHtml(c.label)}</span>
-            <span class="command-palette-meta">${escapeHtml(c.meta || "")}</span>
-          </div>
-        `).join("") || `<div class="command-palette-item">No matches.</div>`;
-      }
-
-      function runCommandPalette(id) {
-        const cmd = commandPaletteResults.find((c) => c.id === id) || null;
-        if (!cmd) return;
-        closeCommandPalette();
-        setTimeout(() => {
-          try { cmd.action(); } catch (e) { themedNotice("Command failed."); }
-        }, 50);
-      }
-
-      function applyAppearancePreset(preset) {
-        const defaults = defaultAppearanceSettings();
-        let settings = { ...defaults };
-        if (preset === "terminal-contrast") {
-          settings = {
-            ...defaults,
-            primary: "#38ff6a",
-            secondary: "#ffd84d",
-            textColor: "#38ff6a",
-            bgColor: "#020202",
-            uiScale: 105,
-            fontTheme: "matrix",
-            titleFontTheme: "matrix",
-          };
-        } else if (preset === "minimal") {
-          settings = {
-            ...defaults,
-            primary: "#7cffd4",
-            secondary: "#8fb7ff",
-            textColor: "#aef7ff",
-            bgColor: "#050708",
-            uiScale: 100,
-            fontTheme: "modern",
-            titleFontTheme: "modern",
-          };
-        }
-        localStorage.setItem(appearanceSettingsKey(), JSON.stringify(settings));
-        loadAppearanceSettings();
-      }
-
-      function openOnboarding() {
-        const overlay = document.getElementById("onboarding-overlay");
-        if (!overlay) return;
-        overlay.classList.add("active");
-        overlay.setAttribute("aria-hidden", "false");
-        renderOnboardingStep(1);
-      }
-
-      function closeOnboarding() {
-        const overlay = document.getElementById("onboarding-overlay");
-        if (!overlay) return;
-        overlay.classList.remove("active");
-        overlay.setAttribute("aria-hidden", "true");
-      }
-
-      function renderOnboardingStep(step) {
-        const steps = [1, 2, 3];
-        steps.forEach((s) => {
-          const el = document.getElementById(`onboarding-step-${s}`);
-          if (el) el.style.display = s === step ? "block" : "none";
-        });
-        const finishBtn = document.getElementById("onboarding-finish");
-        const nextBtn = document.querySelector(".onboarding-actions .confirm-btn");
-        if (finishBtn) finishBtn.style.display = step === 3 ? "inline-flex" : "none";
-        if (nextBtn) nextBtn.style.display = step === 3 ? "none" : "inline-flex";
-        localStorage.setItem("onboarding:step", String(step));
-      }
-
-      function nextOnboardingStep() {
-        const current = Number(localStorage.getItem("onboarding:step") || "1");
-        renderOnboardingStep(Math.min(3, current + 1));
-      }
-
-      function prevOnboardingStep() {
-        const current = Number(localStorage.getItem("onboarding:step") || "1");
-        renderOnboardingStep(Math.max(1, current - 1));
-      }
-
-      function finishOnboarding() {
-        const theme = document.querySelector("input[name='onboard-theme']:checked")?.value || "terminal-clean";
-        applyAppearancePreset(theme);
-        if (!budgetData) loadBudgetData();
-        const potRaw = String(document.getElementById("onboard-pots")?.value || "").trim();
-        const lines = potRaw ? potRaw.split(/\r?\n/).map((l) => l.trim()).filter(Boolean) : [];
-        if (lines.length) {
-          budgetData.allocations = lines.map((line, idx) => {
-            const [nameRaw, impRaw] = line.split(":");
-            const name = String(nameRaw || `Pot ${idx + 1}`).trim() || `Pot ${idx + 1}`;
-            const imp = Math.max(1, Math.min(3, Math.round(Number(impRaw || 2))));
-            return {
-              id: createBudgetId("alloc"),
-              label: name,
-              percent: 0,
-              importance: imp,
-              color: "#22c55e",
-              balance: 0,
-            };
-          });
-        }
-        budgetData.potInputMode = "rating";
-        ensureAllocationPercents();
-        const cadence = String(document.getElementById("onboard-cadence")?.value || "monthly");
-        budgetData.defaultBillCadence = cadence;
-        saveBudgetData("onboarding");
-        localStorage.setItem("onboarding:v1", "done");
-        closeOnboarding();
-        renderBudget();
       }
 
       function goBackView(fallback = "dashboard") {
@@ -6715,9 +6481,7 @@
           return `<div class="swissknife-recent-preview"><img src="${escapeHtmlAttr(url)}" alt="preview" loading="lazy" decoding="async" /></div>`;
         }
         if (["mp4", "mov", "webm", "mkv"].includes(ext)) {
-          const src = String(download?.source || "").toLowerCase();
-          const preload = (src.includes("youtube") || src.includes("yt") || src.includes("ytdlp")) ? "metadata" : "none";
-          return `<div class="swissknife-recent-preview"><video src="${escapeHtmlAttr(url)}" muted playsinline preload="${preload}"></video></div>`;
+          return `<div class="swissknife-recent-preview"><video src="${escapeHtmlAttr(url)}" muted playsinline preload="none"></video></div>`;
         }
         return `<div class="swissknife-recent-preview swissknife-audio-preview">AUDIO</div>`;
       }
@@ -7640,15 +7404,6 @@
             fetchJsonPath(serverUrlForPath("/api/dev/ui_state")),
           ]);
           const state = uiState?.state || {};
-          const budgetBills = Array.isArray(budgetData?.bills) ? budgetData.bills : [];
-          const budgetEntries = Array.isArray(budgetData?.entries) ? budgetData.entries : [];
-          const potRows = Array.isArray(budgetData?.allocations) ? budgetData.allocations : [];
-          const billMissingDue = budgetBills.filter((b) => !String(b?.dueDate || "").trim()).length;
-          const billMissingAmount = budgetBills.filter((b) => !Number.isFinite(Number(b?.amount)) || Number(b?.amount) <= 0).length;
-          const outcomeNoBucket = budgetEntries.filter((e) => e?.type === "outcome" && !String(e?.bucketId || "").trim()).length;
-          const potZero = potRows.filter((p) => Number(p?.percent || 0) <= 0).length;
-          const swissknifeEmpty = (Array.isArray(swissknifeSessions) ? swissknifeSessions : []).filter((s) => !Array.isArray(s.downloads) || !s.downloads.length).length;
-          const journalEmpty = Array.isArray(routineData?.journal) ? routineData.journal.filter((j) => !String(j?.title || "").trim()).length : 0;
           const info = [
             `Workspace: ${paths?.project_root || "Unknown"}`,
             `Server CWD: ${paths?.cwd || "Unknown"}`,
@@ -7656,12 +7411,6 @@
             `Templates Loaded: ${Object.values(state.templates || {}).filter((n) => Number(n) > 0).length}/6`,
             `Routines: ${state.routines?.hasRoutineData ? "YES" : "NO"} | Sections: ${state.routines?.catalogSections || 0}`,
             `Swissknife Sessions: ${state.swissknife?.sessions || 0}`,
-            `Swissknife Empty Sessions: ${swissknifeEmpty}`,
-            `Budget Bills Missing Due Date: ${billMissingDue}`,
-            `Budget Bills Missing Amount: ${billMissingAmount}`,
-            `Budget Outcomes Missing Pot: ${outcomeNoBucket}`,
-            `Budget Pots With 0%: ${potZero}`,
-            `Journal Entries Missing Title: ${journalEmpty}`,
             `Last Error: ${state.lastError || "None"}`,
             `Last Error At: ${state.lastErrorAt || "N/A"}`,
             `Overlays: ${(state.overlays || []).join(", ") || "None"}`,
@@ -11150,7 +10899,6 @@
           bills: [],
           autoSplitImportance: false,
           potInputMode: "rating",
-          defaultBillCadence: "monthly",
           allocations: [
             { id: "alloc_bills", label: "Bills", percent: 0, importance: 3, color: "#6ee7b7", balance: 0 },
             { id: "alloc_savings", label: "Savings", percent: 0, importance: 2, color: "#38bdf8", balance: 0 },
@@ -11176,7 +10924,6 @@
         });
         if (out.autoSplitImportance == null) out.autoSplitImportance = false;
         if (!out.potInputMode) out.potInputMode = "rating";
-        if (!out.defaultBillCadence) out.defaultBillCadence = "monthly";
         if (!Array.isArray(out.allocations) || !out.allocations.length) out.allocations = base.allocations.slice();
         out.allocations = out.allocations.map((row, idx) => {
           const id = String(row?.id || `alloc_${idx}`).trim() || `alloc_${idx}`;
@@ -11786,8 +11533,6 @@
         renderBudgetAllocationRules();
         renderBudgetDashboard();
         renderBudgetTopLeaks();
-        const cadenceEl = document.getElementById("budget-bill-cadence");
-        if (cadenceEl && budgetData?.defaultBillCadence) cadenceEl.value = budgetData.defaultBillCadence;
         const modeSelect = document.getElementById("budget-pot-mode");
         if (modeSelect) modeSelect.value = budgetData?.potInputMode === "percent" ? "percent" : "rating";
         const importanceInput = document.getElementById("budget-new-importance");
@@ -12019,7 +11764,7 @@
         const name = String(document.getElementById("budget-bill-name")?.value || "").trim();
         const amount = Number(document.getElementById("budget-bill-amount")?.value || 0);
         const dueDate = String(document.getElementById("budget-bill-date")?.value || "").trim();
-        const cadence = String(document.getElementById("budget-bill-cadence")?.value || budgetData.defaultBillCadence || "monthly").toLowerCase();
+        const cadence = String(document.getElementById("budget-bill-cadence")?.value || "monthly").toLowerCase();
         const leadDays = Number(document.getElementById("budget-bill-lead")?.value || 0);
         if (!name || !Number.isFinite(amount) || amount <= 0 || !dueDate) {
           themedNotice("Enter name, amount, and due date.");
@@ -12033,7 +11778,6 @@
           cadence,
           leadDays: Number.isFinite(leadDays) ? Math.max(0, Math.round(leadDays)) : 0,
         });
-        budgetData.defaultBillCadence = cadence || budgetData.defaultBillCadence || "monthly";
         saveBudgetData("budget_bill");
         document.getElementById("budget-bill-name").value = "";
         document.getElementById("budget-bill-amount").value = "";
@@ -15540,7 +15284,6 @@
           uiScale: 100,
           fontTheme: "classic",
           titleFontTheme: "classic",
-          detailLevel: "full",
         };
       }
 
@@ -15579,9 +15322,6 @@
         root.style.fontSize = `${scaledRootSize}px`;
         if (document.body) document.body.style.fontSize = "";
         root.style.setProperty("--ui-scale", String(Math.max(80, Math.min(140, uiScale)) / 100));
-        if (document.body) {
-          document.body.dataset.detail = settings?.detailLevel === "compact" ? "compact" : "full";
-        }
       }
 
       function loadAppearanceSettings() {
@@ -15600,7 +15340,6 @@
               uiScale: Number(parsed.uiScale || defaults.uiScale),
               fontTheme: String(parsed.fontTheme || defaults.fontTheme),
               titleFontTheme: String(parsed.titleFontTheme || defaults.titleFontTheme),
-              detailLevel: String(parsed.detailLevel || defaults.detailLevel),
             };
           }
         } catch (e) {}
@@ -15613,7 +15352,6 @@
         const scEl = document.getElementById("ui-scale");
         const fontEl = document.getElementById("ui-font-theme");
         const titleFontEl = document.getElementById("ui-title-font");
-        const detailEl = document.getElementById("ui-detail-level");
         if (pEl) pEl.value = settings.primary;
         if (sEl) sEl.value = settings.secondary;
         if (tEl) tEl.value = settings.textColor;
@@ -15622,7 +15360,6 @@
         if (scEl) scEl.value = String(settings.uiScale);
         if (fontEl) fontEl.value = settings.fontTheme || defaults.fontTheme;
         if (titleFontEl) titleFontEl.value = settings.titleFontTheme || defaults.titleFontTheme;
-        if (detailEl) detailEl.value = settings.detailLevel || defaults.detailLevel;
       }
 
       function saveAppearanceSettings() {
@@ -15634,7 +15371,6 @@
         const scEl = document.getElementById("ui-scale");
         const fontEl = document.getElementById("ui-font-theme");
         const titleFontEl = document.getElementById("ui-title-font");
-        const detailEl = document.getElementById("ui-detail-level");
         const settings = {
           primary: String(pEl?.value || "#00ff41"),
           secondary: String(sEl?.value || "#ffcc00"),
@@ -15644,7 +15380,6 @@
           uiScale: Number(scEl?.value || 100),
           fontTheme: String(fontEl?.value || "classic"),
           titleFontTheme: String(titleFontEl?.value || "classic"),
-          detailLevel: String(detailEl?.value || "full"),
         };
         localStorage.setItem(appearanceSettingsKey(), JSON.stringify(settings));
         applyAppearanceSettings(settings);
@@ -15661,7 +15396,6 @@
         const scEl = document.getElementById("ui-scale");
         const fontEl = document.getElementById("ui-font-theme");
         const titleFontEl = document.getElementById("ui-title-font");
-        const detailEl = document.getElementById("ui-detail-level");
         if (field === "primary" && pEl) pEl.value = defaults.primary;
         if (field === "secondary" && sEl) sEl.value = defaults.secondary;
         if (field === "textColor" && tEl) tEl.value = defaults.textColor;
@@ -15670,7 +15404,6 @@
         if (field === "uiScale" && scEl) scEl.value = String(defaults.uiScale);
         if (field === "fontTheme" && fontEl) fontEl.value = defaults.fontTheme;
         if (field === "titleFontTheme" && titleFontEl) titleFontEl.value = defaults.titleFontTheme;
-        if (field === "detailLevel" && detailEl) detailEl.value = defaults.detailLevel;
         saveAppearanceSettings();
       }
 
@@ -21964,16 +21697,6 @@
         loadPrivacySettings();
         loadSwissknifeFailLog();
         loadSwissknifeConvertHistory();
-        loadUiEventLog();
-        renderUiEventLog();
-        window.addEventListener("error", (e) => {
-          const msg = e?.message || "Unknown error";
-          logUiEvent("error", msg);
-        });
-        window.addEventListener("unhandledrejection", (e) => {
-          const msg = e?.reason?.message || String(e?.reason || "Unhandled rejection");
-          logUiEvent("error", msg);
-        });
         initMobileMenuGestures();
         initLiveDevReload();
         refreshRuntimeModeState().catch(() => {});
@@ -21987,9 +21710,6 @@
         initSwissknifeSimpleCanvas();
         refreshAppBuildLabels();
         initSafeModeControls();
-        if (!localStorage.getItem("onboarding:v1")) {
-          openOnboarding();
-        }
         const missionOverlay = document.getElementById("mission-editor-overlay");
         if (missionOverlay) {
           missionOverlay.addEventListener("click", (e) => {
@@ -22021,36 +21741,6 @@
           });
         }
         document.addEventListener("keydown", (e) => {
-          if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
-            e.preventDefault();
-            openCommandPalette();
-            return;
-          }
-          const palette = document.getElementById("command-palette");
-          if (palette && palette.classList.contains("active")) {
-            if (e.key === "ArrowDown") {
-              e.preventDefault();
-              commandPaletteActiveIndex = Math.min(commandPaletteActiveIndex + 1, Math.max(0, commandPaletteResults.length - 1));
-              renderCommandPalette();
-              return;
-            }
-            if (e.key === "ArrowUp") {
-              e.preventDefault();
-              commandPaletteActiveIndex = Math.max(0, commandPaletteActiveIndex - 1);
-              renderCommandPalette();
-              return;
-            }
-            if (e.key === "Enter") {
-              e.preventDefault();
-              const cmd = commandPaletteResults[commandPaletteActiveIndex];
-              if (cmd) runCommandPalette(cmd.id);
-              return;
-            }
-            if (e.key === "Escape") {
-              closeCommandPalette();
-              return;
-            }
-          }
           if (e.key === "Escape") {
             closeAllMatrixDropdowns();
             const confirmOverlay = document.getElementById("confirm-overlay");
