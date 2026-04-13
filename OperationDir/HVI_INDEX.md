@@ -1,73 +1,18 @@
 # HVI INDEX
 
-## HVI: @floettic
-* Name: @testing
-* Age: N/A
-* Social Media Handles: @testing (Instagram)
-* Contact Number: N/A
-* Email Address: N/A
-* Organization/Affiliation: N/A
-* Painpoint/Need: N/A (Potential for collaboration/engagement)
-* Mission Stage: Potential HVI (T001 Debrief)
-* testing: email
-* Number: 52
-
-## HVI: @nottwenty’8
-* Name: @nottwenty’8
-* Age: N/A
-* Social Media Handles: @nottwenty’8 (Instagram)
-* Contact Number: N/A
-* Email Address: N/A
-* Organization/Affiliation: N/A
-* Painpoint/Need: N/A (Potential for collaboration/engagement)
-* Mission Stage: Potential HVI (T001 Debrief)
-
-## HVI: @rap.council
-* Name: @rap.council
-* Age: N/A
-* Social Media Handles: @rap.council (Instagram)
-* Contact Number: N/A
-* Email Address: N/A
-* Organization/Affiliation: N/A
-* Painpoint/Need: N/A (Potential for collaboration/engagement)
-* Mission Stage: Potential HVI (T001 Debrief)
-
-## HVI: Netspend
-* Name: Netspend
-* Age: N/A
-* Social Media Handles: N/A
-* Contact Number: N/A
-* Email Address: N/A
-* Organization/Affiliation: N/A
-* Painpoint/Need: N/A (Potential for collaboration/engagement)
-* Mission Stage: Potential HVI (Manual entry)
-
-## HVI: Fakemink
-* Name: Fakemink
-* Age: N/A
-* Social Media Handles: N/A
-* Contact Number: N/A
-* Email Address: N/A
-* Organization/Affiliation: N/A
-* Painpoint/Need: N/A (Potential for collaboration/engagement)
-* Mission Stage: Potential HVI (Manual entry)
-
-## HVI: HStikky Ledbyher
-* Name: HStikky Ledbyher
-* Age: N/A
-* Social Media Handles: N/A
-* Contact Number: N/A
-* Email Address: N/A
-* Organization/Affiliation: N/A
-* Painpoint/Need: N/A (Potential for collaboration/engagement)
-* Mission Stage: Potential HVI (Manual entry)
-
-## HVI: Ed Mathews
-* Name: Ed Mathews
-* Age: N/A
-* Social Media Handles: hstickytokky (Handle)
-* Contact Number: N/A
-* Email Address: N/A
-* Organization/Affiliation: N/A
-* Painpoint/Need: N/A (Potential for collaboration/engagement)
-* Mission Stage: Potential HVI (Manual entry)
+## HVI: w1nterr3
+* Number: N/A
+* Status: Active
+* Name: Winter
+* Location: East London
+* Profile: https://www.instagram.com/w1nterr3/
+* Last Contacted Date: 2026-04-08
+* Last Contacted With: Supreme Blondie
+* Last Contacted Location: Picadility Circus London
+* Date Linked: 2026-04-08
+* Linked With: Supreme Blondie
+* Instagram: https://www.instagram.com/w1nterr3/
+* Created At: 2026-04-13T16:03:08.668Z
+* Date: 2026-04-13
+* Time: 16:03
+* Updated At: 2026-04-13T16:03:08.668Z

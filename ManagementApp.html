@@ -718,9 +718,28 @@
                     </div>
                   </div>
                   <div class="swissknife-inline">
-                    <label><input id="swissknife-login" type="checkbox" checked /> Use IG login (--login)</label>
+                    <label><input id="swissknife-cookies" type="checkbox" checked /> Use browser cookies (yt-dlp)</label>
+                    <select id="swissknife-cookies-browser" class="search-input">
+                      <option value="chrome">Chrome</option>
+                      <option value="brave">Brave</option>
+                      <option value="edge">Edge</option>
+                      <option value="firefox">Firefox</option>
+                      <option value="safari">Safari</option>
+                    </select>
                   </div>
-                  <button class="submit-btn" type="button" onclick="runSwissknifeBatchDownload()">RUN BATCH</button>
+                  <div class="swissknife-inline">
+                    <label><input id="swissknife-slowmode" type="checkbox" checked /> Slow mode (anti-429)</label>
+                    <select id="swissknife-slowmode-delay" class="search-input">
+                      <option value="5">5s</option>
+                      <option value="8" selected>8s</option>
+                      <option value="12">12s</option>
+                      <option value="20">20s</option>
+                    </select>
+                  </div>
+                  <div class="swissknife-batch-actions">
+                    <button class="submit-btn" id="swissknife-run-batch" type="button" onclick="runSwissknifeBatchDownload()">RUN BATCH</button>
+                    <button class="submit-btn swissknife-cancel-btn" id="swissknife-cancel-batch" type="button" onclick="cancelSwissknifeBatch()" disabled>CANCEL</button>
+                  </div>
                   <div id="swissknife-progress-section" class="swissknife-progress-container">
                     <div class="swissknife-progress-label">
                       <span id="swissknife-progress-status">READY</span>
@@ -1049,6 +1068,23 @@
             <textarea id="omni-issue-log-output" class="swissknife-textarea" rows="8" placeholder="Issue log will appear here..."></textarea>
           </div>
           <div class="settings-card settings-card-span">
+            <h3>// CRASH REPORTS</h3>
+            <div class="settings-help">Swissknife crash + failure reports stored locally. Use this when downloads fail or freeze.</div>
+            <div class="settings-actions" style="margin-bottom:10px;">
+              <button class="confirm-btn" id="swissknife-log-refresh" type="button">REFRESH LOG</button>
+              <button class="confirm-btn" id="swissknife-log-copy" type="button">COPY LOG</button>
+              <button class="confirm-btn" id="swissknife-log-clear" type="button">CLEAR LOG</button>
+            </div>
+            <textarea id="swissknife-log-output" class="swissknife-textarea" rows="8" placeholder="Crash reports will appear here..."></textarea>
+          </div>
+          <div class="settings-card settings-card-span">
+            <h3>// OMNI RESET</h3>
+            <div class="settings-help">Danger zone. Clears all Operations + Missions from OMNI on this Mac.</div>
+            <div class="settings-actions">
+              <button class="confirm-btn" type="button" onclick="clearOmniOperationsAndMissions()">CLEAR OPERATIONS + MISSIONS</button>
+            </div>
+          </div>
+          <div class="settings-card settings-card-span">
             <h3>// HEALTH + DIAGNOSTICS</h3>
             <div class="settings-help">Live server/workspace status, counts, and last error. This replaces the bottom-right log overlay.</div>
             <div class="settings-actions" style="margin-bottom:10px;">
@@ -1187,69 +1223,87 @@ for i in range(3):
 
       <!-- HVI VIEW -->
       <div id="view-hvi-intel" class="view-panel">
-        <h2>// HIGH VALUE INDIVIDUALS (Summary)</h2>
-        <p>Source: <code>OperationDir/HVI_INDEX.md</code></p>
-        <div class="add-launch-row"><button class="add-plus-btn" type="button" onclick="openAddPopup('hvi-submission-area')">+</button></div>
-        <div id="hvi-submission-area" class="submission-area add-popup-panel" style="margin-top:10px;">
-          <button class="add-popup-close" type="button" onclick="closeAllAddPopups()">X</button>
-          <h3>+ ADD HVI TARGET</h3>
-          <div class="form-group">
-            <label for="new-hvi-handle">Handle</label>
-            <input class="search-input" id="new-hvi-handle" type="text" placeholder="@target_handle" />
-          </div>
-          <div class="form-group">
-            <label for="new-hvi-status">Status</label>
-            <input class="search-input" id="new-hvi-status" type="text" placeholder="ACTIVE / WARM / COLD" />
-          </div>
-          <div class="form-group">
-            <label for="new-hvi-number">Number</label>
-            <input class="search-input" id="new-hvi-number" type="text" placeholder="+44 ..." />
-          </div>
-          <div class="form-group">
-            <label for="new-hvi-category">Category</label>
-            <input class="search-input" id="new-hvi-category" type="text" placeholder="e.g. Artist / Founder / Target Type" />
-          </div>
-          <div class="form-group">
-            <label for="new-hvi-parameters">Parameters</label>
-            <input class="search-input" id="new-hvi-parameters" type="text" placeholder="Comma separated parameters..." />
-          </div>
-          <div class="form-group">
-            <label for="new-hvi-datawell-name">Datawell Name</label>
-            <input class="search-input" id="new-hvi-datawell-name" type="text" placeholder="Connected / owned / linked Datawell..." />
-          </div>
-          <div class="form-group">
-            <label for="new-hvi-datawell-relation">Datawell Relation</label>
-            <input class="search-input" id="new-hvi-datawell-relation" type="text" placeholder="Connected to / part of / have / sourced from..." />
-          </div>
-          <div class="form-group">
-            <label for="new-hvi-photo-url">Photo URL (optional)</label>
-            <input class="search-input" id="new-hvi-photo-url" type="text" placeholder="https://...image.jpg" />
-          </div>
-          <div class="form-group">
-            <label for="new-hvi-photo-file">Attach Photo File (optional)</label>
-            <input class="search-input" id="new-hvi-photo-file" type="file" accept="image/*" />
-          </div>
-          <div class="hvi-meta" id="new-hvi-time-meta">Time added: auto</div>
-          <button class="submit-btn" type="button" onclick="submitNewHvi()">ADD HVI</button>
-        </div>
-        <div class="search-toolbar">
-          <input class="search-input" id="hvi-search-input" type="text" placeholder="Search HVI..." oninput="setHviSearch()" onkeydown="if(event.key==='Enter') setHviSearch()" />
-          <button class="submit-btn" type="button" onclick="setHviSearch()">SEARCH</button>
-        </div>
-        <div class="hvi-filter-bar">
-          <div class="hvi-filter-grid">
-            <input id="hvi-filter-category-search" class="search-input" type="text" placeholder="Search categories..." oninput="setHviCategorySearch()" />
-            <select id="hvi-filter-category" class="search-input" multiple onchange="setHviFilters()">
-              <option value="">All Categories</option>
-            </select>
-            <input id="hvi-filter-param" class="search-input" type="text" placeholder="Filter by parameter key/value..." oninput="setHviFilters()" />
-            <input id="hvi-filter-date-from" class="search-input" type="date" onchange="setHviFilters()" />
-            <input id="hvi-filter-date-to" class="search-input" type="date" onchange="setHviFilters()" />
-            <button class="submit-btn" type="button" onclick="clearHviFilters()">RESET</button>
+        <div class="view-header">
+          <div>
+            <h2 class="view-title">// HIGH VALUE INDIVIDUALS (Summary)</h2>
+            <div class="view-subtitle">Source: <code>OperationDir/HVI_INDEX.md</code></div>
           </div>
         </div>
-        <div id="hvi-container">
-          <div class="hvi-card"><p>Loading HVI profiles...</p></div>
+        <div class="panel-card">
+          <div class="panel-card-head">
+            <h3>// ADD HVI TARGET</h3>
+            <button class="add-plus-btn" type="button" onclick="openAddPopup('hvi-submission-area')">+</button>
+          </div>
+          <div id="hvi-submission-area" class="submission-area add-popup-panel" style="margin-top:10px;">
+            <button class="add-popup-close" type="button" onclick="closeAllAddPopups()">X</button>
+            <h3>+ ADD HVI TARGET</h3>
+            <div class="form-group">
+              <label for="new-hvi-handle">Handle</label>
+              <input class="search-input" id="new-hvi-handle" type="text" placeholder="@target_handle" />
+            </div>
+            <div class="form-group">
+              <label for="new-hvi-status">Status</label>
+              <input class="search-input" id="new-hvi-status" type="text" placeholder="ACTIVE / WARM / COLD" />
+            </div>
+            <div class="form-group">
+              <label for="new-hvi-number">Number</label>
+              <input class="search-input" id="new-hvi-number" type="text" placeholder="+44 ..." />
+            </div>
+            <div class="form-group">
+              <label for="new-hvi-category">Category</label>
+              <input class="search-input" id="new-hvi-category" type="text" placeholder="e.g. Artist / Founder / Target Type" />
+            </div>
+            <div class="form-group">
+              <label for="new-hvi-parameters">Parameters</label>
+              <input class="search-input" id="new-hvi-parameters" type="text" placeholder="Comma separated parameters..." />
+            </div>
+            <div class="form-group">
+              <label for="new-hvi-datawell-name">Datawell Name</label>
+              <input class="search-input" id="new-hvi-datawell-name" type="text" placeholder="Connected / owned / linked Datawell..." />
+            </div>
+            <div class="form-group">
+              <label for="new-hvi-datawell-relation">Datawell Relation</label>
+              <input class="search-input" id="new-hvi-datawell-relation" type="text" placeholder="Connected to / part of / have / sourced from..." />
+            </div>
+            <div class="form-group">
+              <label for="new-hvi-photo-url">Photo URL (optional)</label>
+              <input class="search-input" id="new-hvi-photo-url" type="text" placeholder="https://...image.jpg" />
+            </div>
+            <div class="form-group">
+              <label for="new-hvi-photo-file">Attach Photo File (optional)</label>
+              <input class="search-input" id="new-hvi-photo-file" type="file" accept="image/*" />
+            </div>
+            <div class="hvi-meta" id="new-hvi-time-meta">Time added: auto</div>
+            <button class="submit-btn" type="button" onclick="submitNewHvi()">ADD HVI</button>
+          </div>
+        </div>
+        <div class="panel-card hvi-simple-toolbar">
+          <div class="search-toolbar">
+            <input class="search-input" id="hvi-search-input" type="text" placeholder="Search HVI..." oninput="setHviSearch()" onkeydown="if(event.key==='Enter') setHviSearch()" />
+            <button class="submit-btn" type="button" onclick="setHviSearch()">SEARCH</button>
+            <button class="submit-btn" type="button" onclick="openAddPopup('hvi-submission-area')">ADD HVI</button>
+            <button class="submit-btn" type="button" onclick="openHviWizard('create')">WIZARD</button>
+            <div class="hvi-simple-hint">Double-click a profile to open the editor.</div>
+          </div>
+        </div>
+        <div class="hvi-simple-grid">
+          <div class="panel-card hvi-simple-list">
+            <div class="panel-card-head">
+              <h3>// PROFILES</h3>
+            </div>
+            <div id="hvi-container">
+              <div class="hvi-card"><p>Loading HVI profiles...</p></div>
+            </div>
+          </div>
+          <div class="panel-card hvi-simple-profile">
+            <div class="panel-card-head">
+              <h3>// PROFILE WORKFLOW</h3>
+            </div>
+            <div class="hvi-simple-empty">
+              <p>Double-click a profile from the list to open the clean profile editor with social buttons + last-communication meter.</p>
+              <button class="submit-btn" type="button" onclick="themedNotice('Double-click a profile to open the editor.')">OPEN HELP</button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -1395,6 +1449,23 @@ for i in range(3):
         <div class="search-toolbar">
           <input class="search-input" id="contacts-search-input" type="text" placeholder="Search contacts..." oninput="setContactsSearch()" onkeydown="if(event.key==='Enter') setContactsSearch()" />
           <button class="submit-btn" type="button" onclick="setContactsSearch()">SEARCH</button>
+        </div>
+        <div class="hvi-card">
+          <h3>Re-engage Follow-ups</h3>
+          <div id="contacts-followup-summary" class="hvi-meta">No follow-ups yet.</div>
+          <div class="form-group">
+            <label for="contacts-followup-status">Connection Status</label>
+            <select id="contacts-followup-status" class="search-input">
+              <option value="pending">Pending / Not Connected</option>
+              <option value="connected">Connected</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="contacts-followup-input">Notes</label>
+            <textarea id="contacts-followup-input" class="mission-intel-textarea" rows="3" placeholder="Add re-engage notes..."></textarea>
+          </div>
+          <button class="submit-btn" type="button" onclick="addFollowup('contacts')">ADD REMINDER</button>
+          <div id="contacts-followup-list" style="margin-top:12px;"></div>
         </div>
         <div id="contacts-container">
           <div class="hvi-card"><p>Loading contacts...</p></div>
@@ -1765,6 +1836,51 @@ for i in range(3):
       </div>
     </div>
 
+    <div id="hvi-reminder-overlay" class="intel-overlay hvi-panel-overlay" aria-hidden="true">
+      <div class="intel-modal hvi-panel-modal" role="dialog" aria-modal="true" aria-labelledby="hvi-reminder-title">
+        <div class="intel-head">
+          <h3 id="hvi-reminder-title" class="intel-title">// HVI REMINDERS</h3>
+          <div class="intel-subtitle">Re-engagement timing + no-update alerts</div>
+        </div>
+        <div id="hvi-reminder-body" class="intel-body"></div>
+        <div class="intel-actions">
+          <button class="confirm-btn" type="button" onclick="closeHviReminderPanel()">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="hvi-update-overlay" class="intel-overlay hvi-panel-overlay" aria-hidden="true">
+      <div class="intel-modal hvi-panel-modal" role="dialog" aria-modal="true" aria-labelledby="hvi-update-title">
+        <div class="intel-head">
+          <h3 id="hvi-update-title" class="intel-title">// HVI UPDATE LOGS</h3>
+          <div class="intel-subtitle">Description version history</div>
+        </div>
+        <div id="hvi-update-body" class="intel-body"></div>
+        <div class="intel-actions">
+          <button class="confirm-btn" type="button" onclick="closeHviUpdateLogPanel()">Close</button>
+        </div>
+      </div>
+    </div>
+
+
+    <div id="hvi-wizard-overlay" class="intel-overlay hvi-wizard-overlay" aria-hidden="true">
+      <div class="intel-modal hvi-wizard-modal" role="dialog" aria-modal="true" aria-labelledby="hvi-wizard-title">
+        <div class="intel-head">
+          <div>
+            <h3 id="hvi-wizard-title" class="intel-title">// HVI WIZARD</h3>
+            <div id="hvi-wizard-sub" class="intel-subtitle">Step 1 of 7</div>
+          </div>
+          <div class="hvi-wizard-meta" id="hvi-wizard-meta">Press Enter to continue</div>
+        </div>
+        <div id="hvi-wizard-body" class="intel-body"></div>
+        <div class="intel-actions">
+          <button class="confirm-btn" type="button" onclick="closeHviWizard()">Close</button>
+          <button id="hvi-wizard-back" class="submit-btn" type="button" onclick="hviWizardPrev()">Back</button>
+          <button id="hvi-wizard-next" class="submit-btn" type="button" onclick="hviWizardNext()">Next</button>
+          <button id="hvi-wizard-finish" class="submit-btn" type="button" onclick="hviWizardFinish()">Finish</button>
+        </div>
+      </div>
+    </div>
       <div id="doc-overlay" class="doc-overlay" aria-hidden="true">
       <div class="doc-modal" role="dialog" aria-modal="true" aria-labelledby="doc-title">
         <div class="doc-head">

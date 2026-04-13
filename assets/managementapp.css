@@ -1243,14 +1243,15 @@
       }
       .hvi-dossier-grid {
         display: grid;
-        grid-template-columns: 280px 1fr;
-        gap: 12px;
+        grid-template-columns: 300px 1fr;
+        gap: 16px;
       }
       .hvi-dossier-left,
       .hvi-dossier-right {
-        border: 1px solid var(--term-dim);
-        background: rgba(0, 255, 65, 0.03);
-        padding: 10px;
+        border: 1px solid rgba(0, 255, 65, 0.25);
+        background: linear-gradient(160deg, rgba(0, 255, 65, 0.08), rgba(0, 20, 6, 0.6));
+        padding: 12px;
+        box-shadow: 0 10px 24px rgba(0, 0, 0, 0.45);
       }
       .hvi-dossier-photo-wrap {
         display: grid;
@@ -1258,8 +1259,8 @@
         min-height: 190px;
       }
       .hvi-dossier-photo {
-        width: 170px;
-        height: 170px;
+        width: 190px;
+        height: 190px;
         object-fit: cover;
         border: 1px solid var(--term-green);
         background: #000;
@@ -1268,7 +1269,7 @@
         margin: 8px 0;
       }
       .hvi-dossier-name {
-        font-size: 1.2rem;
+        font-size: 1.35rem;
         font-weight: 700;
         color: var(--warning-yellow);
         line-height: 1.15;
@@ -1279,8 +1280,8 @@
       }
       .hvi-dossier-subdesc {
         margin-top: 4px;
-        font-size: 0.8rem;
-        color: var(--term-dim);
+        font-size: 0.82rem;
+        color: rgba(255, 215, 90, 0.7);
         line-height: 1.35;
       }
       .hvi-dossier-links {
@@ -1302,10 +1303,10 @@
         margin-top: 10px;
       }
       .hvi-dossier-table {
-        border: 1px solid var(--term-dim);
-        max-height: 42vh;
+        border: 1px solid rgba(0, 255, 65, 0.2);
+        max-height: 38vh;
         overflow: auto;
-        padding: 4px 8px;
+        padding: 6px 10px;
       }
       .hvi-dossier-row {
         display: grid;
@@ -1327,6 +1328,172 @@
         color: var(--term-dim);
         font-size: 0.78rem;
         line-height: 1.35;
+      }
+      .hvi-profile-toolbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 10px;
+        flex-wrap: wrap;
+      }
+      .hvi-profile-actions {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .hvi-reminder-badges {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .hvi-reminder-badge {
+        display: grid;
+        gap: 2px;
+        padding: 6px 10px;
+        border: 1px solid rgba(0, 255, 65, 0.3);
+        background: rgba(0, 255, 65, 0.08);
+        min-width: 120px;
+        font-size: 0.7rem;
+      }
+      .hvi-reminder-badge strong {
+        font-size: 0.85rem;
+        color: var(--warning-yellow);
+      }
+      .hvi-reminder-badge.amber {
+        border-color: rgba(255, 185, 0, 0.7);
+        background: rgba(255, 185, 0, 0.12);
+      }
+      .hvi-reminder-badge.red {
+        border-color: rgba(255, 80, 80, 0.8);
+        background: rgba(255, 80, 80, 0.12);
+      }
+      .hvi-reminder-badge.unknown {
+        border-color: rgba(0, 255, 65, 0.2);
+        color: var(--term-dim);
+      }
+      .hvi-panel-overlay .hvi-panel-modal {
+        width: min(900px, 92vw);
+      }
+      .hvi-reminder-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+      }
+      .hvi-reminder-card {
+        display: grid;
+        gap: 10px;
+      }
+      .hvi-reminder-row {
+        display: grid;
+        grid-template-columns: 140px 1fr auto;
+        gap: 10px;
+        align-items: center;
+        font-size: 0.8rem;
+      }
+      .hvi-reminder-label {
+        color: var(--warning-yellow);
+        font-weight: 700;
+      }
+      .hvi-reminder-value {
+        color: var(--term-dim);
+      }
+      .hvi-reminder-pill {
+        border: 1px solid rgba(0, 255, 65, 0.35);
+        padding: 4px 8px;
+        font-size: 0.7rem;
+      }
+      .hvi-reminder-pill.amber {
+        border-color: rgba(255, 185, 0, 0.7);
+        color: rgba(255, 215, 90, 0.9);
+      }
+      .hvi-reminder-pill.red {
+        border-color: rgba(255, 80, 80, 0.8);
+        color: rgba(255, 120, 120, 0.95);
+      }
+      .hvi-reminder-hint {
+        color: var(--term-dim);
+        font-size: 0.72rem;
+      }
+      .hvi-reminder-settings {
+        display: grid;
+        gap: 10px;
+      }
+      .hvi-reminder-settings label {
+        display: grid;
+        gap: 6px;
+        font-size: 0.78rem;
+        color: var(--term-dim);
+      }
+      .hvi-log-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 8px;
+      }
+      .hvi-log-actions {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .hvi-log-count {
+        color: var(--warning-yellow);
+        font-weight: 700;
+      }
+      .hvi-log-list {
+        display: grid;
+        gap: 8px;
+        max-height: 50vh;
+        overflow: auto;
+      }
+      .hvi-log-row {
+        border: 1px solid rgba(0, 255, 65, 0.2);
+        background: rgba(0, 255, 65, 0.05);
+        padding: 8px;
+        display: grid;
+        gap: 6px;
+      }
+      .hvi-log-meta {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 0.72rem;
+        color: var(--term-dim);
+      }
+      .hvi-log-field {
+        color: var(--warning-yellow);
+      }
+      .hvi-log-body {
+        display: grid;
+        gap: 6px;
+        font-size: 0.78rem;
+      }
+      .hvi-log-label {
+        display: inline-block;
+        min-width: 44px;
+        color: var(--warning-yellow);
+        font-weight: 700;
+        margin-right: 6px;
+      }
+      .hvi-log-empty {
+        color: var(--term-dim);
+        font-size: 0.8rem;
+      }
+      .hvi-summary-alerts {
+        margin-left: auto;
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+      .hvi-summary-alerts .hvi-reminder-badge {
+        min-width: 86px;
+        padding: 4px 6px;
+        font-size: 0.62rem;
+      }
+      .hvi-summary-alerts .hvi-reminder-badge strong {
+        font-size: 0.74rem;
       }
       .hvi-layout-toolbar {
         display: flex;
@@ -1606,12 +1773,20 @@
         top: 8px;
         right: 8px;
       }
+      .hvi-row-photo-btn {
+        position: absolute;
+        top: 8px;
+        right: 46px;
+        padding: 2px 6px;
+        font-size: 0.62rem;
+        letter-spacing: 0.5px;
+      }
       .hvi-summary-main {
         display: flex;
         align-items: center;
         gap: 10px;
         min-height: 46px;
-        padding-right: 36px;
+        padding-right: 86px;
       }
       .hvi-summary-text {
         min-width: 0;
@@ -1630,6 +1805,96 @@
         overflow: hidden;
         text-overflow: ellipsis;
         max-width: 100%;
+      }
+      .hvi-link-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin: 8px 0 4px 0;
+      }
+      .hvi-link-btn {
+        display: inline-flex;
+        align-items: center;
+        padding: 4px 8px;
+        border: 1px solid rgba(0, 255, 65, 0.35);
+        border-radius: 999px;
+        color: var(--term-green);
+        font-size: 0.72rem;
+        text-decoration: none;
+        background: rgba(0, 255, 65, 0.08);
+      }
+      .hvi-link-btn:hover {
+        border-color: var(--term-green);
+        background: rgba(0, 255, 65, 0.16);
+      }
+      .hvi-link-empty {
+        color: var(--term-dim);
+        font-size: 0.75rem;
+      }
+      .hvi-profile-quick {
+        margin-bottom: 10px;
+      }
+      .hvi-mission-link {
+        border: 1px solid rgba(0, 255, 65, 0.2);
+        border-radius: 6px;
+        padding: 8px;
+        margin-bottom: 8px;
+        background: rgba(0, 0, 0, 0.2);
+      }
+      .hvi-mission-row {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 6px;
+        align-items: center;
+      }
+      .hvi-mission-meta {
+        margin-top: 6px;
+        font-size: 0.72rem;
+        color: var(--term-dim);
+      }
+      .hvi-mission-brief {
+        margin-top: 8px;
+        min-height: 120px;
+      }
+      .hvi-mission-actions {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, auto));
+        gap: 6px;
+        margin-top: 6px;
+      }
+      .hvi-profile-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+        margin-bottom: 8px;
+      }
+      .hvi-profile-grid label {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        font-size: 0.72rem;
+        color: var(--term-dim);
+      }
+      .hvi-profile-grid-compact {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      .hvi-contact-meter {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 6px 8px;
+        border: 1px solid rgba(0, 255, 65, 0.2);
+        border-radius: 6px;
+        margin-bottom: 8px;
+        font-size: 0.76rem;
+      }
+      .hvi-contact-good { border-color: var(--term-green); color: var(--term-green); }
+      .hvi-contact-warn { border-color: var(--warning-yellow); color: var(--warning-yellow); }
+      .hvi-contact-danger { border-color: #ff4d4d; color: #ff4d4d; }
+      .hvi-contact-unknown { border-color: rgba(255,255,255,0.2); color: var(--term-dim); }
+      .hvi-inline-btn {
+        align-self: end;
+        height: 32px;
       }
       .contact-detail-panel {
         margin-top: 10px;
@@ -3954,6 +4219,12 @@
         .hvi-dossier-desc {
           grid-column: 1;
         }
+        .hvi-reminder-grid {
+          grid-template-columns: 1fr;
+        }
+        .hvi-reminder-row {
+          grid-template-columns: 1fr;
+        }
         .hvi-profile-photo,
         .hvi-profile-empty {
           width: 72px;
@@ -4749,6 +5020,24 @@
         color: var(--term-green);
         opacity: 0.9;
       }
+      .swissknife-batch-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        align-items: center;
+        margin-top: 6px;
+      }
+      .swissknife-cancel-btn {
+        border-color: #ff3b30;
+        color: #ff3b30;
+        background: rgba(255, 59, 48, 0.08);
+        box-shadow: none;
+      }
+      .swissknife-cancel-btn:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+        box-shadow: none;
+      }
       .swissknife-inline-split {
         display: flex;
         flex-wrap: wrap;
@@ -4824,6 +5113,59 @@
       .swissknife-recent-list {
         display: grid;
         gap: 8px;
+      }
+
+      .followup-card {
+        border-left: 3px solid var(--term-border);
+      }
+
+      .followup-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 6px;
+      }
+
+      .followup-meta {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .followup-badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 2px 8px;
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        border: 1px solid transparent;
+      }
+
+      .followup-green {
+        color: #0b3d20;
+        background: #b8f5c4;
+        border-color: #6be38d;
+      }
+
+      .followup-yellow {
+        color: #3c2d00;
+        background: #ffe9a3;
+        border-color: #f2c44b;
+      }
+
+      .followup-red {
+        color: #4a0a0a;
+        background: #ffb4b4;
+        border-color: #ff6f6f;
+      }
+
+      .followup-neutral {
+        color: #2f2f2f;
+        background: #e8e8e8;
+        border-color: #cfcfcf;
       }
       .swissknife-history-toolbar {
         display: grid;
@@ -5857,3 +6199,175 @@
         }
       }
     
+
+
+/* HVI simple layout */
+.hvi-simple-toolbar {
+  margin-bottom: 8px;
+}
+.hvi-simple-toolbar .search-toolbar {
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.hvi-simple-hint {
+  color: var(--term-dim);
+  font-size: 0.78rem;
+}
+.hvi-simple-grid {
+  display: grid;
+  grid-template-columns: 1.1fr 1fr;
+  gap: 10px;
+}
+@media (max-width: 1100px) {
+  .hvi-simple-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.hvi-simple-list #hvi-container {
+  max-height: 56vh;
+  overflow: auto;
+}
+.hvi-simple-profile {
+  display: flex;
+  flex-direction: column;
+}
+.hvi-simple-empty {
+  padding: 8px;
+  border: 1px dashed var(--term-dim);
+  background: rgba(0, 255, 65, 0.03);
+  display: grid;
+  gap: 8px;
+  color: var(--term-dim);
+}
+
+
+/* HVI wizard */
+.hvi-wizard-overlay .hvi-wizard-modal {
+  width: min(900px, 92vw);
+}
+.hvi-wizard-meta {
+  color: var(--term-dim);
+  font-size: 0.78rem;
+}
+.hvi-wizard-step {
+  display: grid;
+  gap: 10px;
+}
+.hvi-wizard-step h4 {
+  margin: 0;
+  color: var(--warning-yellow);
+}
+.hvi-wizard-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+@media (max-width: 900px) {
+  .hvi-wizard-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.hvi-wizard-row {
+  display: grid;
+  gap: 6px;
+}
+.hvi-wizard-row label {
+  font-size: 0.78rem;
+  color: var(--term-dim);
+}
+.hvi-wizard-preview {
+  border: 1px dashed var(--term-dim);
+  min-height: 140px;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 255, 65, 0.03);
+}
+.hvi-wizard-preview img {
+  max-width: 100%;
+  max-height: 180px;
+  object-fit: cover;
+}
+.hvi-wizard-photo-tools {
+  align-content: start;
+}
+.hvi-wizard-cropper {
+  display: grid;
+  gap: 10px;
+}
+.hvi-wizard-crop-stage {
+  position: relative;
+  border: 1px dashed var(--term-dim);
+  background: rgba(0, 255, 65, 0.03);
+  min-height: 220px;
+  display: grid;
+  place-items: center;
+}
+.hvi-wizard-crop-canvas {
+  width: 100%;
+  height: 220px;
+  display: block;
+  cursor: grab;
+}
+.hvi-wizard-crop-stage.dragging .hvi-wizard-crop-canvas {
+  cursor: grabbing;
+}
+.hvi-wizard-crop-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--term-dim);
+  font-size: 0.78rem;
+  pointer-events: none;
+}
+.hvi-wizard-crop-stage.has-source .hvi-wizard-crop-empty {
+  display: none;
+}
+.hvi-wizard-crop-controls {
+  display: grid;
+  gap: 6px;
+}
+.hvi-wizard-crop-controls input[type="range"] {
+  width: 100%;
+}
+.hvi-wizard-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.72rem;
+  color: var(--term-dim);
+}
+
+
+.hvi-wizard-matches {
+  display: grid;
+  gap: 6px;
+  margin-top: 6px;
+}
+.hvi-wizard-match-btn {
+  text-align: left;
+  font-size: 0.7rem;
+  padding: 4px 8px;
+}
+.hvi-wizard-match-empty {
+  color: var(--term-dim);
+  font-size: 0.72rem;
+}
+
+
+.hvi-wizard-inline {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.hvi-wizard-inline .search-input {
+  flex: 1 1 auto;
+}
+
+
+.swissknife-recent-tags {
+  color: var(--term-dim);
+  font-size: 0.72rem;
+  margin-top: 4px;
+}

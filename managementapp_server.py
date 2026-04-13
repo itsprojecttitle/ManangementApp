@@ -14,6 +14,7 @@ import sys
 import tempfile
 import mimetypes
 import threading
+import html as html_lib
 from threading import Lock, Thread
 from collections import deque
 from datetime import datetime, timezone
@@ -21,6 +22,7 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Dict, List
 from urllib.parse import parse_qs, urlparse
+from urllib.request import Request, urlopen
 
 RUNTIME_VARIANT = os.environ.get("OMNI_RUNTIME_VARIANT", "").strip().lower()
 
@@ -972,6 +974,214 @@ def _json_response(handler: SimpleHTTPRequestHandler, payload, status=200):
     handler.wfile.write(body)
 
 
+def _normalize_profile_url(raw: str) -> str:
+    value = str(raw or "").strip()
+    if not value:
+        return ""
+    if not re.match(r"^https?://", value, re.I):
+        value = f"https://{value}"
+    parsed = urlparse(value)
+    if not parsed.netloc:
+        return ""
+    return value
+
+
+def _is_public_host(host: str) -> bool:
+    if not host:
+        return False
+    if host.lower() in {"localhost"}:
+        return False
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except Exception:
+        return False
+    for info in infos:
+        ip = info[4][0]
+        try:
+            addr = ipaddress.ip_address(ip)
+        except ValueError:
+            continue
+        if addr.is_private or addr.is_loopback or addr.is_link_local or addr.is_multicast or addr.is_reserved:
+            return False
+    return True
+
+
+def _fetch_profile_html(url: str, timeout: int = 10, max_bytes: int = 700_000):
+    req = Request(
+        url,
+        headers={
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml",
+            "Accept-Language": "en-US,en;q=0.9",
+        },
+    )
+    with urlopen(req, timeout=timeout) as resp:
+        data = resp.read(max_bytes)
+        charset = getattr(resp.headers, "get_content_charset", lambda default=None: None)("utf-8") or "utf-8"
+        text = data.decode(charset, errors="replace")
+        return text, resp.geturl(), resp.headers.get("Content-Type", "")
+
+
+def _extract_meta(html_text: str) -> Dict[str, str]:
+    meta = {}
+    if not html_text:
+        return meta
+    for tag in re.findall(r"<meta[^>]+>", html_text, re.I):
+        attrs = dict(
+            (k.lower(), v)
+            for k, v in re.findall(r"([a-zA-Z0-9:_-]+)\s*=\s*[\"'](.*?)[\"']", tag)
+        )
+        key = attrs.get("property") or attrs.get("name")
+        content = attrs.get("content")
+        if key and content:
+            meta[key.lower()] = html_lib.unescape(content.strip())
+    title = re.search(r"<title[^>]*>(.*?)</title>", html_text, re.I | re.S)
+    if title:
+        meta["__title__"] = html_lib.unescape(re.sub(r"\s+", " ", title.group(1)).strip())
+    return meta
+
+
+def _detect_platform(parsed, meta: Dict[str, str]) -> str:
+    host = (parsed.hostname or "").lower().replace("www.", "")
+    if "instagram.com" in host or "instagr.am" in host:
+        return "instagram"
+    if "tiktok.com" in host:
+        return "tiktok"
+    if "youtube.com" in host or host == "youtu.be":
+        return "youtube"
+    if "facebook.com" in host or host == "fb.com":
+        return "facebook"
+    if "linkedin.com" in host:
+        return "linkedin"
+    if "threads.net" in host:
+        return "threads"
+    if host in {"x.com", "twitter.com"}:
+        return "x"
+    if "pinterest." in host or host == "pin.it":
+        return "pinterest"
+    site_name = (meta.get("og:site_name") or "").lower()
+    if "instagram" in site_name:
+        return "instagram"
+    if "tiktok" in site_name:
+        return "tiktok"
+    if "youtube" in site_name:
+        return "youtube"
+    if "facebook" in site_name:
+        return "facebook"
+    if "linkedin" in site_name:
+        return "linkedin"
+    if "threads" in site_name:
+        return "threads"
+    if "pinterest" in site_name:
+        return "pinterest"
+    if "x" == site_name or "twitter" in site_name:
+        return "x"
+    return "unknown"
+
+
+def _extract_handle(platform: str, parsed, meta: Dict[str, str]) -> str:
+    for key in ("profile:username", "og:profile:username", "twitter:creator", "twitter:site"):
+        raw = meta.get(key)
+        if raw:
+            return str(raw).strip().lstrip("@")
+    path = parsed.path.strip("/")
+    parts = [p for p in path.split("/") if p]
+    if not parts:
+        return ""
+    first = parts[0]
+    if platform == "instagram":
+        if first.lower() in {"p", "reel", "tv", "stories", "explore"}:
+            return ""
+        return first.lstrip("@")
+    if platform == "tiktok":
+        if first.startswith("@"):
+            return first[1:]
+        return ""
+    if platform == "threads":
+        if first.startswith("@"):
+            return first[1:]
+        return ""
+    if platform == "x":
+        if first.lower() in {"home", "search", "i", "explore", "hashtag"}:
+            return ""
+        return first.lstrip("@")
+    if platform == "youtube":
+        if first.startswith("@"):
+            return first[1:]
+        if first in {"channel", "c", "user"} and len(parts) > 1:
+            return parts[1]
+        return ""
+    if platform == "facebook":
+        if first.lower() == "profile.php":
+            return str(parse_qs(parsed.query).get("id", [""])[0]).strip()
+        if first.lower() in {"pages", "groups", "people", "watch", "events"}:
+            return ""
+        return first
+    if platform == "linkedin":
+        if first in {"in", "company", "pub", "school"} and len(parts) > 1:
+            return parts[1]
+        return ""
+    if platform == "pinterest":
+        if first.lower() in {"pin", "search", "ideas"}:
+            return ""
+        return first
+    return ""
+
+
+def resolve_profile_url(raw_url: str) -> Dict[str, Any]:
+    url = _normalize_profile_url(raw_url)
+    if not url:
+        return {"ok": False, "error": "Invalid URL."}
+    parsed = urlparse(url)
+    host = parsed.hostname or ""
+    if not _is_public_host(host):
+        return {"ok": False, "error": "Blocked host."}
+    try:
+        html_text, final_url, _ctype = _fetch_profile_html(url)
+    except Exception as exc:
+        return {"ok": False, "error": f"Fetch failed: {exc}"}
+    meta = _extract_meta(html_text)
+    final_parsed = urlparse(final_url)
+    platform = _detect_platform(final_parsed, meta)
+    handle = _extract_handle(platform, final_parsed, meta)
+    name = meta.get("og:title") or meta.get("twitter:title") or meta.get("__title__") or ""
+    if name:
+        for suffix in ("| Instagram", "• Instagram", " - Instagram", "| TikTok", " - TikTok", "| YouTube", " - YouTube", "| Facebook", " - Facebook", "| LinkedIn", " - LinkedIn", "| X", " - X", "| Threads", " - Threads", "| Pinterest", " - Pinterest"):
+            if suffix in name:
+                name = name.split(suffix)[0].strip()
+                break
+    avatar = meta.get("og:image") or meta.get("twitter:image") or ""
+    profile_url = meta.get("og:url") or final_url or url
+    links = {}
+    if platform == "instagram":
+        links["instagram"] = profile_url
+    elif platform == "tiktok":
+        links["tiktok"] = profile_url
+    elif platform == "youtube":
+        links["youtube"] = profile_url
+    elif platform == "facebook":
+        links["facebook"] = profile_url
+    elif platform == "linkedin":
+        links["linkedin"] = profile_url
+    elif platform == "threads":
+        links["threads"] = profile_url
+    elif platform == "x":
+        links["x"] = profile_url
+    elif platform == "pinterest":
+        links["pinterest"] = profile_url
+    if platform == "unknown":
+        links["website"] = profile_url
+    return {
+        "ok": True,
+        "platform": platform,
+        "handle": handle,
+        "name": name,
+        "avatar": avatar,
+        "profile_url": profile_url,
+        "links": links,
+    }
+
+
 def copy_text_to_clipboard(text: str):
     try:
         from AppKit import NSPasteboard, NSPasteboardTypeString
@@ -986,6 +1196,23 @@ def copy_text_to_clipboard(text: str):
     try:
         subprocess.run(["pbcopy"], input=str(text or "").encode("utf-8"), check=True)
         return {"ok": True}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+def read_text_from_clipboard():
+    try:
+        from AppKit import NSPasteboard, NSPasteboardTypeString
+
+        pasteboard = NSPasteboard.generalPasteboard()
+        text = pasteboard.stringForType_(NSPasteboardTypeString)
+        if text is not None:
+            return {"ok": True, "text": str(text)}
+    except Exception:
+        pass
+    try:
+        result = subprocess.run(["pbpaste"], capture_output=True, text=True, check=True)
+        return {"ok": True, "text": result.stdout or ""}
     except Exception as exc:
         return {"ok": False, "error": str(exc)}
 
@@ -1021,6 +1248,23 @@ def load_operations():
             if p.is_dir() and not p.name.startswith("."):
                 ops.append(p.name)
     return ops
+
+
+def clear_operations_and_missions():
+    removed = []
+    if OPERATIONS_DIR.exists():
+        for entry in OPERATIONS_DIR.iterdir():
+            if entry.name.startswith("."):
+                continue
+            try:
+                if entry.is_dir():
+                    shutil.rmtree(entry)
+                else:
+                    entry.unlink()
+                removed.append(entry.name)
+            except Exception as exc:
+                raise RuntimeError(f"Failed to remove {entry.name}: {exc}") from exc
+    return {"ok": True, "removed": removed, "count": len(removed)}
 
 
 def _mission_created_fallback(path: Path) -> str:
@@ -2370,6 +2614,11 @@ def _swissknife_session_id(label: str):
     return f"{stamp}_{safe}"
 
 
+def _swissknife_is_ytdlp_source(source: str) -> bool:
+    src = str(source or "").strip().lower()
+    return src in {"ytdlp", "tiktok", "youtube"} or src.startswith("yt")
+
+
 def _find_session(rows, session_id: str):
     sid = str(session_id or "").strip()
     for i, row in enumerate(rows):
@@ -2469,7 +2718,7 @@ def swissknife_create_session(label: str, source: str = ""):
     source = str(source or "").strip().lower()
     session_id = _swissknife_session_id(label)
     day = datetime.now().strftime("%Y-%m-%d")
-    if source == "ytdlp":
+    if _swissknife_is_ytdlp_source(source):
         remote_path = str((WORKSPACE / "swissknife_ytdlp" / session_id).resolve())
     else:
         remote_path = str((WORKSPACE / "swissknife_instagram" / session_id).resolve())
@@ -2875,18 +3124,166 @@ def _map_download_percent(raw_percent: float) -> float:
     return 20.0 + (raw * 0.70)
 
 
+def _ytdlp_is_rate_limited(msg: str) -> bool:
+    low = str(msg or "").lower()
+    return ("too many requests" in low) or ("http error 429" in low) or ("status 429" in low)
+
+
+def _ytdlp_photo_fallback_url(url: str) -> str:
+    raw = str(url or "")
+    if "/photo/" not in raw:
+        return ""
+    return raw.replace("/photo/", "/video/")
+
+
+def _ytdlp_best_error_line(lines: List[str]) -> str:
+    for line in reversed(lines or []):
+        if not line:
+            continue
+        if line.startswith("download:"):
+            continue
+        if line.startswith("[download] Destination:"):
+            continue
+        if line.startswith("[download]"):
+            continue
+        if "downloaded_bytes:" in line:
+            continue
+        return line
+    return ""
+
+
+def _parse_caption_meta(caption: str) -> Dict[str, Any]:
+    text = str(caption or "")
+    if not text.strip():
+        return {"handles": [], "dates": []}
+    handles = []
+    seen_handles = set()
+    for m in re.findall(r"@([A-Za-z0-9._]+)", text):
+        h = m.strip()
+        if not h:
+            continue
+        key = h.lower()
+        if key in seen_handles:
+            continue
+        seen_handles.add(key)
+        handles.append(f"@{h}")
+
+    months = {
+        "jan": 1, "january": 1,
+        "feb": 2, "february": 2,
+        "mar": 3, "march": 3,
+        "apr": 4, "april": 4,
+        "may": 5,
+        "jun": 6, "june": 6,
+        "jul": 7, "july": 7,
+        "aug": 8, "august": 8,
+        "sep": 9, "sept": 9, "september": 9,
+        "oct": 10, "october": 10,
+        "nov": 11, "november": 11,
+        "dec": 12, "december": 12,
+    }
+    now_year = datetime.now().year
+    dates = []
+    seen_dates = set()
+
+    def _add_date(raw: str, y: int, m: int, d: int):
+        try:
+            dt = datetime(y, m, d)
+        except Exception:
+            iso = ""
+        else:
+            iso = dt.strftime("%Y-%m-%d")
+        key = (raw, iso)
+        if key in seen_dates:
+            return
+        seen_dates.add(key)
+        dates.append({"raw": raw, "iso": iso})
+
+    # 12th April [2026]
+    for m in re.finditer(r"\b(\d{1,2})(st|nd|rd|th)?\s+(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)(?:\s+(\d{4}))?\b", text, re.I):
+        day = int(m.group(1))
+        mon = months.get(m.group(3).lower(), 0)
+        year = int(m.group(4)) if m.group(4) else now_year
+        raw = m.group(0)
+        if mon:
+            _add_date(raw, year, mon, day)
+
+    # April 12 [2026]
+    for m in re.finditer(r"\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+(\d{1,2})(st|nd|rd|th)?(?:\s+(\d{4}))?\b", text, re.I):
+        mon = months.get(m.group(1).lower(), 0)
+        day = int(m.group(2))
+        year = int(m.group(4)) if m.group(4) else now_year
+        raw = m.group(0)
+        if mon:
+            _add_date(raw, year, mon, day)
+
+    # 12/04/2026 or 12-04-26 (assume day/month)
+    for m in re.finditer(r"\b(\d{1,2})[\\/-](\d{1,2})(?:[\\/-](\d{2,4}))\b", text):
+        a = int(m.group(1))
+        b = int(m.group(2))
+        yraw = m.group(3)
+        year = int(yraw)
+        if year < 100:
+            year += 2000
+        day, mon = a, b
+        if mon > 12 and day <= 12:
+            day, mon = mon, day
+        raw = m.group(0)
+        _add_date(raw, year, mon, day)
+
+    return {"handles": handles, "dates": dates}
+
+
+def _run_gallery_dl_tiktok_photo(out_dir: Path, url: str, progress_cb=None) -> Dict[str, Any]:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    before = {p.name for p in out_dir.glob("*")}
+    gallery_bin = shutil.which("gallery-dl") or str(Path.home() / ".local" / "bin" / "gallery-dl")
+    if not gallery_bin or not Path(gallery_bin).exists():
+        raise RuntimeError("gallery-dl not installed.")
+    cmd = [
+        gallery_bin,
+        "-o",
+        f"base-directory={str(out_dir)}",
+        "-o",
+        "directory=.",
+        "-o",
+        "filename={id}_{num?}_{title?}.{extension}",
+        url,
+    ]
+    env = os.environ.copy()
+    env.pop("PYTHONHOME", None)
+    env.pop("PYTHONPATH", None)
+    if progress_cb:
+        progress_cb({"status": "running", "stage": "Downloading TikTok photos", "percent": 12})
+    proc = subprocess.run(cmd, text=True, capture_output=True, env=env)
+    if proc.returncode != 0:
+        err = (proc.stderr or "").strip()
+        out = (proc.stdout or "").strip()
+        raise RuntimeError(err or out or "gallery-dl failed")
+    after = sorted({p for p in out_dir.glob("*")} , key=lambda p: p.name)
+    new_names = sorted({p.name for p in after} - before)
+    files = [str((out_dir / name).resolve()) for name in new_names] if new_names else [str(p.resolve()) for p in after]
+    return {"files": files, "title": "", "shortcode": "", "owner_username": "", "download_dir": str(out_dir)}
+
+
 def _run_ytdlp_download(
     out_dir: Path,
     url: str,
     format_hint: str,
     quality_hint: str,
+    cookies_from_browser: str = "",
     compat_h264: bool = False,
     force_4k: bool = False,
     progress_cb=None,
+    _retry_no_cookies: bool = True,
+    _ua_enabled: bool = True,
 ) -> Dict[str, Any]:
     out_dir.mkdir(parents=True, exist_ok=True)
     before = {p.name for p in out_dir.glob("*")}
     fmt = str(format_hint or "original").strip().lower()
+    if fmt in ("", "original", "best", "default"):
+        fmt = "mp4"
+    is_tiktok_photo = "tiktok.com" in str(url or "") and "/photo/" in str(url or "")
     quality = str(quality_hint or "").strip().lower()
     height = _ytdlp_quality_height(quality)
     if force_4k:
@@ -2900,126 +3297,298 @@ def _run_ytdlp_download(
     else:
         ytdlp_bin = shutil.which("yt-dlp") or "/opt/homebrew/bin/yt-dlp"
         cmd = [ytdlp_bin]
+    python_bin = str(venv_py) if venv_py.exists() else "/opt/miniconda3/bin/python3"
+    if not Path(python_bin).exists():
+        python_bin = "python3"
     cmd += [
         "--no-warnings",
         "--no-playlist",
+        "--ignore-config",
+        "--write-thumbnail",
+        "--convert-thumbnails",
+        "jpg",
+        "--print",
+        "title:%(title)s",
+        "--print",
+        "filename:%(filename)s",
         *(['--force-overwrites'] if compat_h264 else []),
         "--output",
         str(out_dir / "%(upload_date)s_%(id)s.%(ext)s"),
     ]
-    if fmt == "mp3":
+    if _ua_enabled:
+        cmd += [
+            "--user-agent",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+            "--add-header",
+            "Accept-Language: en-US,en;q=0.9",
+        ]
+    if "youtube.com" in str(url or "") or "youtu.be" in str(url or ""):
+        cmd += ["--extractor-args", "youtube:player_client=android,web"]
+    cookies_from_browser = str(cookies_from_browser or "").strip()
+    if cookies_from_browser:
+        cmd += ["--cookies-from-browser", cookies_from_browser]
+    if is_tiktok_photo and fmt in ("photo", "photos", "images", "jpg", "jpeg", "png", "webp"):
+        cmd += ["--skip-download", "--write-all-thumbnails", "--convert-thumbnails", "jpg"]
+    elif fmt == "mp3":
         cmd += ["-x", "--audio-format", "mp3", "--audio-quality", audio_q]
     elif fmt == "m4a":
         cmd += ["-x", "--audio-format", "m4a", "--audio-quality", audio_q]
     elif fmt == "wav":
         cmd += ["-x", "--audio-format", "wav", "--audio-quality", audio_q]
     elif fmt == "mp4":
-        if force_4k and compat_h264:
-            cmd += ["-f", "bestvideo[height=2160]+bestaudio/best", "--merge-output-format", "mp4"]
-        elif compat_h264:
-            if height:
-                cmd += ["-f", f"bestvideo[vcodec^=avc][height<={height}][ext=mp4]+bestaudio[ext=m4a]/bestvideo[vcodec^=avc][ext=mp4]+bestaudio/best[ext=mp4][vcodec^=avc]/best[vcodec^=avc]", "--merge-output-format", "mp4"]
-            else:
-                cmd += ["-f", "bestvideo[vcodec^=avc][ext=mp4]+bestaudio[ext=m4a]/bestvideo[vcodec^=avc][ext=mp4]+bestaudio/best[ext=mp4][vcodec^=avc]/best[vcodec^=avc]", "--merge-output-format", "mp4"]
+        height_filter = f"[height<={height}]" if height else ""
+        if compat_h264:
+            avc_filter = f"[vcodec^=avc]{height_filter}"
+            any_filter = f"{height_filter}"
+            fmt_str = (
+                f"bv*{avc_filter}[ext=mp4]+ba[ext=m4a]/"
+                f"bv*{avc_filter}+ba/"
+                f"bv*{any_filter}[ext=mp4]+ba[ext=m4a]/"
+                f"bv*{any_filter}+ba/best"
+            )
         else:
-            if height:
-                if force_4k or height == "2160":
-                    cmd += ["-f", f"bestvideo[height=2160]+bestaudio/best", "--merge-output-format", "mkv"]
-                else:
-                    cmd += ["-f", f"bestvideo[height<={height}]+bestaudio/best", "--merge-output-format", "mp4"]
-            else:
-                cmd += ["-f", "bestvideo+bestaudio/best", "--merge-output-format", "mp4"]
+            vf = height_filter
+            fmt_str = (
+                f"bv*{vf}[ext=mp4]+ba[ext=m4a]/"
+                f"bv*{vf}[ext=mp4]+ba/best[ext=mp4]/"
+                f"bv*{vf}+ba/best"
+            )
+        cmd += ["-f", fmt_str, "--merge-output-format", "mp4"]
     else:
         if height:
             cmd += ["-f", f"bestvideo[height<={height}]+bestaudio/best"]
             if height == "2160":
                 cmd += ["--merge-output-format", "mkv"]
         else:
-            cmd += ["-f", "bestvideo+bestaudio/best"]
+            cmd += ["-f", "bestvideo+bestaudio/best", "--merge-output-format", "mp4"]
     cmd += [
         "--newline",
         "--progress-template",
         "download:downloaded_bytes:%(progress.downloaded_bytes)s total_bytes:%(progress.total_bytes)s total_bytes_estimate:%(progress.total_bytes_estimate)s eta:%(progress.eta)s speed:%(progress.speed)s",
     ]
-    cmd.append(url)
     env = os.environ.copy()
     env.pop("PYTHONHOME", None)
     env.pop("PYTHONPATH", None)
+    env["IG_PYTHON"] = python_bin
     if venv_py.exists():
         env["VIRTUAL_ENV"] = str(venv_root)
         env["PATH"] = f"{venv_bin}:{env.get('PATH', '')}"
-    output_lines = []
-    if progress_cb:
-        progress_cb({"status": "preparing", "stage": "Preparing", "percent": 5})
-    proc = subprocess.Popen(
-        cmd,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        env=env,
-        bufsize=1,
-    )
-    if proc.stdout:
-        for raw_line in proc.stdout:
-            line = raw_line.strip()
-            if line:
-                output_lines.append(line)
-            stage = _ytdlp_stage_from_line(line)
-            if progress_cb and stage:
-                stage_percent = {
-                    "Preparing": 5,
-                    "Fetching metadata": 10,
-                    "Analyzing streams": 15,
-                    "Merging formats": 95,
-                    "Finalizing": 98,
-                }.get(stage)
-                payload = {"status": "processing", "stage": stage}
-                if stage_percent is not None:
-                    payload["percent"] = stage_percent
-                progress_cb(payload)
-            progress = _parse_ytdlp_progress_line(line)
-            if progress_cb and progress:
-                downloaded = progress.get("downloaded_bytes")
-                total = progress.get("total_bytes")
-                estimate = progress.get("total_bytes_estimate")
-                eta = progress.get("eta")
-                speed = progress.get("speed")
-                percent = None
-                estimated = False
-                try:
-                    if total and total != "NA":
-                        total_val = float(total)
-                        if total_val > 0:
-                            percent = _map_download_percent(float(downloaded or 0) * 100.0 / total_val)
-                    elif estimate and estimate != "NA":
-                        total_val = float(estimate)
-                        if total_val > 0:
-                            percent = _map_download_percent(float(downloaded or 0) * 100.0 / total_val)
-                            estimated = True
-                except Exception:
+    ytdlp_title = ""
+    ytdlp_files = []
+
+    def _run_once(target_url: str):
+        nonlocal ytdlp_title
+        output_lines = []
+        if progress_cb:
+            progress_cb({"status": "preparing", "stage": "Preparing", "percent": 5})
+        proc = subprocess.Popen(
+            cmd + [target_url],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            env=env,
+            bufsize=1,
+        )
+        if proc.stdout:
+            for raw_line in proc.stdout:
+                line = raw_line.strip()
+                if line.startswith("title:"):
+                    ytdlp_title = line.replace("title:", "", 1).strip()
+                    continue
+                if line.startswith("filename:"):
+                    raw_path = line.replace("filename:", "", 1).strip()
+                    if raw_path:
+                        p = Path(raw_path)
+                        if not p.is_absolute():
+                            p = (out_dir / p).resolve()
+                        ytdlp_files.append(str(p))
+                    continue
+                if line.startswith("[download] Destination:"):
+                    raw_path = line.split("Destination:", 1)[1].strip()
+                    if raw_path:
+                        p = Path(raw_path)
+                        if not p.is_absolute():
+                            p = (out_dir / p).resolve()
+                        ytdlp_files.append(str(p))
+                    continue
+                if " has already been downloaded" in line:
+                    raw_path = line.split(" has already been downloaded", 1)[0].strip()
+                    if raw_path.startswith("[download]"):
+                        raw_path = raw_path.replace("[download]", "", 1).strip()
+                    if raw_path:
+                        p = Path(raw_path)
+                        if not p.is_absolute():
+                            p = (out_dir / p).resolve()
+                        ytdlp_files.append(str(p))
+                if line:
+                    output_lines.append(line)
+                stage = _ytdlp_stage_from_line(line)
+                if progress_cb and stage:
+                    stage_percent = {
+                        "Preparing": 5,
+                        "Fetching metadata": 10,
+                        "Analyzing streams": 15,
+                        "Merging formats": 95,
+                        "Finalizing": 98,
+                    }.get(stage)
+                    payload = {"status": "processing", "stage": stage}
+                    if stage_percent is not None:
+                        payload["percent"] = stage_percent
+                    progress_cb(payload)
+                progress = _parse_ytdlp_progress_line(line)
+                if progress_cb and progress:
+                    downloaded = progress.get("downloaded_bytes")
+                    total = progress.get("total_bytes")
+                    estimate = progress.get("total_bytes_estimate")
+                    eta = progress.get("eta")
+                    speed = progress.get("speed")
                     percent = None
-                progress_cb({
-                    "status": "downloading",
-                    "stage": "Downloading",
-                    "percent": percent,
-                    "estimated": estimated,
-                    "downloaded_bytes": downloaded,
-                    "total_bytes": total,
-                    "total_bytes_estimate": estimate,
-                    "eta": eta,
-                    "speed": speed,
-                })
-    proc.wait()
-    if proc.returncode != 0:
-        msg = "yt-dlp failed"
-        for line in reversed(output_lines[-15:]):
-            if line:
-                msg = line
+                    estimated = False
+                    try:
+                        if total and total != "NA":
+                            total_val = float(total)
+                            if total_val > 0:
+                                percent = _map_download_percent(float(downloaded or 0) * 100.0 / total_val)
+                        elif estimate and estimate != "NA":
+                            total_val = float(estimate)
+                            if total_val > 0:
+                                percent = _map_download_percent(float(downloaded or 0) * 100.0 / total_val)
+                                estimated = True
+                    except Exception:
+                        percent = None
+                    progress_cb({
+                        "status": "downloading",
+                        "stage": "Downloading",
+                        "percent": percent,
+                        "estimated": estimated,
+                        "downloaded_bytes": downloaded,
+                        "total_bytes": total,
+                        "total_bytes_estimate": estimate,
+                        "eta": eta,
+                        "speed": speed,
+                    })
+        proc.wait()
+        msg = ""
+        if proc.returncode != 0:
+            msg = _ytdlp_best_error_line(output_lines) or "yt-dlp failed"
+        return proc.returncode, output_lines, msg
+
+    candidates = [str(url or "").strip()]
+    fallback = _ytdlp_photo_fallback_url(url)
+    if fallback and fallback not in candidates:
+        candidates.append(fallback)
+    last_error = ""
+    for idx, candidate in enumerate([c for c in candidates if c]):
+        attempts = 3
+        for attempt in range(1, attempts + 1):
+            code, output_lines, err = _run_once(candidate)
+            if code == 0:
+                last_error = ""
                 break
-        raise RuntimeError(msg)
+            # If files appeared despite a non-zero exit, treat as success.
+            try:
+                after_now = {p for p in out_dir.glob("*")}
+                new_now = sorted({p.name for p in after_now} - before)
+                if new_now:
+                    last_error = ""
+                    break
+            except Exception:
+                pass
+            last_error = err or "yt-dlp failed"
+            if _ytdlp_is_rate_limited(last_error) and attempt < attempts:
+                wait_s = 2 if attempt == 1 else 5
+                if progress_cb:
+                    progress_cb({"status": "waiting", "stage": f"Rate limited. Retrying in {wait_s}s", "percent": 5})
+                time.sleep(wait_s)
+                continue
+            break
+        if not last_error:
+            break
+        if idx == 0 and "unsupported url" in last_error.lower() and len(candidates) > 1:
+            if progress_cb:
+                progress_cb({"status": "retrying", "stage": "Trying TikTok photo fallback", "percent": 5})
+            last_error = ""
+            continue
+        if is_tiktok_photo and (
+            "unsupported url" in last_error.lower() or last_error.lower().startswith("yt-dlp failed")
+        ):
+            if progress_cb:
+                progress_cb({"status": "retrying", "stage": "Trying TikTok photo fallback", "percent": 8})
+            try:
+                return _run_gallery_dl_tiktok_photo(out_dir, url, progress_cb=progress_cb)
+            except Exception as exc:
+                raise RuntimeError(f"TikTok photo post download failed: {exc}") from exc
+        if "unsupported url" in last_error.lower() and "tiktok.com" in last_error.lower() and "/photo/" in last_error.lower():
+            if progress_cb:
+                progress_cb({"status": "retrying", "stage": "Trying TikTok photo fallback", "percent": 8})
+            try:
+                # Extract unsupported URL if present
+                fallback_url = url
+                m = re.search(r"Unsupported URL:\\s*(https?://\\S+)", last_error, re.I)
+                if m:
+                    fallback_url = m.group(1)
+                return _run_gallery_dl_tiktok_photo(out_dir, fallback_url, progress_cb=progress_cb)
+            except Exception as exc:
+                raise RuntimeError(f"TikTok photo post download failed: {exc}") from exc
+        if _retry_no_cookies and cookies_from_browser and (
+            "user-agent blocked" in last_error.lower()
+            or "sign in to confirm" in last_error.lower()
+            or "cookies" in last_error.lower()
+            or "not a bot" in last_error.lower()
+        ):
+            return _run_ytdlp_download(
+                out_dir,
+                url,
+                format_hint,
+                quality_hint,
+                cookies_from_browser="",
+                compat_h264=compat_h264,
+                force_4k=force_4k,
+                progress_cb=progress_cb,
+                _retry_no_cookies=False,
+                _ua_enabled=False,
+            )
+        raise RuntimeError(last_error)
     after = sorted({p for p in out_dir.glob("*")} , key=lambda p: p.name)
     new_names = sorted({p.name for p in after} - before)
-    files = [str((out_dir / name).resolve()) for name in new_names] if new_names else [str(p.resolve()) for p in after]
+    if new_names:
+        files = [str((out_dir / name).resolve()) for name in new_names]
+    else:
+        existing = []
+        for raw in ytdlp_files:
+            try:
+                p = Path(raw).expanduser()
+                if not p.is_absolute():
+                    p = (out_dir / p).resolve()
+                if p.exists() and not str(p).endswith(".part"):
+                    existing.append(str(p.resolve()))
+            except Exception:
+                continue
+        if existing:
+            files = sorted(set(existing))
+        else:
+            video_id = ""
+            try:
+                parsed_url = urlparse(url)
+                if parsed_url.netloc in ("youtu.be", "www.youtu.be"):
+                    video_id = parsed_url.path.lstrip("/")
+                else:
+                    qs = parse_qs(parsed_url.query or "")
+                    video_id = (qs.get("v", [""])[0] or "").strip()
+            except Exception:
+                video_id = ""
+            now = time.time()
+            def _recent(p: Path) -> bool:
+                try:
+                    return now - p.stat().st_mtime <= 15 * 60
+                except Exception:
+                    return False
+            candidates = []
+            if video_id:
+                candidates = [p for p in after if video_id in p.name]
+            if not candidates:
+                candidates = [p for p in after if _recent(p)]
+            files = [str(p.resolve()) for p in candidates]
     files = _merge_ytdlp_streams(files, out_dir)
     if compat_h264 and force_4k:
         try:
@@ -3031,15 +3600,28 @@ def _run_ytdlp_download(
                 files.append(str(dest.resolve()))
         except Exception as exc:
             raise RuntimeError(f"4K H.264 transcode failed: {exc}")
-    return {"files": files}
+    return {"files": files, "title": ytdlp_title}
 
 
-def _run_instagram_download(out_dir: Path, url: str, do_login: bool, quality_hint: str = "", force_4k: bool = False) -> Dict[str, Any]:
+def _run_instagram_download(
+    out_dir: Path,
+    url: str,
+    do_login: bool,
+    quality_hint: str = "",
+    force_4k: bool = False,
+    ig_user: str = "",
+    ig_pass: str = "",
+) -> Dict[str, Any]:
     out_dir.mkdir(parents=True, exist_ok=True)
+    if do_login and (not str(ig_user or "").strip() or not str(ig_pass or "").strip()):
+        do_login = False
     script = Path("/Users/samuelapata/.codex/skills/swissknife-backend/scripts/ig_download_post.py")
     if not script.exists():
         raise RuntimeError("swissknife-backend script not found on this machine.")
-    cmd = ["python3", str(script), url, "--out", str(out_dir)]
+    python_bin = "/opt/miniconda3/bin/python3"
+    if not Path(python_bin).exists():
+        python_bin = "python3"
+    cmd = [python_bin, str(script), url, "--out", str(out_dir)]
     if do_login:
         cmd.append("--login")
     quality = str(quality_hint or "").strip().lower()
@@ -3047,21 +3629,63 @@ def _run_instagram_download(out_dir: Path, url: str, do_login: bool, quality_hin
         cmd += ["--quality", quality]
     if force_4k:
         cmd.append("--force-4k")
-    output = subprocess.check_output(cmd, text=True)
+    env = os.environ.copy()
+    env.pop("PYTHONHOME", None)
+    env.pop("PYTHONPATH", None)
+    if do_login:
+        if ig_user:
+            env["IG_USER"] = ig_user
+        if ig_pass:
+            env["IG_PASS"] = ig_pass
+    session_dir = (WORKSPACE / "swissknife_instagram" / "sessions").resolve()
+    session_dir.mkdir(parents=True, exist_ok=True)
+    env["IG_SESSION_DIR"] = str(session_dir)
+    proc = subprocess.run(cmd, text=True, capture_output=True, env=env)
+    if proc.returncode != 0:
+        err = (proc.stderr or "").strip()
+        out = (proc.stdout or "").strip()
+        raise RuntimeError(err or out or "Instagram download failed.")
+    output = proc.stdout or ""
     try:
         data = json.loads(output)
     except json.JSONDecodeError as exc:
-        raise RuntimeError("Instagram download did not return JSON.") from exc
+        snippet = (output or "").strip()
+        if len(snippet) > 400:
+            snippet = snippet[:400] + "..."
+        raise RuntimeError(f"Instagram download did not return JSON. Output: {snippet}") from exc
     if not isinstance(data, dict):
         raise RuntimeError("Instagram download returned unexpected JSON type.")
     return data
 
 
-def swissknife_download_to_session(session_id: str, url: str, do_login: bool, format_hint: str = "", quality_hint: str = "", source: str = "", output_dir: str = "", compat_h264: bool = False, force_4k: bool = False, progress_cb=None):
+def swissknife_download_to_session(
+    session_id: str,
+    url: str,
+    do_login: bool,
+    format_hint: str = "",
+    quality_hint: str = "",
+    source: str = "",
+    output_dir: str = "",
+    compat_h264: bool = False,
+    force_4k: bool = False,
+    cookies_from_browser: str = "",
+    ig_user: str = "",
+    ig_pass: str = "",
+    progress_cb=None,
+):
     session_id = str(session_id or "").strip()
     url = str(url or "").strip()
     if not url:
         raise RuntimeError("url is required")
+    try:
+        parsed_url = urlparse(url)
+        if "instagram.com" in (parsed_url.netloc or "").lower():
+            clean = f"{parsed_url.scheme or 'https'}://{parsed_url.netloc}{parsed_url.path}"
+            if not clean.endswith("/"):
+                clean += "/"
+            url = clean
+    except Exception:
+        pass
 
     quality_norm = str(quality_hint or "").strip().lower()
     if quality_norm in ("4k", "2160", "2160p", "4k-h264", "4k-qt", "4k_qt", "qt4k"):
@@ -3071,6 +3695,12 @@ def swissknife_download_to_session(session_id: str, url: str, do_login: bool, fo
 
     rows = _load_swissknife_sessions()
     source = str(source or "").strip().lower() or "instagram"
+    url_lower = url.lower()
+    if "instagram.com" in url_lower or "instagr.am" in url_lower:
+        source = "instagram"
+    elif any(k in url_lower for k in ("tiktok.com", "youtube.com", "youtu.be", "x.com", "twitter.com", "facebook.com", "fb.watch", "pinterest.com")):
+        source = "ytdlp"
+    use_ytdlp = _swissknife_is_ytdlp_source(source)
     if not session_id:
         row = _get_or_create_default_swissknife_session(source)
         session_id = str(row.get("id", "")).strip()
@@ -3090,13 +3720,22 @@ def swissknife_download_to_session(session_id: str, url: str, do_login: bool, fo
     if output_dir:
         resolved_output = str(Path(output_dir).expanduser().resolve())
         Path(resolved_output).mkdir(parents=True, exist_ok=True)
-    if source == "ytdlp":
+    if use_ytdlp:
         download_dir = resolved_output or str((WORKSPACE / "swissknife_ytdlp" / session_id).resolve())
         if resolved_output:
             rows[idx]["remote_path"] = resolved_output
             _save_swissknife_sessions(rows)
         try:
-            parsed = _run_ytdlp_download(Path(download_dir), url, format_hint, quality_hint, compat_h264, force_4k, progress_cb=progress_cb)
+            parsed = _run_ytdlp_download(
+                Path(download_dir),
+                url,
+                format_hint,
+                quality_hint,
+                cookies_from_browser=cookies_from_browser,
+                compat_h264=compat_h264,
+                force_4k=force_4k,
+                progress_cb=progress_cb,
+            )
         except Exception as exc:
             raise RuntimeError(str(exc))
     else:
@@ -3110,15 +3749,39 @@ def swissknife_download_to_session(session_id: str, url: str, do_login: bool, fo
             rows[idx]["remote_path"] = resolved_output
             _save_swissknife_sessions(rows)
         try:
-            parsed = _run_instagram_download(Path(download_dir), url, do_login, quality_norm, force_4k)
+            if format_hint and str(format_hint).strip().lower() not in ("original", ""):
+                raise RuntimeError("instagram_format_fallback")
+            parsed = _run_instagram_download(
+                Path(download_dir),
+                url,
+                do_login,
+                quality_norm,
+                force_4k,
+                ig_user=ig_user,
+                ig_pass=ig_pass,
+            )
         except Exception as exc:
-            raise RuntimeError(str(exc))
+            # If instaloader fails (missing deps, auth, etc.), fall back to yt-dlp.
+            try:
+                parsed = _run_ytdlp_download(
+                    Path(download_dir),
+                    url,
+                    format_hint or "mp4",
+                    quality_norm,
+                    cookies_from_browser=cookies_from_browser,
+                    compat_h264=compat_h264,
+                    force_4k=force_4k,
+                    progress_cb=progress_cb,
+                )
+            except Exception:
+                raise RuntimeError(str(exc))
 
     record = {
         "url": url,
         "downloaded_at": datetime.now().isoformat(timespec="seconds"),
         "shortcode": parsed.get("shortcode", ""),
         "owner_username": parsed.get("owner_username", ""),
+        "title": parsed.get("title", ""),
         "download_dir": download_dir,
         "file_count": len(parsed.get("files", [])) if isinstance(parsed.get("files", []), list) else 0,
         "manifest": parsed,
@@ -3128,13 +3791,38 @@ def swissknife_download_to_session(session_id: str, url: str, do_login: bool, fo
         "compat_h264": bool(compat_h264),
         "force_4k": bool(force_4k),
     }
+    caption_text = ""
+    try:
+        caption_text = str(parsed.get("caption", "") or "")
+    except Exception:
+        caption_text = ""
+    if caption_text.strip():
+        meta = _parse_caption_meta(caption_text)
+        record["caption_meta"] = meta
+        try:
+            parsed["caption_meta"] = meta
+        except Exception:
+            pass
     rows[idx].setdefault("downloads", []).append(record)
     rows[idx]["last_download_at"] = record["downloaded_at"]
     _save_swissknife_sessions(rows)
     return {"session": rows[idx], "download": record}
 
 
-def swissknife_start_download_async(session_id: str, url: str, do_login: bool, format_hint: str = "", quality_hint: str = "", source: str = "", output_dir: str = "", compat_h264: bool = False, force_4k: bool = False) -> str:
+def swissknife_start_download_async(
+    session_id: str,
+    url: str,
+    do_login: bool,
+    format_hint: str = "",
+    quality_hint: str = "",
+    source: str = "",
+    output_dir: str = "",
+    compat_h264: bool = False,
+    force_4k: bool = False,
+    cookies_from_browser: str = "",
+    ig_user: str = "",
+    ig_pass: str = "",
+) -> str:
     job_id = uuid.uuid4().hex
     _swissknife_job_update(
         job_id,
@@ -3165,6 +3853,9 @@ def swissknife_start_download_async(session_id: str, url: str, do_login: bool, f
                 output_dir,
                 compat_h264,
                 force_4k,
+                cookies_from_browser,
+                ig_user,
+                ig_pass,
                 progress_cb=progress_cb,
             )
         except Exception as exc:
@@ -3284,7 +3975,12 @@ def open_system_url(url: str):
     return {"ok": True}
 
 
+def _default_swissknife_output_dir() -> str:
+    return str(Path.home() / "Downloads" / "Swissknife")
+
+
 def pick_system_folder() -> Dict[str, Any]:
+    default_path = _default_swissknife_output_dir()
     try:
         result = subprocess.run(
             [
@@ -3297,7 +3993,12 @@ def pick_system_folder() -> Dict[str, Any]:
             timeout=30,
         )
     except subprocess.TimeoutExpired:
-        raise RuntimeError("Folder picker timed out.")
+        return {
+            "ok": True,
+            "path": default_path,
+            "fallback": True,
+            "warning": "Folder picker timed out. Using default Downloads/Swissknife path.",
+        }
     if result.returncode != 0:
         err = (result.stderr or "").strip()
         # User cancelled or AppleScript error.
@@ -3765,6 +4466,11 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._forbidden("Loopback access only")
             payload = copy_text_to_clipboard(body.get("text", ""))
             return _json_response(self, payload, 200 if payload.get("ok") else 500)
+        if path == "/api/system/clipboard/paste":
+            if not self._is_loopback_client():
+                return self._forbidden("Loopback access only")
+            payload = read_text_from_clipboard()
+            return _json_response(self, payload, 200 if payload.get("ok") else 500)
 
         if path == "/api/system/open":
             if not self._is_loopback_client():
@@ -3790,6 +4496,11 @@ class Handler(SimpleHTTPRequestHandler):
             except Exception as exc:
                 return _json_response(self, {"error": str(exc)}, 400)
             return _json_response(self, payload, 200)
+        if path == "/api/profile/resolve":
+            if not self._is_loopback_client():
+                return self._forbidden("Loopback access only")
+            payload = resolve_profile_url(body.get("url", ""))
+            return _json_response(self, payload, 200 if payload.get("ok") else 400)
         if path == "/api/dev/ui_state":
             if not self._is_loopback_client():
                 return self._forbidden("Loopback access only")
@@ -3902,6 +4613,9 @@ class Handler(SimpleHTTPRequestHandler):
                         body.get("output_dir", ""),
                         bool(body.get("compat_h264", False)),
                         bool(body.get("force_4k", False)),
+                        body.get("cookies_from_browser", ""),
+                        body.get("ig_user", ""),
+                        body.get("ig_pass", ""),
                     )
                     result = {"job_id": job_id}
                 else:
@@ -3915,6 +4629,9 @@ class Handler(SimpleHTTPRequestHandler):
                         body.get("output_dir", ""),
                         bool(body.get("compat_h264", False)),
                         bool(body.get("force_4k", False)),
+                        body.get("cookies_from_browser", ""),
+                        body.get("ig_user", ""),
+                        body.get("ig_pass", ""),
                     )
             except Exception as exc:
                 return _json_response(self, {"error": str(exc)}, 400)
@@ -3946,6 +4663,13 @@ class Handler(SimpleHTTPRequestHandler):
             if save_doc_content(file_name, content):
                 return _json_response(self, {"ok": True}, 200)
             return _json_response(self, {"error": "Invalid or locked file"}, 400)
+
+        if path == "/api/omni/clear/operations-missions":
+            try:
+                result = clear_operations_and_missions()
+            except Exception as exc:
+                return _json_response(self, {"error": str(exc)}, 400)
+            return _json_response(self, result, 200)
 
         if path == "/api/mission/brief/save":
             mission_path = body.get("mission_path", "")

@@ -47,6 +47,9 @@ class OmniDesktopBridge:
                 payload.get("output_dir", ""),
                 bool(payload.get("compat_h264", False)),
                 bool(payload.get("force_4k", False)),
+                payload.get("cookies_from_browser", ""),
+                payload.get("ig_user", ""),
+                payload.get("ig_pass", ""),
             )
             return {"ok": True, "result": result}
         except Exception as exc:
@@ -73,6 +76,9 @@ class OmniDesktopBridge:
                     payload.get("output_dir", ""),
                     bool(payload.get("compat_h264", False)),
                     bool(payload.get("force_4k", False)),
+                    payload.get("cookies_from_browser", ""),
+                    payload.get("ig_user", ""),
+                    payload.get("ig_pass", ""),
                 )
                 results.append({"url": url, "result": result})
             return {"ok": True, "results": results}
@@ -98,6 +104,13 @@ class OmniDesktopBridge:
         try:
             subprocess.run(["pbcopy"], input=str(text or "").encode("utf-8"), check=True)
             return {"ok": True}
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
+
+    def read_clipboard(self):
+        try:
+            result = subprocess.run(["pbpaste"], capture_output=True, text=True, check=True)
+            return {"ok": True, "text": result.stdout or ""}
         except Exception as exc:
             return {"ok": False, "error": str(exc)}
 

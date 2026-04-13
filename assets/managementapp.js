@@ -118,6 +118,8 @@
         "Number",
         "Contact Number",
         "Email Address",
+        "Linked Mission",
+        "Linked Mission Path",
         "Leads",
       ]);
       let appStarted = false;
@@ -129,12 +131,15 @@
       const LOCK_MAGIC = "MANAGEMENT_APP_LOCK_V1";
       const LOCK_KDF_ITERATIONS = 600000;
       const BIOMETRIC_CRED_KEY = "managementapp:biometricCredential:v1";
+      const FOLLOWUP_STORAGE_KEY = "managementapp:followups:v1";
       let blueprintCatalog = [];
       let booksCatalog = [];
       let swissknifeSessions = [];
       let selectedSwissknifeSession = "";
       let swissknifeConvertHistory = [];
       let swissknifeNavBound = false;
+      let swissknifeBatchRunning = false;
+      let swissknifeBatchCancel = false;
       let reminderCalendarSelectedDate = "";
       let reminderCalendarMonthCursor = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
       let viewSortModes = {};
@@ -557,6 +562,15 @@
         themedNotice("Swissknife log cleared.");
       }
 
+      function initSwissknifeLogControls() {
+        const refreshBtn = document.getElementById("swissknife-log-refresh");
+        if (refreshBtn) refreshBtn.onclick = () => renderSwissknifeLog();
+        const copyBtn = document.getElementById("swissknife-log-copy");
+        if (copyBtn) copyBtn.onclick = () => copySwissknifeLog();
+        const clearBtn = document.getElementById("swissknife-log-clear");
+        if (clearBtn) clearBtn.onclick = () => clearSwissknifeLog();
+      }
+
       function setSimpleCanvasStatus(message) {
         const status = document.getElementById("simplecanvas-status");
         if (status) status.textContent = message;
@@ -901,7 +915,7 @@
 
       function hasDesktopBridge() {
         const api = getDesktopBridgeApi();
-        return Boolean(api && typeof api.save_text_file === "function");
+        return Boolean(api);
       }
 
       function isDesktopLocalServerSession() {
@@ -1602,6 +1616,56 @@
         saveMissionDatawellLinks(true);
       }
 
+      function clearOperationsAndMissionsWorkspaceCaches() {
+        const shadow = getOfflineSyncShadow();
+        shadow.operations = [];
+        shadow.missions = [];
+        shadow.missionBriefs = {};
+        shadow.missionDebriefs = {};
+        shadow.dirty = false;
+        shadow.seeded = true;
+        saveOfflineSyncShadow();
+        offlineSyncQueue = [];
+        saveOfflineSyncQueue();
+        allOps = [];
+        allMissions = [];
+        missionDatawellLinks = { workflow: [], missions: {} };
+        saveMissionDatawellLinks(true);
+        operationOrder = [];
+        operationColors = {};
+        try {
+          localStorage.removeItem(operationOrderKey());
+          localStorage.removeItem(operationColorsKey());
+        } catch (_) {}
+      }
+
+      async function clearOmniOperationsAndMissions() {
+        const ok = await themedConfirm("This will permanently delete ALL operations + missions on this Mac. Continue?");
+        if (!ok) return;
+        try {
+          const res = await fetch(serverUrlForPath("/api/omni/clear/operations-missions"), {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({}),
+          });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({ error: "Clear failed." }));
+            throw new Error(err.error || "Clear failed.");
+          }
+          clearOperationsAndMissionsWorkspaceCaches();
+          const opCount = document.getElementById("op-count-dash");
+          if (opCount) opCount.innerText = "0";
+          const missionCount = document.getElementById("mission-count-dash");
+          if (missionCount) missionCount.innerText = "0";
+          renderOperations();
+          renderMissions();
+          refreshHealthPanel();
+          themedNotice("Operations + missions cleared.");
+        } catch (e) {
+          themedNotice("Clear failed: " + (e?.message || "Unknown error"));
+        }
+      }
+
       function applyOfflineShadowWorkspaceToRuntime(shadow) {
         const src = shadow && typeof shadow === "object" ? shadow : getOfflineSyncShadow();
         reindexShadowMissions(src);
@@ -2135,6 +2199,11 @@
             file: fileName,
             content: String(body?.content || ""),
           }, `doc.save:${fileName}`);
+          return jsonResponse({ ok: true }, 200);
+        }
+
+        if (method === "POST" && path === "/api/omni/clear/operations-missions") {
+          clearOperationsAndMissionsWorkspaceCaches();
           return jsonResponse({ ok: true }, 200);
         }
 
@@ -3701,13 +3770,41 @@
         if (modal) modal.classList.add("intel-modal-full");
         if (modal) modal.classList.remove("mission-intel-modal");
         intelPopupType = "hvi";
-        intelPopupHviHandle = String(item.handle || "Unknown");
+        intelPopupHviHandle = String(item.handle || "Unknown").replace(/\s+/g, " ").trim();
         hviPopupPage = Math.max(1, Math.min(2, Number(page || 1)));
         title.textContent = "// HVI PROFILE";
         subtitle.textContent = intelPopupHviHandle;
         const fields = item.fields && typeof item.fields === "object" ? item.fields : {};
         const customStats = item.customStats && typeof item.customStats === "object" ? item.customStats : {};
         const links = hviProfileLinks(item);
+        const lastContactInfo = hviLastContactInfo(fields);
+        const quickProfile = {
+          name: String(fields["Name"] || item.handle || ""),
+          age: String(fields["Age"] || ""),
+          number: String(fields["Number"] || item.number || fields["Contact Number"] || ""),
+          profile: String(fields["Profile"] || ""),
+          lastConversation: String(fields["Last Conversation"] || ""),
+          lead: String(fields["Lead"] || ""),
+          location: String(fields["Location"] || ""),
+          mutual: String(fields["Mutual Connections"] || ""),
+          lastDate: String(fields["Last Contacted Date"] || ""),
+          lastTime: String(fields["Last Contacted Time"] || ""),
+          lastWith: String(fields["Last Contacted With"] || ""),
+          lastLocation: String(fields["Last Contacted Location"] || ""),
+          dateLinked: String(fields["Date Linked"] || ""),
+          timeLinked: String(fields["Time Linked"] || ""),
+          linkedWith: String(fields["Linked With"] || ""),
+          linkedLocation: String(fields["Linked Location"] || ""),
+          instagram: String(fields["Instagram"] || fields["IG"] || ""),
+          tiktok: String(fields["TikTok"] || ""),
+          x: String(fields["X"] || fields["Twitter"] || ""),
+          youtube: String(fields["YouTube"] || ""),
+          website: String(fields["Website"] || ""),
+          email: String(fields["Email Address"] || fields["Email"] || ""),
+        };
+        const linkButtonsHtml = links.length
+          ? links.map((l) => `<a class="hvi-link-btn" href="${escapeHtmlAttr(l.url)}" target="_blank" rel="noopener noreferrer">${escapeHtmlAttr(l.label)}</a>`).join("")
+          : `<span class="hvi-link-empty">No social links yet.</span>`;
         const emails = Array.isArray(item.emails) ? item.emails : [];
         const leads = Array.isArray(item.leads) ? item.leads : [];
         const photos = Array.isArray(item.photos) ? item.photos : [];
@@ -3716,6 +3813,23 @@
         const orderedCustomKeys = [...new Set([...(item.statOrder || []), ...Object.keys(customStats)])]
           .filter((k) => Object.prototype.hasOwnProperty.call(customStats, k));
         const extra = getHviExtra(intelPopupHviHandle);
+        const reminderConfig = extra.reminder || { amberDays: 21, redDays: 30 };
+        const lastContactDate = parseHviDateTime(fields["Last Contacted Date"], fields["Last Contacted Time"]);
+        const lastUpdateLog = Array.isArray(extra.updateLogs) && extra.updateLogs.length
+          ? extra.updateLogs[extra.updateLogs.length - 1]
+          : null;
+        let lastUpdateDate = lastUpdateLog && lastUpdateLog.ts ? new Date(lastUpdateLog.ts) : null;
+        if (lastUpdateDate && Number.isNaN(lastUpdateDate.getTime())) lastUpdateDate = null;
+        if (!lastUpdateDate) lastUpdateDate = lastContactDate;
+        const contactStatus = computeHviReminderStatus(lastContactDate, reminderConfig);
+        const updateStatus = computeHviReminderStatus(lastUpdateDate, reminderConfig);
+        const linkedMissionPathRaw = String(fields["Linked Mission Path"] || "").trim();
+        const linkedMissionPath = linkedMissionPathRaw && linkedMissionPathRaw !== "N/A"
+          ? linkedMissionPathRaw
+          : String(fields["Linked Mission"] || fields["Mission"] || "").trim();
+        const linkedMissionLabel = linkedMissionPath ? missionLabelFromPath(linkedMissionPath) : String(fields["Linked Mission"] || "").trim();
+        const missionOptionsHtml = buildHviMissionOptionsHtml(linkedMissionPath);
+        const linkedMissionMeta = linkedMissionLabel && linkedMissionLabel !== "N/A" ? `Linked: ${linkedMissionLabel}` : "No mission linked.";
         const detailRowsHtml = paramKeys.map((k) => {
           const inCustom = Object.prototype.hasOwnProperty.call(customStats, k);
           const currentValue = inCustom ? String(customStats[k] || "") : String(fields[k] || "");
@@ -3743,12 +3857,82 @@
                   <div class="hvi-dossier-name">${escapeHtmlAttr(fields["Name"] || item.handle || "UNKNOWN")}</div>
                   <div class="hvi-dossier-subdesc" ondblclick="editHviFieldValueOnlyFromPopup('Description', false, '${escapeJsString(String(fields['Description'] || ''))}')" title="Double-click to edit description under name">${escapeHtmlAttr(String(fields["Description"] || "No profile description. Double-click to add."))}</div>
                 </div>
+                <div class="hvi-link-row">
+                  ${linkButtonsHtml}
+                </div>
                 <div class="hvi-add-row">
                   <button class="submit-btn" type="button" onclick="triggerHviPhotoPicker()">CHOOSE / UPDATE PHOTO</button>
                 </div>
                 ${emails.length || leads.length ? `<div class="hvi-dossier-contact">${emails.slice(0,2).map((e, i) => `<div class="hvi-list-row"><a href="mailto:${escapeHtmlAttr(e)}" class="intel-v">${escapeHtmlAttr(e)}</a><button class="x-btn" onclick="removeHviEmailFromPopup(${i})">X</button></div>`).join("")}${leads.slice(0,2).map((l, i) => `<div class="hvi-list-row"><span class="intel-v">${escapeHtmlAttr(l)}</span><button class="x-btn" onclick="removeHviLeadFromPopup(${i})">X</button></div>`).join("")}</div>` : ""}
               </section>
               <section class="hvi-dossier-right">
+                <div class="hvi-profile-toolbar">
+                  <div class="hvi-reminder-badges">
+                    ${hviReminderStatusBadge("Last Contact", contactStatus.status, contactStatus.days)}
+                    ${hviReminderStatusBadge("No Updates", updateStatus.status, updateStatus.days)}
+                  </div>
+                  <div class="hvi-profile-actions">
+                    <button class="submit-btn" type="button" onclick="openHviReminderPanel()">REMINDERS</button>
+                    <button class="submit-btn" type="button" onclick="openHviUpdateLogPanel()">UPDATE LOGS</button>
+                  </div>
+                </div>
+                <div class="intel-card hvi-profile-quick">
+                  <h4 class="intel-k" style="margin:0 0 8px 0;">PROFILE SNAPSHOT</h4>
+                  <div class="hvi-contact-meter ${escapeHtmlAttr(lastContactInfo.cls)}">
+                    <span>Last communicated:</span>
+                    <strong>${escapeHtmlAttr(lastContactInfo.label)}</strong>
+                  </div>
+                  <div class="hvi-mission-link">
+                    <h4 class="intel-k" style="margin:0 0 6px 0;">MISSION LINK</h4>
+                    <div class="hvi-mission-row">
+                      <select class="search-input" id="hvi-linked-mission" onchange="onHviLinkedMissionChange()">
+                        <option value="">No mission linked...</option>
+                        ${missionOptionsHtml}
+                      </select>
+                      <button class="submit-btn" type="button" onclick="openHviLinkedMissionBrief()">OPEN BRIEF</button>
+                    </div>
+                    <div class="hvi-mission-meta" id="hvi-linked-mission-meta">${escapeHtmlAttr(linkedMissionMeta)}</div>
+                    <textarea id="hvi-linked-mission-brief" class="mission-intel-textarea hvi-mission-brief" rows="6" placeholder="Mission brief will load here..."></textarea>
+                    <div class="hvi-mission-actions">
+                      <button class="submit-btn" type="button" onclick="loadHviLinkedMissionBrief()">LOAD BRIEF</button>
+                      <button class="submit-btn" type="button" onclick="saveHviLinkedMissionBrief()">SAVE BRIEF</button>
+                    </div>
+                  </div>
+                  <div class="hvi-profile-grid">
+                    <label>Full Name<input class="search-input" id="hvi-profile-name" type="text" value="${escapeHtmlAttr(quickProfile.name)}" /></label>
+                    <label>Age<input class="search-input" id="hvi-profile-age" type="text" value="${escapeHtmlAttr(quickProfile.age)}" /></label>
+                    <label>Number<input class="search-input" id="hvi-profile-number" type="text" value="${escapeHtmlAttr(quickProfile.number)}" /></label>
+                    <label>Email<input class="search-input" id="hvi-profile-email" type="text" value="${escapeHtmlAttr(quickProfile.email)}" /></label>
+                    <label>Location<input class="search-input" id="hvi-profile-location" type="text" value="${escapeHtmlAttr(quickProfile.location)}" /></label>
+                    <label>Mutual Connections<input class="search-input" id="hvi-profile-mutual" type="text" value="${escapeHtmlAttr(quickProfile.mutual)}" /></label>
+                    <label>Lead<input class="search-input" id="hvi-profile-lead" type="text" value="${escapeHtmlAttr(quickProfile.lead)}" /></label>
+                    <label>Profile Link<input class="search-input" id="hvi-profile-profile" type="text" value="${escapeHtmlAttr(quickProfile.profile)}" /></label>
+                    <label>Last Conversation<input class="search-input" id="hvi-profile-last-convo" type="text" value="${escapeHtmlAttr(quickProfile.lastConversation)}" /></label>
+                  </div>
+                  <div class="hvi-profile-grid hvi-profile-grid-compact">
+                    <label>Last Contacted Date<input class="search-input" id="hvi-last-date" type="date" value="${escapeHtmlAttr(quickProfile.lastDate)}" /></label>
+                    <label>Last Contacted Time<input class="search-input" id="hvi-last-time" type="time" value="${escapeHtmlAttr(quickProfile.lastTime)}" /></label>
+                    <label>With<input class="search-input" id="hvi-last-with" type="text" value="${escapeHtmlAttr(quickProfile.lastWith)}" /></label>
+                    <label>Location<input class="search-input" id="hvi-last-location" type="text" value="${escapeHtmlAttr(quickProfile.lastLocation)}" /></label>
+                    <button class="submit-btn hvi-inline-btn" type="button" onclick="setHviLastContactNow()">NOW</button>
+                  </div>
+                  <div class="hvi-profile-grid hvi-profile-grid-compact">
+                    <label>Date Linked<input class="search-input" id="hvi-linked-date" type="date" value="${escapeHtmlAttr(quickProfile.dateLinked)}" /></label>
+                    <label>Time Linked<input class="search-input" id="hvi-linked-time" type="time" value="${escapeHtmlAttr(quickProfile.timeLinked)}" /></label>
+                    <label>Linked With<input class="search-input" id="hvi-linked-with" type="text" value="${escapeHtmlAttr(quickProfile.linkedWith)}" /></label>
+                    <label>Linked Location<input class="search-input" id="hvi-linked-location" type="text" value="${escapeHtmlAttr(quickProfile.linkedLocation)}" /></label>
+                  </div>
+                  <div class="hvi-profile-grid">
+                    <label>Instagram<input class="search-input" id="hvi-profile-instagram" type="text" value="${escapeHtmlAttr(quickProfile.instagram)}" /></label>
+                    <label>TikTok<input class="search-input" id="hvi-profile-tiktok" type="text" value="${escapeHtmlAttr(quickProfile.tiktok)}" /></label>
+                    <label>X / Twitter<input class="search-input" id="hvi-profile-x" type="text" value="${escapeHtmlAttr(quickProfile.x)}" /></label>
+                    <label>YouTube<input class="search-input" id="hvi-profile-youtube" type="text" value="${escapeHtmlAttr(quickProfile.youtube)}" /></label>
+                    <label>Website<input class="search-input" id="hvi-profile-website" type="text" value="${escapeHtmlAttr(quickProfile.website)}" /></label>
+                  </div>
+                  <div class="hvi-add-row">
+                    <button class="submit-btn" type="button" onclick="saveHviProfileQuick()">SAVE PROFILE</button>
+                  </div>
+                </div>
                 <div class="hvi-dossier-table">
                   ${detailRowsHtml}
                 </div>
@@ -3796,6 +3980,286 @@
             await addHviPhotoFromDrop(f);
           });
         }
+        if (linkedMissionPath) {
+          loadHviLinkedMissionBrief(linkedMissionPath, { silent: true });
+        }
+      }
+
+      async function onHviLinkedMissionChange() {
+        if (intelPopupType !== "hvi" || !intelPopupHviHandle) return;
+        const selectEl = document.getElementById("hvi-linked-mission");
+        const missionPath = String(selectEl ? selectEl.value : "").trim();
+        await saveHviLinkedMissionPath(missionPath);
+        await loadHviLinkedMissionBrief(missionPath, { silent: true });
+      }
+
+      async function saveHviLinkedMissionPath(missionPath) {
+        if (intelPopupType !== "hvi" || !intelPopupHviHandle) return;
+        const path = String(missionPath || "").trim();
+        const label = path ? missionLabelFromPath(path) : "";
+        const fields = {
+          "Linked Mission": label || "N/A",
+          "Linked Mission Path": path || "",
+        };
+        try {
+          const res = await fetch("/api/hvi", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ handle: intelPopupHviHandle, fields }),
+          });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({ error: "Failed to update HVI mission link." }));
+            throw new Error(err.error || "Failed to update HVI mission link.");
+          }
+          await fetchData();
+        } catch (e) {
+          themedNotice("Mission link update failed: " + e.message);
+        }
+      }
+
+      function openHviLinkedMissionBrief() {
+        const selectEl = document.getElementById("hvi-linked-mission");
+        const missionPath = String(selectEl ? selectEl.value : "").trim();
+        if (!missionPath || missionPath === "N/A") {
+          themedNotice("Select a mission first.");
+          return;
+        }
+        openMissionEditor(missionPath);
+      }
+
+      async function loadHviLinkedMissionBrief(pathOverride, options = {}) {
+        const selectEl = document.getElementById("hvi-linked-mission");
+        const textarea = document.getElementById("hvi-linked-mission-brief");
+        const metaEl = document.getElementById("hvi-linked-mission-meta");
+        if (!textarea || !metaEl) return;
+        const missionPath = String(pathOverride || (selectEl ? selectEl.value : "") || "").trim();
+        if (!missionPath || missionPath === "N/A") {
+          textarea.value = "";
+          textarea.dataset.missionPath = "";
+          textarea.dataset.nextPhase = "1";
+          metaEl.textContent = "No mission linked.";
+          return;
+        }
+        if (!options.silent) metaEl.textContent = "Loading mission brief...";
+        try {
+          const res = await fetch(`/api/mission/brief?mission_path=${encodeURIComponent(missionPath)}`, { cache: "no-store" });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({ error: "Failed to load mission brief." }));
+            throw new Error(err.error || "Failed to load mission brief.");
+          }
+          const data = await res.json();
+          const nextPhase = Math.max(1, Number(data?.latest?.phase || 0) + 1);
+          textarea.value = String(data?.content || "");
+          textarea.dataset.missionPath = missionPath;
+          textarea.dataset.nextPhase = String(nextPhase);
+          metaEl.textContent = `Loaded: ${missionLabelFromPath(missionPath)} · Next phase ${nextPhase}`;
+        } catch (e) {
+          metaEl.textContent = "Mission brief load failed.";
+          if (!options.silent) themedNotice("Brief load failed: " + e.message);
+        }
+      }
+
+      async function saveHviLinkedMissionBrief() {
+        const selectEl = document.getElementById("hvi-linked-mission");
+        const textarea = document.getElementById("hvi-linked-mission-brief");
+        const metaEl = document.getElementById("hvi-linked-mission-meta");
+        if (!textarea || !metaEl) return;
+        const missionPath = String(textarea.dataset.missionPath || (selectEl ? selectEl.value : "") || "").trim();
+        if (!missionPath || missionPath === "N/A") {
+          themedNotice("Select a mission first.");
+          return;
+        }
+        const content = String(textarea.value || "");
+        if (!content.trim()) {
+          themedNotice("Mission brief is empty.");
+          return;
+        }
+        const nextPhase = Math.max(1, Number(textarea.dataset.nextPhase || 1) || 1);
+        try {
+          const res = await fetch("/api/mission/brief/save", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              mission_path: missionPath,
+              phase: nextPhase,
+              content,
+              variables: typeof extractBriefVariables === "function" ? extractBriefVariables(content || "") : [],
+            }),
+          });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({ error: "Failed to save mission brief." }));
+            throw new Error(err.error || "Failed to save mission brief.");
+          }
+          syncMissionBriefDatawells(missionPath, content, { silent: true });
+          await syncHviFromMissionBrief(missionPath, content, { silent: true });
+          await syncBlackbookFromMissionBrief(missionPath, content, { status: "IN_PROGRESS" });
+          textarea.dataset.nextPhase = String(nextPhase + 1);
+          metaEl.textContent = `Saved: ${missionLabelFromPath(missionPath)} · Next phase ${nextPhase + 1}`;
+          await fetchData();
+          themedNotice("Mission brief saved.");
+        } catch (e) {
+          themedNotice("Brief save failed: " + e.message);
+        }
+      }
+
+      function closeHviReminderPanel() {
+        const overlay = document.getElementById("hvi-reminder-overlay");
+        if (!overlay) return;
+        overlay.classList.remove("active");
+        overlay.setAttribute("aria-hidden", "true");
+      }
+
+      function closeHviUpdateLogPanel() {
+        const overlay = document.getElementById("hvi-update-overlay");
+        if (!overlay) return;
+        overlay.classList.remove("active");
+        overlay.setAttribute("aria-hidden", "true");
+      }
+
+      function renderHviReminderPanel() {
+        if (intelPopupType !== "hvi" || !intelPopupHviHandle) return;
+        const body = document.getElementById("hvi-reminder-body");
+        if (!body) return;
+        const raw = allHvi.find((h) => String(h.handle || "Unknown") === String(intelPopupHviHandle || ""));
+        const item = augmentHvi(raw);
+        const fields = item.fields && typeof item.fields === "object" ? item.fields : {};
+        const extra = getHviExtra(intelPopupHviHandle);
+        const reminder = extra.reminder || { amberDays: 21, redDays: 30 };
+        const lastContactDate = parseHviDateTime(fields["Last Contacted Date"], fields["Last Contacted Time"]);
+        const lastUpdateLog = Array.isArray(extra.updateLogs) && extra.updateLogs.length
+          ? extra.updateLogs[extra.updateLogs.length - 1]
+          : null;
+        let lastUpdateDate = lastUpdateLog && lastUpdateLog.ts ? new Date(lastUpdateLog.ts) : null;
+        if (lastUpdateDate && Number.isNaN(lastUpdateDate.getTime())) lastUpdateDate = null;
+        if (!lastUpdateDate) lastUpdateDate = lastContactDate;
+        const contactStatus = computeHviReminderStatus(lastContactDate, reminder);
+        const updateStatus = computeHviReminderStatus(lastUpdateDate, reminder);
+        body.innerHTML = `
+          <div class="hvi-reminder-grid">
+            <div class="intel-card hvi-reminder-card">
+              <h4 class="intel-k" style="margin:0 0 6px 0;">Re-engagement Timing</h4>
+              <div class="hvi-reminder-row">
+                <div class="hvi-reminder-label">Last Contact</div>
+                <div class="hvi-reminder-value">${escapeHtmlAttr(formatHviDateLabel(lastContactDate))}</div>
+                <div class="hvi-reminder-pill ${escapeHtmlAttr(contactStatus.status)}">${escapeHtmlAttr(contactStatus.status.toUpperCase())}</div>
+              </div>
+              <div class="hvi-reminder-row">
+                <div class="hvi-reminder-label">Last Update</div>
+                <div class="hvi-reminder-value">${escapeHtmlAttr(formatHviDateLabel(lastUpdateDate))}</div>
+                <div class="hvi-reminder-pill ${escapeHtmlAttr(updateStatus.status)}">${escapeHtmlAttr(updateStatus.status.toUpperCase())}</div>
+              </div>
+              <div class="hvi-reminder-hint">Amber shows at your re-engage window. Red shows when overdue.</div>
+            </div>
+            <div class="intel-card hvi-reminder-card">
+              <h4 class="intel-k" style="margin:0 0 6px 0;">Reminder Settings (Days)</h4>
+              <div class="hvi-reminder-settings">
+                <label>Amber (2–3 weeks default)
+                  <input id="hvi-reminder-amber" class="search-input" type="number" min="1" max="120" value="${escapeHtmlAttr(String(reminder.amberDays || 21))}" />
+                </label>
+                <label>Red (1 month default)
+                  <input id="hvi-reminder-red" class="search-input" type="number" min="1" max="180" value="${escapeHtmlAttr(String(reminder.redDays || 30))}" />
+                </label>
+              </div>
+              <div class="hvi-add-row">
+                <button class="submit-btn" type="button" onclick="saveHviReminderSettings()">SAVE SETTINGS</button>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+
+      function openHviReminderPanel() {
+        if (intelPopupType !== "hvi" || !intelPopupHviHandle) return;
+        const overlay = document.getElementById("hvi-reminder-overlay");
+        if (!overlay) return;
+        renderHviReminderPanel();
+        overlay.classList.add("active");
+        overlay.setAttribute("aria-hidden", "false");
+      }
+
+      function saveHviReminderSettings() {
+        if (intelPopupType !== "hvi" || !intelPopupHviHandle) return;
+        const amberEl = document.getElementById("hvi-reminder-amber");
+        const redEl = document.getElementById("hvi-reminder-red");
+        const amberDays = Math.max(1, Number(amberEl?.value || 21));
+        let redDays = Math.max(1, Number(redEl?.value || 30));
+        if (redDays < amberDays) redDays = amberDays;
+        const extra = getHviExtra(intelPopupHviHandle);
+        extra.reminder = { amberDays, redDays };
+        setHviExtra(intelPopupHviHandle, extra);
+        openHviPopup(intelPopupHviHandle, hviPopupPage);
+        renderHviReminderPanel();
+        themedNotice("Reminder settings saved.");
+      }
+
+      function buildHviUpdateLogRow(row) {
+        const ts = row?.ts ? formatHviDateLabel(new Date(row.ts)) : "N/A";
+        const prev = String(row?.prev || "");
+        const next = String(row?.next || "");
+        const trim = (s) => (s.length > 180 ? `${s.slice(0, 180)}...` : s);
+        return `
+          <div class="hvi-log-row">
+            <div class="hvi-log-meta">
+              <span class="hvi-log-date">${escapeHtmlAttr(ts)}</span>
+              <span class="hvi-log-field">${escapeHtmlAttr(String(row?.field || "Description"))}</span>
+            </div>
+            <div class="hvi-log-body">
+              <div><span class="hvi-log-label">Prev</span>${escapeHtmlAttr(trim(prev || "N/A"))}</div>
+              <div><span class="hvi-log-label">Next</span>${escapeHtmlAttr(trim(next || "N/A"))}</div>
+            </div>
+          </div>
+        `;
+      }
+
+      function renderHviUpdateLogPanel() {
+        if (intelPopupType !== "hvi" || !intelPopupHviHandle) return;
+        const body = document.getElementById("hvi-update-body");
+        if (!body) return;
+        const extra = getHviExtra(intelPopupHviHandle);
+        const logs = Array.isArray(extra.updateLogs) ? extra.updateLogs.slice().reverse() : [];
+        const rows = logs.length
+          ? logs.map((row) => buildHviUpdateLogRow(row)).join("")
+          : `<div class="hvi-log-empty">No description updates logged yet.</div>`;
+        body.innerHTML = `
+          <div class="hvi-log-header">
+            <div class="hvi-log-count">${logs.length} update(s)</div>
+            <div class="hvi-log-actions">
+              <button class="submit-btn" type="button" onclick="addHviManualUpdateNote()">ADD NOTE</button>
+              <button class="confirm-btn" type="button" onclick="clearHviUpdateLogs()">CLEAR LOGS</button>
+            </div>
+          </div>
+          <div class="hvi-log-list">${rows}</div>
+        `;
+      }
+
+      function openHviUpdateLogPanel() {
+        if (intelPopupType !== "hvi" || !intelPopupHviHandle) return;
+        const overlay = document.getElementById("hvi-update-overlay");
+        if (!overlay) return;
+        renderHviUpdateLogPanel();
+        overlay.classList.add("active");
+        overlay.setAttribute("aria-hidden", "false");
+      }
+
+      async function clearHviUpdateLogs() {
+        if (intelPopupType !== "hvi" || !intelPopupHviHandle) return;
+        if (!(await themedConfirm("Clear all update logs for this profile?"))) return;
+        const extra = getHviExtra(intelPopupHviHandle);
+        extra.updateLogs = [];
+        setHviExtra(intelPopupHviHandle, extra);
+        renderHviUpdateLogPanel();
+        themedNotice("Update logs cleared.");
+      }
+
+      async function addHviManualUpdateNote() {
+        if (intelPopupType !== "hvi" || !intelPopupHviHandle) return;
+        const note = await themedPrompt("Add update note", "");
+        if (note === null) return;
+        const value = String(note || "").trim();
+        if (!value) return;
+        addHviUpdateLog(intelPopupHviHandle, "Note", "", value, "manual-note");
+        renderHviUpdateLogPanel();
+        themedNotice("Update note saved.");
       }
 
       async function saveIntelPopup() {
@@ -3936,6 +4400,859 @@
           await deleteHvi(intelPopupHviHandle);
           closeIntelPopup();
         }
+      }
+
+
+
+      let hviWizardState = null;
+      let hviWizardCropState = null;
+      let hviWizardCropperResizeBound = false;
+
+      function defaultHviWizardData() {
+        return {
+          mode: "create",
+          handle: "",
+          name: "",
+          status: "",
+          instagram: "",
+          tiktok: "",
+          x: "",
+          youtube: "",
+          website: "",
+          facebook: "",
+          linkedin: "",
+          threads: "",
+          pinterest: "",
+          profileLink: "",
+          profilePhoto: "",
+          profilePhotoSource: "",
+          extraPhotos: [],
+          number: "",
+          email: "",
+          location: "",
+          mutual: "",
+          lead: "",
+          lastConversation: "",
+          lastDate: "",
+          lastTime: "",
+          lastWith: "",
+          lastLocation: "",
+          dateLinked: "",
+          timeLinked: "",
+          linkedWith: "",
+          linkedLocation: "",
+        };
+      }
+
+      function resetHviWizardCropState(source = "") {
+        hviWizardCropState = {
+          source: String(source || "").trim(),
+          image: null,
+          ready: false,
+          zoom: 1,
+          offsetX: 0,
+          offsetY: 0,
+          dragging: false,
+          lastX: 0,
+          lastY: 0,
+        };
+      }
+
+      function ensureHviWizardCropState(source = "") {
+        const next = String(source || "").trim();
+        if (!hviWizardCropState) {
+          resetHviWizardCropState(next);
+          return;
+        }
+        if (next && hviWizardCropState.source !== next) {
+          resetHviWizardCropState(next);
+          return;
+        }
+        if (!next && !hviWizardCropState.source) return;
+      }
+
+      function setHviWizardPhotoSource(source) {
+        if (!hviWizardState) return;
+        const clean = String(source || "").trim();
+        if (!clean) return;
+        hviWizardState.data.profilePhotoSource = clean;
+        hviWizardState.data.profilePhoto = clean;
+        resetHviWizardCropState(clean);
+      }
+
+      function clampHviWizardCropOffset(state, width, height, drawW, drawH) {
+        const maxOffsetX = Math.max(0, (drawW - width) / 2);
+        const maxOffsetY = Math.max(0, (drawH - height) / 2);
+        state.offsetX = Math.max(-maxOffsetX, Math.min(maxOffsetX, state.offsetX));
+        state.offsetY = Math.max(-maxOffsetY, Math.min(maxOffsetY, state.offsetY));
+      }
+
+      function computeHviWizardCropDraw(state, width, height) {
+        const img = state.image;
+        const baseScale = Math.max(width / img.width, height / img.height);
+        const scale = baseScale * state.zoom;
+        const drawW = img.width * scale;
+        const drawH = img.height * scale;
+        clampHviWizardCropOffset(state, width, height, drawW, drawH);
+        const dx = width / 2 + state.offsetX - drawW / 2;
+        const dy = height / 2 + state.offsetY - drawH / 2;
+        return { drawW, drawH, dx, dy };
+      }
+
+      function drawHviWizardCropper(canvas) {
+        if (!hviWizardCropState || !hviWizardCropState.image || !canvas) return;
+        const rect = canvas.getBoundingClientRect();
+        const width = Math.max(1, Math.floor(rect.width));
+        const height = Math.max(1, Math.floor(rect.height));
+        const dpr = window.devicePixelRatio || 1;
+        canvas.width = Math.floor(width * dpr);
+        canvas.height = Math.floor(height * dpr);
+        const ctx = canvas.getContext("2d");
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.clearRect(0, 0, width, height);
+        const { drawW, drawH, dx, dy } = computeHviWizardCropDraw(hviWizardCropState, width, height);
+        ctx.drawImage(hviWizardCropState.image, dx, dy, drawW, drawH);
+      }
+
+      function loadHviWizardCropImage(source, onReady) {
+        if (!hviWizardCropState) resetHviWizardCropState(source);
+        const img = new Image();
+        img.onload = () => {
+          if (!hviWizardCropState) resetHviWizardCropState(source);
+          hviWizardCropState.image = img;
+          hviWizardCropState.ready = true;
+          if (typeof onReady === "function") onReady();
+        };
+        img.onerror = () => {
+          themedNotice("Failed to load image for cropping.");
+        };
+        img.src = source;
+      }
+
+      function applyHviWizardCrop() {
+        if (!hviWizardState || !hviWizardCropState?.image) return;
+        const size = 640;
+        const canvas = document.createElement("canvas");
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext("2d");
+        const { drawW, drawH, dx, dy } = computeHviWizardCropDraw(hviWizardCropState, size, size);
+        ctx.clearRect(0, 0, size, size);
+        ctx.drawImage(hviWizardCropState.image, dx, dy, drawW, drawH);
+        hviWizardState.data.profilePhoto = canvas.toDataURL("image/jpeg", 0.92);
+        renderHviWizard();
+      }
+
+      function resetHviWizardCrop() {
+        if (!hviWizardCropState) return;
+        hviWizardCropState.zoom = 1;
+        hviWizardCropState.offsetX = 0;
+        hviWizardCropState.offsetY = 0;
+        const canvas = document.getElementById("hvi-wiz-crop-canvas");
+        if (canvas) drawHviWizardCropper(canvas);
+      }
+
+      function useHviWizardOriginalPhoto() {
+        if (!hviWizardState || !hviWizardCropState?.source) return;
+        hviWizardState.data.profilePhoto = hviWizardCropState.source;
+        renderHviWizard();
+      }
+
+      function initHviWizardCropper() {
+        if (!hviWizardState) return;
+        const canvas = document.getElementById("hvi-wiz-crop-canvas");
+        const zoomEl = document.getElementById("hvi-wiz-crop-zoom");
+        const stage = document.getElementById("hvi-wiz-crop-stage");
+        const source = String(hviWizardState.data.profilePhotoSource || hviWizardState.data.profilePhoto || "").trim();
+        ensureHviWizardCropState(source);
+        if (!canvas || !stage) return;
+        const hasSource = !!source;
+        stage.classList.toggle("has-source", hasSource);
+        if (zoomEl && hviWizardCropState) {
+          zoomEl.value = String(hviWizardCropState.zoom || 1);
+        }
+        if (hasSource && !hviWizardCropState.image) {
+          loadHviWizardCropImage(source, () => drawHviWizardCropper(canvas));
+        } else if (hasSource) {
+          drawHviWizardCropper(canvas);
+        }
+        if (!canvas.dataset.bound) {
+          canvas.dataset.bound = "1";
+          canvas.addEventListener("pointerdown", (e) => {
+            if (!hviWizardCropState?.image) return;
+            hviWizardCropState.dragging = true;
+            hviWizardCropState.lastX = e.clientX;
+            hviWizardCropState.lastY = e.clientY;
+            canvas.setPointerCapture(e.pointerId);
+            stage.classList.add("dragging");
+          });
+          canvas.addEventListener("pointermove", (e) => {
+            if (!hviWizardCropState?.dragging) return;
+            const dx = e.clientX - hviWizardCropState.lastX;
+            const dy = e.clientY - hviWizardCropState.lastY;
+            hviWizardCropState.lastX = e.clientX;
+            hviWizardCropState.lastY = e.clientY;
+            hviWizardCropState.offsetX += dx;
+            hviWizardCropState.offsetY += dy;
+            drawHviWizardCropper(canvas);
+          });
+          const endDrag = () => {
+            if (!hviWizardCropState) return;
+            hviWizardCropState.dragging = false;
+            stage.classList.remove("dragging");
+          };
+          canvas.addEventListener("pointerup", endDrag);
+          canvas.addEventListener("pointercancel", endDrag);
+          canvas.addEventListener("wheel", (e) => {
+            if (!hviWizardCropState?.image) return;
+            e.preventDefault();
+            const delta = e.deltaY > 0 ? -0.06 : 0.06;
+            hviWizardCropState.zoom = Math.max(1, Math.min(4, hviWizardCropState.zoom + delta));
+            if (zoomEl) zoomEl.value = String(hviWizardCropState.zoom);
+            drawHviWizardCropper(canvas);
+          }, { passive: false });
+          if (!hviWizardCropperResizeBound) {
+            hviWizardCropperResizeBound = true;
+            window.addEventListener("resize", () => {
+              const current = document.getElementById("hvi-wiz-crop-canvas");
+              if (current) drawHviWizardCropper(current);
+            });
+          }
+        }
+        if (zoomEl && !zoomEl.dataset.bound) {
+          zoomEl.dataset.bound = "1";
+          zoomEl.addEventListener("input", () => {
+            if (!hviWizardCropState) return;
+            hviWizardCropState.zoom = Math.max(1, Math.min(4, Number(zoomEl.value || 1)));
+            drawHviWizardCropper(canvas);
+          });
+        }
+      }
+
+      function openHviWizard(mode = "create", handle = "") {
+        const overlay = document.getElementById("hvi-wizard-overlay");
+        if (!overlay) return;
+        hviWizardState = {
+          step: 0,
+          total: 7,
+          data: defaultHviWizardData(),
+        };
+        hviWizardState.data.mode = mode === "update" ? "update" : "create";
+        if (handle) hviWizardState.data.handle = String(handle || "").trim();
+        renderHviWizard();
+        overlay.classList.add("active");
+        overlay.setAttribute("aria-hidden", "false");
+      }
+
+      function closeHviWizard() {
+        const overlay = document.getElementById("hvi-wizard-overlay");
+        if (!overlay) return;
+        overlay.classList.remove("active");
+        overlay.setAttribute("aria-hidden", "true");
+        hviWizardState = null;
+        hviWizardCropState = null;
+      }
+
+      function hviWizardPrev() {
+        if (!hviWizardState) return;
+        if (hviWizardState.step > 0) {
+          hviWizardCollectStep();
+          hviWizardState.step -= 1;
+          renderHviWizard();
+        }
+      }
+
+      function hviWizardNext() {
+        if (!hviWizardState) return;
+        hviWizardCollectStep();
+        if (hviWizardState.step < hviWizardState.total - 1) {
+          hviWizardState.step += 1;
+          renderHviWizard();
+        }
+      }
+
+      async function hviWizardFinish() {
+        if (!hviWizardState) return;
+        hviWizardCollectStep();
+        const data = hviWizardState.data || {};
+        const handle = String(data.handle || "").trim();
+        if (!handle) {
+          themedNotice("Handle is required.");
+          return;
+        }
+        const fields = {};
+        const setField = (key, value) => {
+          const v = String(value || "").trim();
+          if (v) fields[key] = v;
+        };
+        setField("Status", data.status || "N/A");
+        setField("Name", data.name);
+        setField("Number", data.number);
+        setField("Email Address", data.email);
+        setField("Location", data.location);
+        setField("Mutual Connections", data.mutual);
+        setField("Lead", data.lead);
+        setField("Profile", data.profileLink);
+        setField("Last Conversation", data.lastConversation);
+        setField("Last Contacted Date", data.lastDate);
+        setField("Last Contacted Time", data.lastTime);
+        setField("Last Contacted With", data.lastWith);
+        setField("Last Contacted Location", data.lastLocation);
+        setField("Date Linked", data.dateLinked);
+        setField("Time Linked", data.timeLinked);
+        setField("Linked With", data.linkedWith);
+        setField("Linked Location", data.linkedLocation);
+        setField("Instagram", data.instagram);
+        setField("TikTok", data.tiktok);
+        setField("X", data.x);
+        setField("YouTube", data.youtube);
+        setField("Facebook", data.facebook);
+        setField("LinkedIn", data.linkedin);
+        setField("Threads", data.threads);
+        setField("Pinterest", data.pinterest);
+        setField("Website", data.website);
+        const now = new Date();
+        const existing = (Array.isArray(allHvi) ? allHvi : []).find((h) => String(h?.handle || "").trim().toLowerCase() === handle.toLowerCase());
+        if (!existing) {
+          const createdAt = now.toISOString();
+          fields["Created At"] = createdAt;
+          fields.Date = createdAt.slice(0, 10);
+          fields.Time = createdAt.slice(11, 16);
+        }
+        fields["Updated At"] = now.toISOString();
+        try {
+          const res = await fetch("/api/hvi", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ handle, fields }),
+          });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({ error: "Failed to save HVI." }));
+            throw new Error(err.error || "Failed to save HVI.");
+          }
+          const extra = getHviExtra(handle);
+          if (data.profilePhoto) setPrimaryHviPhoto(extra, data.profilePhoto);
+          if (Array.isArray(data.extraPhotos)) {
+            data.extraPhotos.forEach((p) => {
+              if (p && !extra.photos.includes(p)) extra.photos.push(p);
+            });
+          }
+          setHviExtra(handle, extra);
+          await fetchData();
+          themedNotice("HVI profile saved.");
+          closeHviWizard();
+        } catch (e) {
+          themedNotice("HVI save failed: " + e.message);
+        }
+      }
+
+      function hviWizardCollectStep() {
+        if (!hviWizardState) return;
+        const data = hviWizardState.data;
+        const step = hviWizardState.step;
+        if (step === 0) {
+          data.mode = document.getElementById("hvi-wiz-mode")?.value || data.mode;
+          data.handle = document.getElementById("hvi-wiz-handle")?.value || data.handle;
+          data.name = document.getElementById("hvi-wiz-name")?.value || data.name;
+          data.status = document.getElementById("hvi-wiz-status")?.value || data.status;
+        } else if (step === 1) {
+          data.instagram = document.getElementById("hvi-wiz-instagram")?.value || data.instagram;
+          data.tiktok = document.getElementById("hvi-wiz-tiktok")?.value || data.tiktok;
+          data.x = document.getElementById("hvi-wiz-x")?.value || data.x;
+          data.youtube = document.getElementById("hvi-wiz-youtube")?.value || data.youtube;
+          data.facebook = document.getElementById("hvi-wiz-facebook")?.value || data.facebook;
+          data.linkedin = document.getElementById("hvi-wiz-linkedin")?.value || data.linkedin;
+          data.threads = document.getElementById("hvi-wiz-threads")?.value || data.threads;
+          data.pinterest = document.getElementById("hvi-wiz-pinterest")?.value || data.pinterest;
+          data.website = document.getElementById("hvi-wiz-website")?.value || data.website;
+          data.profileLink = document.getElementById("hvi-wiz-profile")?.value || data.profileLink;
+        } else if (step === 4) {
+          data.number = document.getElementById("hvi-wiz-number")?.value || data.number;
+          data.email = document.getElementById("hvi-wiz-email")?.value || data.email;
+          data.location = document.getElementById("hvi-wiz-location")?.value || data.location;
+        } else if (step === 5) {
+          data.mutual = document.getElementById("hvi-wiz-mutual")?.value || data.mutual;
+          data.lead = document.getElementById("hvi-wiz-lead")?.value || data.lead;
+          data.lastConversation = document.getElementById("hvi-wiz-last-convo")?.value || data.lastConversation;
+        } else if (step === 6) {
+          data.lastDate = document.getElementById("hvi-wiz-last-date")?.value || data.lastDate;
+          data.lastTime = document.getElementById("hvi-wiz-last-time")?.value || data.lastTime;
+          data.lastWith = document.getElementById("hvi-wiz-last-with")?.value || data.lastWith;
+          data.lastLocation = document.getElementById("hvi-wiz-last-location")?.value || data.lastLocation;
+          data.dateLinked = document.getElementById("hvi-wiz-linked-date")?.value || data.dateLinked;
+          data.timeLinked = document.getElementById("hvi-wiz-linked-time")?.value || data.timeLinked;
+          data.linkedWith = document.getElementById("hvi-wiz-linked-with")?.value || data.linkedWith;
+          data.linkedLocation = document.getElementById("hvi-wiz-linked-location")?.value || data.linkedLocation;
+        }
+      }
+
+      function hviWizardLoadExisting() {
+        if (!hviWizardState) return;
+        const handle = String(document.getElementById("hvi-wiz-handle")?.value || "").trim();
+        if (!handle) {
+          themedNotice("Enter a handle to load.");
+          return;
+        }
+        const existing = (Array.isArray(allHvi) ? allHvi : []).find((h) => String(h?.handle || "").trim().toLowerCase() === handle.toLowerCase());
+        if (!existing) {
+          themedNotice("No existing HVI found.");
+          return;
+        }
+        const item = augmentHvi(existing);
+        const fields = item.fields || {};
+        const data = hviWizardState.data;
+        data.handle = item.handle || data.handle;
+        data.name = fields["Name"] || data.name;
+        data.status = fields["Status"] || data.status;
+        data.number = fields["Number"] || data.number;
+        data.email = fields["Email Address"] || fields["Email"] || data.email;
+        data.location = fields["Location"] || data.location;
+        data.mutual = fields["Mutual Connections"] || data.mutual;
+        data.lead = fields["Lead"] || data.lead;
+        data.profileLink = fields["Profile"] || data.profileLink;
+        data.lastConversation = fields["Last Conversation"] || data.lastConversation;
+        data.lastDate = fields["Last Contacted Date"] || data.lastDate;
+        data.lastTime = fields["Last Contacted Time"] || data.lastTime;
+        data.lastWith = fields["Last Contacted With"] || data.lastWith;
+        data.lastLocation = fields["Last Contacted Location"] || data.lastLocation;
+        data.dateLinked = fields["Date Linked"] || data.dateLinked;
+        data.timeLinked = fields["Time Linked"] || data.timeLinked;
+        data.linkedWith = fields["Linked With"] || data.linkedWith;
+        data.linkedLocation = fields["Linked Location"] || data.linkedLocation;
+        data.instagram = fields["Instagram"] || data.instagram;
+        data.tiktok = fields["TikTok"] || data.tiktok;
+        data.x = fields["X"] || data.x;
+        data.youtube = fields["YouTube"] || data.youtube;
+        data.facebook = fields["Facebook"] || data.facebook;
+        data.linkedin = fields["LinkedIn"] || data.linkedin;
+        data.threads = fields["Threads"] || data.threads;
+        data.pinterest = fields["Pinterest"] || data.pinterest;
+        data.website = fields["Website"] || data.website;
+        if (Array.isArray(item.photos) && item.photos[0]) {
+          setHviWizardPhotoSource(item.photos[0]);
+        } else if (!data.profilePhotoSource && data.profilePhoto) {
+          data.profilePhotoSource = data.profilePhoto;
+        }
+        renderHviWizard();
+        themedNotice("Loaded existing profile.");
+      }
+
+      async function hviWizardResolveProfile() {
+        if (!hviWizardState) return;
+        const input = document.getElementById("hvi-wiz-profile-url");
+        const url = String(input ? input.value : "").trim();
+        if (!url) {
+          themedNotice("Paste a profile link first.");
+          return;
+        }
+        try {
+          const res = await fetch("/api/profile/resolve", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ url }),
+          });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({ error: "Failed to fetch profile." }));
+            throw new Error(err.error || "Failed to fetch profile.");
+          }
+          const payload = await res.json();
+          const data = hviWizardState.data;
+          if (payload.handle && !data.handle) data.handle = payload.handle;
+          if (payload.name && !data.name) data.name = payload.name;
+          if (payload.profile_url) data.profileLink = payload.profile_url;
+          if (payload.avatar && !data.profilePhoto) {
+            setHviWizardPhotoSource(payload.avatar);
+          }
+          const links = payload.links || {};
+          if (links.instagram) data.instagram = links.instagram;
+          if (links.tiktok) data.tiktok = links.tiktok;
+          if (links.x) data.x = links.x;
+          if (links.youtube) data.youtube = links.youtube;
+          if (links.facebook) data.facebook = links.facebook;
+          if (links.linkedin) data.linkedin = links.linkedin;
+          if (links.threads) data.threads = links.threads;
+          if (links.pinterest) data.pinterest = links.pinterest;
+          if (links.website) data.website = links.website;
+          renderHviWizard();
+          themedNotice("Profile data pulled.");
+        } catch (e) {
+          themedNotice("Profile fetch failed: " + e.message);
+        }
+      }
+
+      async function hviWizardDownloadPhoto() {
+        if (!hviWizardState) return;
+        const urlEl = document.getElementById("hvi-wiz-photo-url");
+        const url = String(urlEl?.value || "").trim();
+        if (!url) {
+          themedNotice("Paste a post link first.");
+          return;
+        }
+        const sessionId = String(selectedSwissknifeSession || "").trim();
+        const source = inferSwissknifeSource(url);
+        const format = String(localStorage.getItem("swissknife_format") || "original").trim() || "original";
+        const quality = "highest";
+        const output_dir = String(localStorage.getItem("swissknife_output_dir") || "").trim();
+        const cookies_from_browser = String(localStorage.getItem("swissknife_cookies_browser") || "chrome");
+        const cookies_enabled = localStorage.getItem("swissknife_cookies_from_browser") === "1";
+        const { compat_h264, force_4k } = resolveSwissknife4kFlags(format, quality);
+        try {
+          const res = await fetch(serverUrlForPath("/api/swissknife/download"), {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              session_id: sessionId,
+              url,
+              login: false,
+              ig_user: "",
+              ig_pass: "",
+              format,
+              quality,
+              source,
+              output_dir,
+              compat_h264,
+              force_4k,
+              cookies_from_browser: source === "instagram" ? "" : (cookies_enabled ? cookies_from_browser : ""),
+              async: false,
+            }),
+          });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({ error: "Swissknife download failed." }));
+            throw new Error(err.error || "Swissknife download failed.");
+          }
+          const payload = await res.json().catch(() => ({}));
+          const download = payload?.download || {};
+          const imagePath =
+            pickSwissknifeThumbnailPath(download) ||
+            pickSwissknifeImagePath(download);
+          if (!imagePath) {
+            themedNotice("Download complete, but no image was found.");
+            return;
+          }
+          hviWizardState.lastDownloadedPhotoPath = imagePath;
+          const urlPath = filePathToUrl(imagePath);
+          setHviWizardPhotoSource(urlPath);
+          renderHviWizard();
+          themedNotice("Photo downloaded and loaded.");
+        } catch (e) {
+          themedNotice("Swissknife download failed: " + e.message);
+        }
+      }
+
+      function hviWizardOpenDownloadedPhoto() {
+        if (!hviWizardState) return;
+        const path = String(hviWizardState.lastDownloadedPhotoPath || "").trim();
+        if (!path) {
+          themedNotice("No downloaded photo yet.");
+          return;
+        }
+        openSwissknifePath(path);
+      }
+
+      function hviWizardFilterExisting() {
+        if (!hviWizardState) return;
+        const input = document.getElementById("hvi-wiz-search");
+        const target = document.getElementById("hvi-wiz-matches");
+        if (!input || !target) return;
+        const query = String(input.value || "").trim();
+        const norm = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+        const q = norm(query);
+        if (!q) {
+          target.innerHTML = "";
+          return;
+        }
+        const items = (Array.isArray(allHvi) ? allHvi : []).map((h) => augmentHvi(h));
+        const score = (q, text) => {
+          if (!q) return 0;
+          let qi = 0;
+          let hit = 0;
+          for (let i = 0; i < text.length && qi < q.length; i += 1) {
+            if (text[i] === q[qi]) {
+              qi += 1;
+              hit += 1;
+            }
+          }
+          if (hit < q.length) return -1;
+          let s = hit * 2;
+          if (text.includes(q)) s += 10;
+          s -= Math.min(text.length, 50) * 0.02;
+          return s;
+        };
+        const matches = items.map((h) => {
+          const name = String((h.fields && h.fields["Name"]) || "").trim();
+          const handle = String(h.handle || "").trim();
+          const text = norm(`${name} ${handle}`);
+          const s = score(q, text);
+          return { h, score: s, label: name ? `${name} (${handle})` : handle };
+        }).filter((m) => m.score >= 0)
+          .sort((a, b) => b.score - a.score)
+          .slice(0, 8);
+        if (!matches.length) {
+          target.innerHTML = '<div class="hvi-wizard-match-empty">No matches.</div>';
+          return;
+        }
+        target.innerHTML = matches.map((m) => `
+          <button class="submit-btn hvi-wizard-match-btn" type="button" onclick="hviWizardPickExisting('${escapeJsString(m.h.handle || "")}')">${escapeHtmlAttr(m.label)}</button>
+        `).join("");
+      }
+
+      function hviWizardPickExisting(handle) {
+        const value = String(handle || "").trim();
+        if (!value) return;
+        const input = document.getElementById("hvi-wiz-handle");
+        if (input) input.value = value;
+        hviWizardLoadExisting();
+      }
+
+      function bindHviWizardEnterAdvance(container) {
+        if (!container) return;
+        container.querySelectorAll("input, select").forEach((el) => {
+          el.addEventListener("keydown", (e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              if (!hviWizardState) return;
+              if (hviWizardState.step >= hviWizardState.total - 1) hviWizardFinish();
+              else hviWizardNext();
+            }
+          });
+        });
+      }
+
+      function renderHviWizard() {
+        if (!hviWizardState) return;
+        const body = document.getElementById("hvi-wizard-body");
+        const sub = document.getElementById("hvi-wizard-sub");
+        const backBtn = document.getElementById("hvi-wizard-back");
+        const nextBtn = document.getElementById("hvi-wizard-next");
+        const finishBtn = document.getElementById("hvi-wizard-finish");
+        if (!body || !sub || !backBtn || !nextBtn || !finishBtn) return;
+        const step = hviWizardState.step;
+        const total = hviWizardState.total;
+        const data = hviWizardState.data;
+        sub.textContent = `Step ${step + 1} of ${total}`;
+        backBtn.style.display = step > 0 ? "" : "none";
+        nextBtn.style.display = step < total - 1 ? "" : "none";
+        finishBtn.style.display = step === total - 1 ? "" : "none";
+
+        let html = "";
+        if (step === 0) {
+          const existingOptions = (Array.isArray(allHvi) ? allHvi : [])
+            .map((h) => augmentHvi(h))
+            .map((h) => {
+              const name = String((h.fields && h.fields["Name"]) || "").trim();
+              const label = name ? `${name} (${h.handle || ""})` : `${h.handle || ""}`;
+              return `<option value="${escapeHtmlAttr(h.handle || "")}">${escapeHtmlAttr(label)}</option>`;
+            }).join("");
+          const nameOptions = (Array.isArray(allHvi) ? allHvi : [])
+            .map((h) => augmentHvi(h))
+            .map((h) => {
+              const name = String((h.fields && h.fields["Name"]) || "").trim();
+              if (!name) return "";
+              return `<option value="${escapeHtmlAttr(name)}">${escapeHtmlAttr(h.handle || "")}</option>`;
+            }).filter(Boolean).join("");
+          html = `
+            <div class="hvi-wizard-step">
+              <h4>Identity + Status</h4>
+              <div class="hvi-wizard-grid">
+                <div class="hvi-wizard-row">
+                  <label>Mode</label>
+                  <select id="hvi-wiz-mode" class="search-input">
+                    <option value="create" ${data.mode === "create" ? "selected" : ""}>Create</option>
+                    <option value="update" ${data.mode === "update" ? "selected" : ""}>Update</option>
+                  </select>
+                </div>
+                <div class="hvi-wizard-row">
+                  <label>Fuzzy search existing</label>
+                  <input id="hvi-wiz-search" class="search-input" type="text" placeholder="Search name or handle..." oninput="hviWizardFilterExisting()" />
+                  <div id="hvi-wiz-matches" class="hvi-wizard-matches"></div>
+                </div>
+                <div class="hvi-wizard-row">
+                  <label>Paste profile link (auto fill)</label>
+                  <div class="hvi-wizard-inline">
+                    <input id="hvi-wiz-profile-url" class="search-input" type="text" placeholder="https://..." />
+                    <button class="submit-btn" type="button" onclick="hviWizardResolveProfile()">FETCH</button>
+                  </div>
+                </div>
+                <div class="hvi-wizard-row">
+                  <label>Search existing (dropdown)</label>
+                  <select id="hvi-wiz-existing" class="search-input" onchange="hviWizardPickExisting(this.value)">
+                    <option value="">Select existing...</option>
+                    ${existingOptions}
+                  </select>
+                </div>
+                <div class="hvi-wizard-row">
+                  <label>Handle (required)</label>
+                  <input id="hvi-wiz-handle" class="search-input" type="text" placeholder="@handle" list="hvi-wiz-handles" value="${escapeHtmlAttr(data.handle)}" />
+                  <datalist id="hvi-wiz-handles">${existingOptions}</datalist>
+                </div>
+                <div class="hvi-wizard-row">
+                  <label>Full Name</label>
+                  <input id="hvi-wiz-name" class="search-input" type="text" placeholder="Full name" list="hvi-wiz-names" value="${escapeHtmlAttr(data.name)}" />
+                  <datalist id="hvi-wiz-names">${nameOptions}</datalist>
+                </div>
+                <div class="hvi-wizard-row">
+                  <label>Status</label>
+                  <input id="hvi-wiz-status" class="search-input" type="text" placeholder="ACTIVE / WARM / COLD" value="${escapeHtmlAttr(data.status)}" />
+                </div>
+              </div>
+              <div class="hvi-add-row">
+                <button class="submit-btn" type="button" onclick="hviWizardLoadExisting()">LOAD EXISTING</button>
+                <span class="hvi-wizard-pill">Start typing handle or name to check for duplicates.</span>
+              </div>
+            </div>
+          `;
+        } else if (step === 1) {
+          html = `
+            <div class="hvi-wizard-step">
+              <h4>Social Links</h4>
+              <div class="hvi-wizard-grid">
+                <div class="hvi-wizard-row"><label>Instagram</label><input id="hvi-wiz-instagram" class="search-input" type="text" value="${escapeHtmlAttr(data.instagram)}" /></div>
+                <div class="hvi-wizard-row"><label>TikTok</label><input id="hvi-wiz-tiktok" class="search-input" type="text" value="${escapeHtmlAttr(data.tiktok)}" /></div>
+                <div class="hvi-wizard-row"><label>X / Twitter</label><input id="hvi-wiz-x" class="search-input" type="text" value="${escapeHtmlAttr(data.x)}" /></div>
+                <div class="hvi-wizard-row"><label>YouTube</label><input id="hvi-wiz-youtube" class="search-input" type="text" value="${escapeHtmlAttr(data.youtube)}" /></div>
+                <div class="hvi-wizard-row"><label>Facebook</label><input id="hvi-wiz-facebook" class="search-input" type="text" value="${escapeHtmlAttr(data.facebook)}" /></div>
+                <div class="hvi-wizard-row"><label>LinkedIn</label><input id="hvi-wiz-linkedin" class="search-input" type="text" value="${escapeHtmlAttr(data.linkedin)}" /></div>
+                <div class="hvi-wizard-row"><label>Threads</label><input id="hvi-wiz-threads" class="search-input" type="text" value="${escapeHtmlAttr(data.threads)}" /></div>
+                <div class="hvi-wizard-row"><label>Pinterest</label><input id="hvi-wiz-pinterest" class="search-input" type="text" value="${escapeHtmlAttr(data.pinterest)}" /></div>
+                <div class="hvi-wizard-row"><label>Website</label><input id="hvi-wiz-website" class="search-input" type="text" value="${escapeHtmlAttr(data.website)}" /></div>
+                <div class="hvi-wizard-row"><label>Profile Link</label><input id="hvi-wiz-profile" class="search-input" type="text" value="${escapeHtmlAttr(data.profileLink)}" /></div>
+              </div>
+            </div>
+          `;
+        } else if (step === 2) {
+          if (!data.profilePhotoSource && data.profilePhoto) {
+            data.profilePhotoSource = data.profilePhoto;
+          }
+          html = `
+            <div class="hvi-wizard-step">
+              <h4>Profile Photo</h4>
+              <div class="hvi-wizard-grid">
+                <div class="hvi-wizard-row hvi-wizard-photo-tools">
+                  <label>Upload single profile photo</label>
+                  <input id="hvi-wiz-photo" class="search-input" type="file" accept="image/*" />
+                  <label>Swissknife download (Instagram/TikTok/YouTube)</label>
+                  <div class="hvi-wizard-inline">
+                    <input id="hvi-wiz-photo-url" class="search-input" type="text" placeholder="https://www.instagram.com/p/SHORTCODE/" />
+                    <button class="submit-btn" type="button" onclick="hviWizardDownloadPhoto()">DOWNLOAD</button>
+                    ${data.lastDownloadedPhotoPath ? `<button class="submit-btn" type="button" onclick="hviWizardOpenDownloadedPhoto()">OPEN FILE</button>` : ""}
+                  </div>
+                  <div class="hvi-wizard-pill">Downloads are saved to your Swissknife session folder.</div>
+                </div>
+                <div class="hvi-wizard-cropper">
+                  <div id="hvi-wiz-crop-stage" class="hvi-wizard-crop-stage">
+                    <canvas id="hvi-wiz-crop-canvas" class="hvi-wizard-crop-canvas"></canvas>
+                    <div class="hvi-wizard-crop-empty">No photo yet</div>
+                  </div>
+                  <div class="hvi-wizard-crop-controls">
+                    <label>Zoom</label>
+                    <input id="hvi-wiz-crop-zoom" type="range" min="1" max="4" step="0.01" value="1" />
+                    <div class="hvi-wizard-inline">
+                      <button class="submit-btn" type="button" onclick="applyHviWizardCrop()">APPLY CROP</button>
+                      <button class="submit-btn" type="button" onclick="resetHviWizardCrop()">RESET</button>
+                      <button class="submit-btn" type="button" onclick="useHviWizardOriginalPhoto()">USE ORIGINAL</button>
+                    </div>
+                  </div>
+                  <div class="hvi-wizard-preview">
+                    ${data.profilePhoto ? `<img src="${escapeHtmlAttr(data.profilePhoto)}" alt="Profile preview" />` : "No photo yet"}
+                  </div>
+                </div>
+              </div>
+            </div>
+          `;
+        } else if (step === 3) {
+          html = `
+            <div class="hvi-wizard-step">
+              <h4>Photo Folder Upload</h4>
+              <div class="hvi-wizard-row">
+                <label>Select multiple photos (adds to profile gallery)</label>
+                <input id="hvi-wiz-photos" class="search-input" type="file" accept="image/*" multiple />
+              </div>
+              <div class="hvi-wizard-pill">${Array.isArray(data.extraPhotos) ? data.extraPhotos.length : 0} photos selected</div>
+            </div>
+          `;
+        } else if (step === 4) {
+          html = `
+            <div class="hvi-wizard-step">
+              <h4>Contact</h4>
+              <div class="hvi-wizard-grid">
+                <div class="hvi-wizard-row"><label>Number</label><input id="hvi-wiz-number" class="search-input" type="text" value="${escapeHtmlAttr(data.number)}" /></div>
+                <div class="hvi-wizard-row"><label>Email</label><input id="hvi-wiz-email" class="search-input" type="text" value="${escapeHtmlAttr(data.email)}" /></div>
+                <div class="hvi-wizard-row"><label>Location</label><input id="hvi-wiz-location" class="search-input" type="text" value="${escapeHtmlAttr(data.location)}" /></div>
+              </div>
+            </div>
+          `;
+        } else if (step === 5) {
+          html = `
+            <div class="hvi-wizard-step">
+              <h4>Relationship</h4>
+              <div class="hvi-wizard-grid">
+                <div class="hvi-wizard-row"><label>Mutual Connections</label><input id="hvi-wiz-mutual" class="search-input" type="text" value="${escapeHtmlAttr(data.mutual)}" /></div>
+                <div class="hvi-wizard-row"><label>Lead</label><input id="hvi-wiz-lead" class="search-input" type="text" value="${escapeHtmlAttr(data.lead)}" /></div>
+                <div class="hvi-wizard-row"><label>Last Conversation</label><input id="hvi-wiz-last-convo" class="search-input" type="text" value="${escapeHtmlAttr(data.lastConversation)}" /></div>
+              </div>
+            </div>
+          `;
+        } else {
+          html = `
+            <div class="hvi-wizard-step">
+              <h4>Last Contact + Linked</h4>
+              <div class="hvi-wizard-grid">
+                <div class="hvi-wizard-row"><label>Last Contacted Date</label><input id="hvi-wiz-last-date" class="search-input" type="date" value="${escapeHtmlAttr(data.lastDate)}" /></div>
+                <div class="hvi-wizard-row"><label>Last Contacted Time</label><input id="hvi-wiz-last-time" class="search-input" type="time" value="${escapeHtmlAttr(data.lastTime)}" /></div>
+                <div class="hvi-wizard-row"><label>Last Contacted With</label><input id="hvi-wiz-last-with" class="search-input" type="text" value="${escapeHtmlAttr(data.lastWith)}" /></div>
+                <div class="hvi-wizard-row"><label>Last Contacted Location</label><input id="hvi-wiz-last-location" class="search-input" type="text" value="${escapeHtmlAttr(data.lastLocation)}" /></div>
+              </div>
+              <div class="hvi-wizard-grid" style="margin-top:10px;">
+                <div class="hvi-wizard-row"><label>Date Linked</label><input id="hvi-wiz-linked-date" class="search-input" type="date" value="${escapeHtmlAttr(data.dateLinked)}" /></div>
+                <div class="hvi-wizard-row"><label>Time Linked</label><input id="hvi-wiz-linked-time" class="search-input" type="time" value="${escapeHtmlAttr(data.timeLinked)}" /></div>
+                <div class="hvi-wizard-row"><label>Linked With</label><input id="hvi-wiz-linked-with" class="search-input" type="text" value="${escapeHtmlAttr(data.linkedWith)}" /></div>
+                <div class="hvi-wizard-row"><label>Linked Location</label><input id="hvi-wiz-linked-location" class="search-input" type="text" value="${escapeHtmlAttr(data.linkedLocation)}" /></div>
+              </div>
+            </div>
+          `;
+        }
+
+        body.innerHTML = html;
+
+        if (step === 2) {
+          const input = document.getElementById("hvi-wiz-photo");
+          if (input) {
+            input.addEventListener("change", async () => {
+              const f = input.files && input.files[0];
+              if (!f) return;
+              try {
+                const src = await readFileAsDataUrl(f);
+                setHviWizardPhotoSource(src);
+                renderHviWizard();
+              } catch (e) {
+                themedNotice("Photo upload failed.");
+              }
+            });
+          }
+          initHviWizardCropper();
+        }
+        if (step === 3) {
+          const input = document.getElementById("hvi-wiz-photos");
+          if (input) {
+            input.addEventListener("change", async () => {
+              const files = input.files ? Array.from(input.files) : [];
+              if (!files.length) return;
+              try {
+                const items = [];
+                for (const f of files) items.push(await readFileAsDataUrl(f));
+                hviWizardState.data.extraPhotos = items.filter(Boolean);
+                renderHviWizard();
+              } catch (e) {
+                themedNotice("Photo upload failed.");
+              }
+            });
+          }
+        }
+
+        bindHviWizardEnterAdvance(body);
+        hviWizardFilterExisting();
+        const firstInput = body.querySelector("input, select");
+        if (firstInput) firstInput.focus();
       }
 
       function switchView(viewId) {
@@ -4831,8 +6148,45 @@
           h?.status ||
           "No brief"
         ).trim() || "No brief";
+        const cleanedBase = base.replace(/\s*\n+\s*/g, " ").replace(/\s{2,}/g, " ").trim() || "No brief";
         const datawellName = String(fields["Datawell Name"] || "").trim();
-        return datawellName ? `${base} | Datawell: ${datawellName}` : base;
+        return datawellName ? `${cleanedBase} | Datawell: ${datawellName}` : cleanedBase;
+      }
+
+      function missionLabelFromItem(item) {
+        const parsed = parseMissionIdentityFromPath(item?.path || "");
+        const op = String(item?.operation || parsed.operation || "").trim();
+        const name = String(item?.name || parsed.displayName || "").trim();
+        const label = [op, name].filter(Boolean).join(" - ").trim();
+        return label || String(item?.path || "Mission");
+      }
+
+      function missionLabelFromPath(path) {
+        const raw = String(path || "").trim();
+        if (!raw) return "";
+        const parsed = parseMissionIdentityFromPath(raw);
+        const op = String(parsed.operation || "").trim();
+        const name = String(parsed.displayName || "").trim();
+        return [op, name].filter(Boolean).join(" - ").trim() || raw;
+      }
+
+      function buildHviMissionOptionsHtml(selectedPath) {
+        const selected = String(selectedPath || "").trim();
+        const missions = Array.isArray(allMissions) ? allMissions.slice() : [];
+        missions.sort(compareMissionSequence);
+        const options = missions.map((m) => {
+          const path = String(m?.path || "").trim();
+          if (!path) return "";
+          const label = missionLabelFromItem(m);
+          const isSelected = selected && path === selected ? "selected" : "";
+          return `<option value="${escapeHtmlAttr(path)}" ${isSelected}>${escapeHtmlAttr(label)}</option>`;
+        }).filter(Boolean);
+        if (selected && !missions.some((m) => String(m?.path || "").trim() === selected)) {
+          const label = missionLabelFromPath(selected) || selected;
+          options.unshift(`<option value="${escapeHtmlAttr(selected)}" selected>${escapeHtmlAttr(label)}</option>`);
+        }
+        if (!options.length) return `<option value="" disabled>(No missions found)</option>`;
+        return options.join("");
       }
 
       function hviCategoryFromItem(h) {
@@ -6238,11 +7592,40 @@
         const list = document.getElementById("swissknife-session-list");
         const outputEl = document.getElementById("swissknife-output-dir");
         const convertOutputEl = document.getElementById("swissknife-convert-output-dir");
+        const cookiesEl = document.getElementById("swissknife-cookies");
+        const cookiesBrowserEl = document.getElementById("swissknife-cookies-browser");
+        const slowmodeEl = document.getElementById("swissknife-slowmode");
+        const slowmodeDelayEl = document.getElementById("swissknife-slowmode-delay");
+        const formatEl = document.getElementById("swissknife-format");
         if (outputEl && !outputEl.value) {
-          outputEl.value = localStorage.getItem("swissknife_output_dir") || "";
+          const savedOutput = localStorage.getItem("swissknife_output_dir") || "";
+          outputEl.value = savedOutput || "/Users/samuelapata/Desktop";
         }
         if (convertOutputEl && !convertOutputEl.value) {
           convertOutputEl.value = localStorage.getItem("swissknife_convert_output_dir") || "";
+        }
+        if (formatEl) {
+          const savedFormat = (localStorage.getItem("swissknife_format") || "").trim();
+          const nextFormat = savedFormat || (formatEl.value || "").trim();
+          formatEl.value = nextFormat && nextFormat !== "original" ? nextFormat : "mp4";
+        }
+        if (cookiesEl && typeof cookiesEl.checked === "boolean") {
+          if (localStorage.getItem("swissknife_cookies_from_browser") === null) {
+            localStorage.setItem("swissknife_cookies_from_browser", "1");
+          }
+          cookiesEl.checked = localStorage.getItem("swissknife_cookies_from_browser") === "1";
+        }
+        if (cookiesBrowserEl && !cookiesBrowserEl.value) {
+          cookiesBrowserEl.value = localStorage.getItem("swissknife_cookies_browser") || "chrome";
+        }
+        if (slowmodeEl && typeof slowmodeEl.checked === "boolean") {
+          if (localStorage.getItem("swissknife_slowmode") === null) {
+            localStorage.setItem("swissknife_slowmode", "1");
+          }
+          slowmodeEl.checked = localStorage.getItem("swissknife_slowmode") === "1";
+        }
+        if (slowmodeDelayEl && !slowmodeDelayEl.value) {
+          slowmodeDelayEl.value = localStorage.getItem("swissknife_slowmode_delay") || "8";
         }
         if (!sel || !list) {
           renderSwissknifeRecentDownloads(Array.isArray(swissknifeSessions) ? swissknifeSessions : []);
@@ -6307,6 +7690,9 @@
       function swissknifeDownloadTitle(d) {
         const direct = String(d?.title || d?.name || d?.video_title || "").trim();
         if (direct) return direct;
+        const sourceLabel = swissknifeSourceLabel(d);
+        const sourceId = swissknifeSourceId(d);
+        if (sourceLabel && sourceId) return `${sourceLabel} ${sourceId}`;
         const path = String(d?.output_path || d?.file_path || d?.download_path || "").trim();
         if (path) {
           const file = path.split("/").pop() || "";
@@ -6327,6 +7713,23 @@
 
       function swissknifeSourceId(d) {
         return String(d?.shortcode || d?.owner_username || "").trim();
+      }
+
+
+      function swissknifeCaptionMeta(d) {
+        return (d && d.caption_meta) || (d && d.manifest && d.manifest.caption_meta) || null;
+      }
+
+      function swissknifeCaptionMetaLine(d) {
+        const meta = swissknifeCaptionMeta(d);
+        if (!meta) return "";
+        const handles = Array.isArray(meta.handles) ? meta.handles.filter(Boolean) : [];
+        const dates = Array.isArray(meta.dates) ? meta.dates : [];
+        const dateLabels = dates.map((row) => String(row && (row.iso || row.raw) || "").trim()).filter(Boolean);
+        const parts = [];
+        if (handles.length) parts.push(`Tags: ${handles.join(" ")}`);
+        if (dateLabels.length) parts.push(`Dates: ${dateLabels.join(", ")}`);
+        return parts.join(" | ");
       }
 
       function swissknifeSourceUrl(d) {
@@ -6380,6 +7783,7 @@
               <div class="swissknife-recent-info">
                 <div class="swissknife-recent-name">${escapeHtmlAttr(label)}</div>
                 <div class="swissknife-recent-path">${escapeHtmlAttr(path || "No download path recorded.")}</div>
+                ${swissknifeCaptionMetaLine(d) ? `<div class="swissknife-recent-tags">${escapeHtmlAttr(swissknifeCaptionMetaLine(d))}</div>` : ""}
                 <div class="swissknife-recent-meta">
                   <span>${escapeHtmlAttr(sourceMeta)}</span>
                   ${linkBtn}
@@ -6449,6 +7853,7 @@
               <div class="swissknife-recent-info">
                 <div class="swissknife-recent-name">${escapeHtmlAttr(label)}</div>
                 <div class="swissknife-recent-path">${escapeHtmlAttr(path || "No download path recorded.")}</div>
+                ${swissknifeCaptionMetaLine(d) ? `<div class="swissknife-recent-tags">${escapeHtmlAttr(swissknifeCaptionMetaLine(d))}</div>` : ""}
                 <div class="swissknife-recent-meta">
                   <span>${escapeHtmlAttr(sourceMeta)}</span>
                   ${linkBtn}
@@ -6483,15 +7888,23 @@
       function buildSwissknifePreview(download) {
         const openPath = pickSwissknifeFilePath(download);
         if (!openPath) return "";
-        const url = filePathToUrl(openPath);
         const ext = (openPath.split(".").pop() || "").toLowerCase();
+        const thumbPath = pickSwissknifeThumbnailPath(download, openPath);
+        if (thumbPath) {
+          const thumbUrl = filePathToUrl(thumbPath);
+          return `<div class="swissknife-recent-preview"><img src="${escapeHtmlAttr(thumbUrl)}" alt="thumbnail" loading="lazy" decoding="async" /></div>`;
+        }
         if (["png", "jpg", "jpeg", "gif", "webp"].includes(ext)) {
+          const url = filePathToUrl(openPath);
           return `<div class="swissknife-recent-preview"><img src="${escapeHtmlAttr(url)}" alt="preview" loading="lazy" decoding="async" /></div>`;
         }
         if (["mp4", "mov", "webm", "mkv"].includes(ext)) {
-          return `<div class="swissknife-recent-preview"><video src="${escapeHtmlAttr(url)}" muted playsinline preload="none"></video></div>`;
+          return `<div class="swissknife-recent-preview swissknife-preview-fallback">VIDEO</div>`;
         }
-        return `<div class="swissknife-recent-preview swissknife-audio-preview">AUDIO</div>`;
+        if (["mp3", "m4a", "wav", "aac", "flac", "opus"].includes(ext)) {
+          return `<div class="swissknife-recent-preview swissknife-audio-preview">AUDIO</div>`;
+        }
+        return `<div class="swissknife-recent-preview swissknife-preview-fallback">FILE</div>`;
       }
 
       function buildSwissknifePreviewFallback() {
@@ -6515,11 +7928,32 @@
         const files = Array.isArray(download?.manifest?.files) ? download.manifest.files : [];
         const usable = [...directCandidates, ...files].filter((f) => !String(f || "").endsWith(".part"));
         if (!usable.length) return "";
+        const notFormatCode = (f) => !/\.f\d+\./i.test(String(f || ""));
+        const cleanUsable = usable.filter((f) => notFormatCode(f));
+        const pool = cleanUsable.length ? cleanUsable : usable;
         const preferred =
-          usable.find((f) => /_h264_2160\.mp4$/i.test(String(f || ""))) ||
-          usable.find((f) => /compat_.*\.mp4$/i.test(String(f || ""))) ||
-          usable.find((f) => /\.(mp4|m4a|mp3|mov|webm|mkv)$/i.test(String(f || "")));
-        return String(preferred || usable[0] || "");
+          pool.find((f) => /_h264_2160\.mp4$/i.test(String(f || ""))) ||
+          pool.find((f) => /compat_.*\.mp4$/i.test(String(f || ""))) ||
+          pool.find((f) => /\.(mp4|m4a|mp3|mov|webm|mkv)$/i.test(String(f || "")));
+        return String(preferred || pool[0] || "");
+      }
+
+      function pickSwissknifeThumbnailPath(download, openPath = "") {
+        const files = Array.isArray(download?.manifest?.files) ? download.manifest.files : [];
+        const imageFiles = files.filter((f) => /\.(png|jpe?g|webp|gif)$/i.test(String(f || "")));
+        if (!imageFiles.length) return "";
+        const base = String(openPath || "").replace(/\.[^.]+$/, "");
+        if (base) {
+          const match = imageFiles.find((f) => String(f || "").replace(/\.[^.]+$/, "") === base);
+          if (match) return String(match);
+        }
+        return String(imageFiles[0] || "");
+      }
+
+      function pickSwissknifeImagePath(download) {
+        const files = Array.isArray(download?.manifest?.files) ? download.manifest.files : [];
+        const imageFile = files.find((f) => /\.(png|jpe?g|webp|gif)$/i.test(String(f || "")));
+        return String(imageFile || "");
       }
 
       async function openSwissknifePath(path) {
@@ -6555,10 +7989,13 @@
           }
           const payload = await res.json().catch(() => ({}));
           const path = String(payload?.path || "").trim();
-          if (path && outputEl) {
+          const current = String(outputEl?.value || "").trim();
+          const shouldSet = path && (!payload?.fallback || !current);
+          if (shouldSet && outputEl) {
             outputEl.value = path;
             localStorage.setItem("swissknife_output_dir", path);
           }
+          if (payload?.warning) themedNotice(String(payload.warning));
         } catch (e) {
           themedNotice("Folder pick failed: " + e.message);
         }
@@ -6578,10 +8015,13 @@
           }
           const payload = await res.json().catch(() => ({}));
           const path = String(payload?.path || "").trim();
-          if (path && outputEl) {
+          const current = String(outputEl?.value || "").trim();
+          const shouldSet = path && (!payload?.fallback || !current);
+          if (shouldSet && outputEl) {
             outputEl.value = path;
             localStorage.setItem("swissknife_convert_output_dir", path);
           }
+          if (payload?.warning) themedNotice(String(payload.warning));
         } catch (e) {
           themedNotice("Folder pick failed: " + e.message);
         }
@@ -6633,8 +8073,11 @@
         if (raw.startsWith("ig:") || raw.includes("instagram.com") || raw.includes("instagr.am")) {
           return "instagram";
         }
-        if (raw.includes("tiktok.com") || raw.includes("youtube.com") || raw.includes("youtu.be")) {
-          return "ytdlp";
+        if (raw.includes("tiktok.com")) {
+          return "tiktok";
+        }
+        if (raw.includes("youtube.com") || raw.includes("youtu.be")) {
+          return "youtube";
         }
         return "ytdlp";
       }
@@ -6649,11 +8092,128 @@
         }, 600);
       }
 
+      function setSwissknifeBatchControls(running) {
+        const runBtn = document.getElementById("swissknife-run-batch");
+        const cancelBtn = document.getElementById("swissknife-cancel-batch");
+        if (runBtn) runBtn.disabled = !!running;
+        if (cancelBtn) cancelBtn.disabled = !running;
+      }
+
+      function cancelSwissknifeBatch() {
+        if (!swissknifeBatchRunning) return;
+        swissknifeBatchCancel = true;
+        const statusEl = document.getElementById("swissknife-batch-status");
+        const statusLabel = document.getElementById("swissknife-progress-status");
+        if (statusEl) statusEl.textContent = "Cancel requested. Finishing current item.";
+        if (statusLabel) statusLabel.textContent = "CANCEL REQUESTED...";
+      }
+
+      async function pollSwissknifeJob(jobId, onUpdate) {
+        if (!jobId) throw new Error("Swissknife job id missing.");
+        const endpoint = `/api/swissknife/progress?job_id=${encodeURIComponent(jobId)}`;
+        for (let attempt = 0; attempt < 240; attempt += 1) {
+          const res = await fetch(serverUrlForPath(endpoint));
+          const payload = await res.json().catch(() => ({}));
+          const job = payload?.job || payload || {};
+          if (job && typeof onUpdate === "function") onUpdate(job);
+          const status = String(job?.status || "").toLowerCase();
+          if (status === "complete" || status === "failed") {
+            return job || {};
+          }
+          await new Promise((resolve) => setTimeout(resolve, 700));
+        }
+        throw new Error("Swissknife job timed out.");
+      }
+
+      async function startSwissknifeAsyncDownload(payload) {
+        const res = await fetch(serverUrlForPath("/api/swissknife/download"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...(payload || {}), async: true }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ error: "Swissknife download failed." }));
+          throw new Error(err.error || "Swissknife download failed.");
+        }
+        const data = await res.json().catch(() => ({}));
+        return data?.job_id || "";
+      }
+
+      async function pasteSwissknifeCredential(targetId) {
+        const el = document.getElementById(targetId);
+        if (!el) return;
+        try {
+          if (navigator.clipboard && typeof navigator.clipboard.readText === "function") {
+            try {
+              const text = await navigator.clipboard.readText();
+              if (text !== undefined) {
+                el.value = String(text || "");
+                el.focus();
+                return;
+              }
+            } catch (_) {
+              // fall through to server/bridge clipboard
+            }
+          }
+          const api = getDesktopBridgeApi();
+          if (api && typeof api.read_clipboard === "function") {
+            const payload = await api.read_clipboard();
+            if (!payload?.ok) throw new Error(payload?.error || "Clipboard read failed.");
+            el.value = String(payload?.text || "");
+          } else {
+            const url = serverUrlForPath("/api/system/clipboard/paste");
+            const res = await nativeWindowFetch(url, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({}),
+            });
+            const payload = await res.json().catch(() => ({}));
+            if (!res.ok) {
+              throw new Error(payload?.error || `Clipboard read failed (HTTP ${res.status}).`);
+            }
+            el.value = String(payload?.text || "");
+          }
+          el.focus();
+        } catch (e) {
+          const fallback = await themedPrompt("Paste value", "");
+          if (fallback !== null && fallback !== undefined) {
+            el.value = String(fallback || "");
+            el.focus();
+            return;
+          }
+          themedNotice("Paste failed: " + e.message);
+        }
+      }
+
+      function swissknifeSleep(ms) {
+        return new Promise((resolve) => setTimeout(resolve, Math.max(0, ms || 0)));
+      }
+
+      function swissknifeIsRateLimitedError(err) {
+        const msg = String(err || "").toLowerCase();
+        return msg.includes("too many requests") || msg.includes("429");
+      }
+
+      function swissknifeDelayMs(slowmodeEl, slowmodeDelayEl) {
+        if (!(slowmodeEl && slowmodeEl.checked)) return 0;
+        const raw = String(slowmodeDelayEl?.value || "").trim();
+        const secs = Number.parseFloat(raw);
+        if (!Number.isFinite(secs) || secs <= 0) return 0;
+        return Math.round(secs * 1000);
+      }
+
       async function runSwissknifeBatchDownload() {
+        if (swissknifeBatchRunning) {
+          themedNotice("Batch already running.");
+          return;
+        }
         const linksEl = document.getElementById("swissknife-links");
         const statusEl = document.getElementById("swissknife-batch-status");
         const sel = document.getElementById("swissknife-session-select");
-        const loginEl = document.getElementById("swissknife-login");
+        const cookiesEl = document.getElementById("swissknife-cookies");
+        const cookiesBrowserEl = document.getElementById("swissknife-cookies-browser");
+        const slowmodeEl = document.getElementById("swissknife-slowmode");
+        const slowmodeDelayEl = document.getElementById("swissknife-slowmode-delay");
         const formatEl = document.getElementById("swissknife-format");
         const qualityEl = document.getElementById("swissknife-quality");
         const audioQualityEl = document.getElementById("swissknife-audio-quality");
@@ -6663,108 +8223,127 @@
         const statusLabel = document.getElementById("swissknife-progress-status");
         const percentLabel = document.getElementById("swissknife-progress-percent");
         const sessionId = (sel?.value || selectedSwissknifeSession || "").trim();
-        const login = !!(loginEl && loginEl.checked);
         const format = (formatEl?.value || "").trim();
         const videoQuality = (qualityEl?.value || "").trim();
         const audioQuality = (audioQualityEl?.value || "").trim();
         const quality = ["mp3", "m4a", "wav"].includes(format) ? (audioQuality || videoQuality) : videoQuality;
-        const output_dir = (outputEl?.value || localStorage.getItem("swissknife_output_dir") || "").trim();
+        const output_dir = (outputEl?.value || localStorage.getItem("swissknife_output_dir") || "/Users/samuelapata/Desktop").trim();
+        const cookies_from_browser = cookiesEl?.checked ? String(cookiesBrowserEl?.value || "chrome") : "";
         const { compat_h264, force_4k } = resolveSwissknife4kFlags(format, quality);
         if (outputEl) localStorage.setItem("swissknife_output_dir", output_dir);
+        if (format) localStorage.setItem("swissknife_format", format);
+        if (cookiesEl) localStorage.setItem("swissknife_cookies_from_browser", cookiesEl.checked ? "1" : "");
+        if (cookiesBrowserEl) localStorage.setItem("swissknife_cookies_browser", String(cookiesBrowserEl.value || "chrome"));
+        if (slowmodeEl) localStorage.setItem("swissknife_slowmode", slowmodeEl.checked ? "1" : "");
+        if (slowmodeDelayEl) localStorage.setItem("swissknife_slowmode_delay", String(slowmodeDelayEl.value || "8"));
         const raw = String(linksEl?.value || "");
         const urls = raw.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-        if (!urls.length) {
-          themedNotice("Paste one or more links first.");
-          return;
-        }
-        if (urls.length === 1) {
-          await startSwissknifeAcquisition();
-          return;
-        }
-        const runSyncDownload = async (url, source) => {
-          if (window.pywebview && window.pywebview.api && window.pywebview.api.swissknife_download) {
-            const res = await window.pywebview.api.swissknife_download({
-              session_id: sessionId,
-              url,
-              login: source === "instagram" ? login : false,
-              format,
-              quality,
-              source,
-              output_dir,
-              compat_h264,
-              force_4k,
-            });
-            if (!res || !res.ok) {
-              throw new Error(res?.error || "Swissknife download failed.");
+        swissknifeBatchRunning = true;
+        swissknifeBatchCancel = false;
+        setSwissknifeBatchControls(true);
+        try {
+          if (!urls.length) {
+            themedNotice("Paste one or more links first.");
+            return;
+          }
+          if (urls.length === 1) {
+            await startSwissknifeAcquisition();
+            return;
+          }
+          let completed = 0;
+          let failed = 0;
+          if (statusEl) statusEl.textContent = `Queue loaded: ${urls.length}`;
+          if (progressSection) progressSection.style.display = "block";
+          if (progressBar) progressBar.style.width = "0%";
+          if (percentLabel) percentLabel.textContent = "0%";
+          if (statusLabel) statusLabel.textContent = "STARTING BATCH...";
+          for (const url of urls) {
+            if (swissknifeBatchCancel) break;
+            const source = inferSwissknifeSource(url);
+            const jobIndex = completed + failed + 1;
+            if (statusEl) statusEl.textContent = `Downloading ${jobIndex}/${urls.length}`;
+            const delayMs = swissknifeDelayMs(slowmodeEl, slowmodeDelayEl);
+            if (delayMs > 0 && jobIndex > 1) {
+              if (statusLabel) statusLabel.textContent = `COOLDOWN (${Math.round(delayMs / 1000)}s)`;
+              await swissknifeSleep(delayMs);
             }
-            return res.result || {};
-          }
-          const res = await fetch(serverUrlForPath("/api/swissknife/download"), {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              session_id: sessionId,
-              url,
-              login: source === "instagram" ? login : false,
-              format,
-              quality,
-              source,
-              output_dir,
-              compat_h264,
-              force_4k,
-              async: false,
-            }),
-          });
-          if (!res.ok) {
-            const err = await res.json().catch(() => ({ error: "Swissknife download failed." }));
-            throw new Error(err.error || "Swissknife download failed.");
-          }
-          return res.json().catch(() => ({}));
-        };
-        let completed = 0;
-        let failed = 0;
-        if (statusEl) statusEl.textContent = `Queue loaded: ${urls.length}`;
-        if (progressSection) progressSection.style.display = "block";
-        if (progressBar) progressBar.style.width = "0%";
-        if (percentLabel) percentLabel.textContent = "0%";
-        if (statusLabel) statusLabel.textContent = "STARTING BATCH...";
-        for (const url of urls) {
-          const source = inferSwissknifeSource(url);
-          if (statusEl) statusEl.textContent = `Downloading ${completed + failed + 1}/${urls.length}`;
-          try {
-            if (progressBar) progressBar.classList.add("indeterminate");
-            if (statusLabel) statusLabel.textContent = `DOWNLOADING (${completed + failed + 1}/${urls.length})`;
-            await runSyncDownload(url, source);
-            completed += 1;
-            const pct = Math.round((completed / Math.max(1, urls.length)) * 100);
-            if (progressBar) {
-              progressBar.classList.remove("indeterminate");
-              progressBar.style.width = `${pct}%`;
+            try {
+              if (progressBar) progressBar.classList.add("indeterminate");
+              if (statusLabel) statusLabel.textContent = `DOWNLOADING (${jobIndex}/${urls.length})`;
+              const jobId = await startSwissknifeAsyncDownload({
+                session_id: sessionId,
+                url,
+                login: false,
+                ig_user: "",
+                ig_pass: "",
+                format,
+                quality,
+                source,
+                output_dir,
+                compat_h264,
+                force_4k,
+                cookies_from_browser: source === "instagram" ? "" : cookies_from_browser,
+              });
+              const job = await pollSwissknifeJob(jobId, (update) => {
+                const pct = typeof update?.percent === "number" ? update.percent : null;
+                const stage = String(update?.stage || "").trim();
+                if (statusLabel && stage) {
+                  statusLabel.textContent = `${stage.toUpperCase()} (${jobIndex}/${urls.length})`;
+                }
+                if (pct !== null && progressBar) {
+                  const overall = Math.min(100, Math.round(((completed + pct / 100) / Math.max(1, urls.length)) * 100));
+                  progressBar.classList.remove("indeterminate");
+                  progressBar.style.width = `${overall}%`;
+                  if (percentLabel) percentLabel.textContent = `${overall}%`;
+                }
+              });
+              if (String(job?.status || "").toLowerCase() === "failed") {
+                throw new Error(job?.error || "Swissknife download failed.");
+              }
+              completed += 1;
+              const pct = Math.round((completed / Math.max(1, urls.length)) * 100);
+              if (progressBar) {
+                progressBar.classList.remove("indeterminate");
+                progressBar.style.width = `${pct}%`;
+              }
+              if (percentLabel) percentLabel.textContent = `${pct}%`;
+            } catch (e) {
+              failed += 1;
+              if (progressBar) progressBar.classList.remove("indeterminate");
+              logSwissknifeFail("Swissknife batch download failed.", {
+                url,
+                source,
+                format,
+                quality,
+                output_dir,
+                compat_h264,
+                force_4k,
+                error: e?.message || String(e),
+              });
+              if (swissknifeIsRateLimitedError(e?.message || String(e))) {
+                const cooldownMs = Math.max(15000, swissknifeDelayMs(slowmodeEl, slowmodeDelayEl) * 2);
+                if (statusLabel) statusLabel.textContent = `RATE LIMITED. PAUSING ${Math.round(cooldownMs / 1000)}s`;
+                await swissknifeSleep(cooldownMs);
+              }
             }
-            if (percentLabel) percentLabel.textContent = `${pct}%`;
-          } catch (e) {
-            failed += 1;
-            if (progressBar) progressBar.classList.remove("indeterminate");
-            logSwissknifeFail("Swissknife batch download failed.", {
-              url,
-              source,
-              format,
-              quality,
-              output_dir,
-              compat_h264,
-              force_4k,
-              error: e?.message || String(e),
-            });
           }
+          if (swissknifeBatchCancel) {
+            if (statusEl) statusEl.textContent = `Batch canceled. Success: ${completed}, Failed: ${failed}`;
+          } else {
+            if (statusEl) statusEl.textContent = `Batch complete. Success: ${completed}, Failed: ${failed}`;
+          }
+          if (completed > 0) await fetchData();
+          if (linksEl) linksEl.value = "";
+          if (progressBar) progressBar.classList.remove("indeterminate");
+          if (progressBar) progressBar.style.width = "100%";
+          if (percentLabel) percentLabel.textContent = "100%";
+          if (statusLabel) statusLabel.textContent = swissknifeBatchCancel ? "BATCH CANCELED." : "BATCH COMPLETE.";
+          finalizeSwissknifeProgress();
+        } finally {
+          swissknifeBatchRunning = false;
+          swissknifeBatchCancel = false;
+          setSwissknifeBatchControls(false);
         }
-        if (statusEl) statusEl.textContent = `Batch complete. Success: ${completed}, Failed: ${failed}`;
-        if (completed > 0) await fetchData();
-        if (linksEl) linksEl.value = "";
-        if (progressBar) progressBar.classList.remove("indeterminate");
-        if (progressBar) progressBar.style.width = "100%";
-        if (percentLabel) percentLabel.textContent = "100%";
-        if (statusLabel) statusLabel.textContent = "BATCH COMPLETE.";
-        finalizeSwissknifeProgress();
       }
 
       async function deleteSwissknifeSession(sessionId) {
@@ -6814,22 +8393,26 @@
       async function runSwissknifeDownload(options = {}) {
         const sel = document.getElementById("swissknife-session-select");
         const urlEl = document.getElementById("swissknife-url");
-        const loginEl = document.getElementById("swissknife-login");
+        const cookiesEl = document.getElementById("swissknife-cookies");
+        const cookiesBrowserEl = document.getElementById("swissknife-cookies-browser");
         const formatEl = document.getElementById("swissknife-format");
         const qualityEl = document.getElementById("swissknife-quality");
         const audioQualityEl = document.getElementById("swissknife-audio-quality");
         const outputEl = document.getElementById("swissknife-output-dir");
         const sessionId = (sel?.value || selectedSwissknifeSession || "").trim();
         const url = (options.url || urlEl?.value || "").trim();
-        const login = !!(loginEl && loginEl.checked);
         const source = inferSwissknifeSource(url);
         const format = (formatEl?.value || "").trim();
         const videoQuality = (qualityEl?.value || "").trim();
         const audioQuality = (audioQualityEl?.value || "").trim();
         const quality = ["mp3", "m4a", "wav"].includes(format) ? (audioQuality || videoQuality) : videoQuality;
-        const output_dir = (outputEl?.value || localStorage.getItem("swissknife_output_dir") || "").trim();
+        const output_dir = (outputEl?.value || localStorage.getItem("swissknife_output_dir") || "/Users/samuelapata/Desktop").trim();
+        const cookies_from_browser = cookiesEl?.checked ? String(cookiesBrowserEl?.value || "chrome") : "";
         const { compat_h264, force_4k } = resolveSwissknife4kFlags(format, quality);
         if (outputEl) localStorage.setItem("swissknife_output_dir", output_dir);
+        if (format) localStorage.setItem("swissknife_format", format);
+        if (cookiesEl) localStorage.setItem("swissknife_cookies_from_browser", cookiesEl.checked ? "1" : "");
+        if (cookiesBrowserEl) localStorage.setItem("swissknife_cookies_browser", String(cookiesBrowserEl.value || "chrome"));
         if (!url) {
           themedNotice("Enter a target URL.");
           return;
@@ -6846,13 +8429,16 @@
             const res = await window.pywebview.api.swissknife_download({
               session_id: sessionId,
               url,
-              login: source === "instagram" ? login : false,
+              login: false,
+              ig_user: "",
+              ig_pass: "",
               format,
               quality,
               source,
               output_dir,
               compat_h264,
               force_4k,
+              cookies_from_browser: source === "instagram" ? "" : cookies_from_browser,
             });
             if (!res || !res.ok) {
               throw new Error(res?.error || "Swissknife download failed.");
@@ -6869,13 +8455,16 @@
             body: JSON.stringify({
               session_id: sessionId,
               url,
-              login: source === "instagram" ? login : false,
+              login: false,
+              ig_user: "",
+              ig_pass: "",
               format,
               quality,
               source,
               output_dir,
               compat_h264,
               force_4k,
+              cookies_from_browser: source === "instagram" ? "" : cookies_from_browser,
               async: false,
             }),
           });
@@ -6924,9 +8513,10 @@
         const videoQuality = (qualityEl?.value || "").trim();
         const audioQuality = (audioQualityEl?.value || "").trim();
         const quality = ["mp3", "m4a", "wav"].includes(format) ? (audioQuality || videoQuality) : videoQuality;
-        const output_dir = (outputEl?.value || localStorage.getItem("swissknife_output_dir") || "").trim();
+        const output_dir = (outputEl?.value || localStorage.getItem("swissknife_output_dir") || "/Users/samuelapata/Desktop").trim();
         const { compat_h264, force_4k } = resolveSwissknife4kFlags(format, quality);
         if (outputEl) localStorage.setItem("swissknife_output_dir", output_dir);
+        if (format) localStorage.setItem("swissknife_format", format);
         if (!url) {
           themedNotice("Enter a target URL.");
           return;
@@ -8112,6 +9702,15 @@
               targetSets: 3,
               targetReps: 12,
               restSeconds: 45,
+            }),
+            gymSeedExercise("Chest", "Dips", "Bodyweight dip focused on chest drive and triceps lockout.", {
+              targets: "Chest, triceps, anterior delts",
+              referenceQuery: "bodyweight dips exercise",
+              source: gymSource,
+              targetSets: 3,
+              targetReps: 8,
+              restSeconds: 60,
+              targetWeight: "Bodyweight",
             }),
           ],
           "Back": [
@@ -19754,18 +21353,39 @@
           })
         );
 
-        container.innerHTML = data.map(h => `
-          <div class="hvi-card hvi-summary-row ${hviFreshnessClass(h)}" ondblclick="openHviPopup('${escapeJsString(h.handle || "Unknown")}')" title="Double-click to open profile">
-            <button class="x-btn hvi-row-delete" onclick="event.stopPropagation(); deleteHvi('${escapeJsString(h.handle || "Unknown")}')" title="Delete HVI">X</button>
+        container.innerHTML = data.map((h) => {
+          const item = augmentHvi(h);
+          const fields = item.fields && typeof item.fields === "object" ? item.fields : {};
+          const extra = getHviExtra(item.handle || "");
+          const reminderConfig = extra.reminder || { amberDays: 21, redDays: 30 };
+          const lastContactDate = parseHviDateTime(fields["Last Contacted Date"], fields["Last Contacted Time"]);
+          const lastUpdateLog = Array.isArray(extra.updateLogs) && extra.updateLogs.length
+            ? extra.updateLogs[extra.updateLogs.length - 1]
+            : null;
+          let lastUpdateDate = lastUpdateLog && lastUpdateLog.ts ? new Date(lastUpdateLog.ts) : null;
+          if (lastUpdateDate && Number.isNaN(lastUpdateDate.getTime())) lastUpdateDate = null;
+          if (!lastUpdateDate) lastUpdateDate = lastContactDate;
+          const contactStatus = computeHviReminderStatus(lastContactDate, reminderConfig);
+          const updateStatus = computeHviReminderStatus(lastUpdateDate, reminderConfig);
+          return `
+          <div class="hvi-card hvi-summary-row ${hviFreshnessClass(item)}" ondblclick="openHviPopup('${escapeJsString(item.handle || "Unknown")}')" title="Double-click to open profile">
+            <button class="x-btn hvi-row-delete" onclick="event.stopPropagation(); deleteHvi('${escapeJsString(item.handle || "Unknown")}')" title="Delete HVI">X</button>
+            <button class="submit-btn hvi-row-photo-btn" onclick="event.stopPropagation(); uploadHviPhotoQuick('${escapeJsString(item.handle || "Unknown")}')" title="Upload photo">PHOTO</button>
             <div class="hvi-summary-main">
-              ${Array.isArray(h.photos) && h.photos[0] ? `<img class="hvi-thumb" src="${escapeHtmlAttr(h.photos[0])}" alt="HVI photo" />` : `<div class="hvi-thumb hvi-thumb-empty">NO PHOTO</div>`}
+              ${Array.isArray(item.photos) && item.photos[0] ? `<img class="hvi-thumb" src="${escapeHtmlAttr(item.photos[0])}" alt="HVI photo" />` : `<div class="hvi-thumb hvi-thumb-empty">NO PHOTO</div>`}
               <div class="hvi-summary-text">
-                <div class="hvi-summary-name">${escapeHtmlAttr(h.handle || "Unknown")}</div>
-                <div class="hvi-summary-brief">${escapeHtmlAttr(hviBriefText(h))}</div>
+                <div class="hvi-summary-name">${escapeHtmlAttr(item.handle || "Unknown")}</div>
+                <div class="hvi-summary-brief">${escapeHtmlAttr(hviBriefText(item))}</div>
+              </div>
+              <div class="hvi-summary-alerts">
+                ${hviReminderStatusBadge("Contact", contactStatus.status, contactStatus.days)}
+                ${hviReminderStatusBadge("Updates", updateStatus.status, updateStatus.days)}
               </div>
             </div>
           </div>
-        `).join("") || "<div class='hvi-card'><p>No HVI profiles found.</p></div>";
+        `;
+        }).join("") || "<div class='hvi-card'><p>No HVI profiles found.</p></div>";
+        renderFollowups("hvi");
       }
 
       function renderContacts() {
@@ -19884,6 +21504,7 @@
             </div>
           `;
         }).join("") || "<div class='hvi-card'><p>No contacts found.</p></div>";
+        renderFollowups("contacts");
       }
 
       function operationalDayKey(now = new Date()) {
@@ -20480,10 +22101,110 @@
           .replace(/>/g, "&gt;");
       }
 
+      function getFollowupStore() {
+        try {
+          const raw = localStorage.getItem(FOLLOWUP_STORAGE_KEY);
+          const parsed = raw ? JSON.parse(raw) : null;
+          if (parsed && typeof parsed === "object") {
+            return {
+              hvi: Array.isArray(parsed.hvi) ? parsed.hvi : [],
+              datawells: Array.isArray(parsed.datawells) ? parsed.datawells : [],
+              contacts: Array.isArray(parsed.contacts) ? parsed.contacts : [],
+            };
+          }
+        } catch (e) {}
+        return { hvi: [], datawells: [], contacts: [] };
+      }
+
+      function saveFollowupStore(store) {
+        localStorage.setItem(FOLLOWUP_STORAGE_KEY, JSON.stringify(store));
+      }
+
+      function addFollowup(section) {
+        const input = document.getElementById(`${section}-followup-input`);
+        const statusEl = document.getElementById(`${section}-followup-status`);
+        if (!input) return;
+        const note = String(input.value || "").trim();
+        if (!note) {
+          themedNotice("Add a follow-up note first.");
+          return;
+        }
+        const status = String(statusEl?.value || "pending").trim().toLowerCase();
+        const store = getFollowupStore();
+        if (!Array.isArray(store[section])) store[section] = [];
+        store[section].push({ ts: new Date().toISOString(), note, status });
+        saveFollowupStore(store);
+        input.value = "";
+        if (statusEl) statusEl.value = "pending";
+        renderFollowups(section);
+        themedNotice("Follow-up saved.");
+      }
+
+      function renderFollowups(section) {
+        const list = document.getElementById(`${section}-followup-list`);
+        const summary = document.getElementById(`${section}-followup-summary`);
+        if (!list) return;
+        const store = getFollowupStore();
+        const entries = Array.isArray(store[section]) ? store[section].slice(-10).reverse() : [];
+        const now = Date.now();
+        let redCount = 0;
+        let yellowCount = 0;
+        let greenCount = 0;
+        const ageDays = (ts) => {
+          const t = Date.parse(ts || "");
+          if (!Number.isFinite(t)) return 0;
+          return (now - t) / (1000 * 60 * 60 * 24);
+        };
+        const classify = (entry) => {
+          const status = String(entry?.status || "pending").toLowerCase();
+          const days = ageDays(entry?.ts);
+          if (status === "connected" && String(entry?.note || "").trim()) return "green";
+          if (days >= 14) return "red";
+          if (days >= 11) return "yellow";
+          return "neutral";
+        };
+        if (!entries.length) {
+          list.innerHTML = `<div class="hvi-card"><p>No follow-ups yet.</p></div>`;
+          if (summary) summary.textContent = "No follow-ups yet.";
+          return;
+        }
+        list.innerHTML = entries
+          .map((entry) => {
+            const ts = escapeHtml(entry.ts || "");
+            const note = escapeHtml(entry.note || "");
+            const status = String(entry?.status || "pending");
+            const days = ageDays(entry?.ts);
+            const bucket = classify(entry);
+            if (bucket === "red") redCount += 1;
+            else if (bucket === "yellow") yellowCount += 1;
+            else if (bucket === "green") greenCount += 1;
+            const badgeClass = `followup-badge followup-${bucket}`;
+            const ageLabel = Number.isFinite(days) ? `${Math.floor(days)}d` : "—";
+            return `
+              <div class="hvi-card followup-card">
+                <div class="followup-row">
+                  <div class="followup-meta">
+                    <span class="${badgeClass}">${bucket.toUpperCase()}</span>
+                    <span class="hvi-meta">${ageLabel}</span>
+                    <span class="hvi-meta">${escapeHtml(status)}</span>
+                  </div>
+                  <div class="hvi-meta">${ts}</div>
+                </div>
+                <div>${note}</div>
+              </div>
+            `;
+          })
+          .join("");
+        if (summary) {
+          summary.textContent = `Alerts: ${redCount} red · ${yellowCount} yellow · ${greenCount} green`;
+        }
+      }
+
       function hviProfileLinks(item) {
         const links = [];
         const seen = new Set();
-        const seenInstaUsers = new Set();
+        const seenHandles = new Set();
+        const fields = (item && item.fields && typeof item.fields === "object") ? item.fields : {};
         const normalizeLinkKey = (u) => {
           try {
             const parsed = new URL(u);
@@ -20502,21 +22223,75 @@
           seen.add(key);
           links.push({ url: u, label: label || u });
         };
-        const pushInstagramUser = (userRaw) => {
-          const user = String(userRaw || "").trim().replace(/^@/, "");
-          if (!user) return;
-          const key = user.toLowerCase();
-          if (seenInstaUsers.has(key)) return;
-          seenInstaUsers.add(key);
-          pushLink(`https://www.instagram.com/${encodeURIComponent(user)}/`, `Instagram: @${user}`);
+        const pushHandle = (platform, handleRaw) => {
+          const handle = String(handleRaw || "").trim().replace(/^@/, "");
+          if (!handle) return;
+          const key = `${platform}:${handle.toLowerCase()}`;
+          if (seenHandles.has(key)) return;
+          seenHandles.add(key);
+          if (platform === "instagram") {
+            pushLink(`https://www.instagram.com/${encodeURIComponent(handle)}/`, `Instagram: @${handle}`);
+          } else if (platform === "tiktok") {
+            pushLink(`https://www.tiktok.com/@${encodeURIComponent(handle)}`, `TikTok: @${handle}`);
+          } else if (platform === "x") {
+            pushLink(`https://x.com/${encodeURIComponent(handle)}`, `X: @${handle}`);
+          } else if (platform === "youtube") {
+            pushLink(`https://www.youtube.com/@${encodeURIComponent(handle)}`, `YouTube: @${handle}`);
+          } else if (platform === "linkedin") {
+            pushLink(`https://www.linkedin.com/in/${encodeURIComponent(handle)}`, `LinkedIn: ${handle}`);
+          } else if (platform === "facebook") {
+            pushLink(`https://www.facebook.com/${encodeURIComponent(handle)}`, `Facebook: ${handle}`);
+          } else if (platform === "threads") {
+            pushLink(`https://www.threads.net/@${encodeURIComponent(handle)}`, `Threads: @${handle}`);
+          } else if (platform === "pinterest") {
+            pushLink(`https://www.pinterest.com/${encodeURIComponent(handle)}/`, `Pinterest: ${handle}`);
+          }
         };
-        // Do not auto-add profile handle as an Instagram link; only use explicit social field links/mentions.
-        const social = String(item?.fields?.["Social Media Handles"] || "");
-        const urlMatches = social.match(/https?:\/\/[^\s,)]+/gi) || [];
-        urlMatches.forEach((u) => pushLink(u, u));
-        const mentions = social.match(/@[A-Za-z0-9._]+/g) || [];
-        mentions.forEach((m) => pushInstagramUser(m));
+        const addFromValue = (value, platform) => {
+          const raw = String(value || "").trim();
+          if (!raw) return;
+          const urls = raw.match(/https?:\/\/[^\s,)]+/gi) || [];
+          urls.forEach((u) => pushLink(u, u));
+          const mentions = raw.match(/@[A-Za-z0-9._]+/g) || [];
+          if (mentions.length) {
+            mentions.forEach((m) => pushHandle(platform || "instagram", m));
+            return;
+          }
+          if (platform && !urls.length) {
+            pushHandle(platform, raw);
+          }
+        };
+        addFromValue(fields["Instagram"] || fields["IG"], "instagram");
+        addFromValue(fields["TikTok"], "tiktok");
+        addFromValue(fields["X"] || fields["Twitter"], "x");
+        addFromValue(fields["YouTube"], "youtube");
+        addFromValue(fields["LinkedIn"], "linkedin");
+        addFromValue(fields["Facebook"], "facebook");
+        addFromValue(fields["Threads"], "threads");
+        addFromValue(fields["Pinterest"], "pinterest");
+        ["Website", "Profile", "Social Links", "Social Media Handles"].forEach((k) => addFromValue(fields[k], ""));
         return links;
+      }
+
+      function hviLastContactInfo(fields) {
+        const dateRaw = String(fields?.["Last Contacted Date"] || fields?.["Last Contacted"] || "").trim();
+        const timeRaw = String(fields?.["Last Contacted Time"] || "").trim();
+        let d = null;
+        if (dateRaw) {
+          const stamp = timeRaw ? `${dateRaw}T${timeRaw}` : dateRaw;
+          const parsed = new Date(stamp);
+          if (!Number.isNaN(parsed.getTime())) d = parsed;
+        } else if (dateRaw) {
+          const parsed = new Date(dateRaw);
+          if (!Number.isNaN(parsed.getTime())) d = parsed;
+        }
+        if (!d) {
+          return { label: "No contact logged", cls: "hvi-contact-unknown", days: null };
+        }
+        const ageDays = Math.floor((Date.now() - d.getTime()) / (24 * 60 * 60 * 1000));
+        if (ageDays >= 30) return { label: `${ageDays} days ago`, cls: "hvi-contact-danger", days: ageDays };
+        if (ageDays >= 14) return { label: `${ageDays} days ago`, cls: "hvi-contact-warn", days: ageDays };
+        return { label: `${ageDays} days ago`, cls: "hvi-contact-good", days: ageDays };
       }
 
       function hviAllParameterKeys(item) {
@@ -20528,6 +22303,29 @@
           "Status",
           "Mission Stage",
           "Number",
+          "Profile",
+          "Last Conversation",
+          "Lead",
+          "Location",
+          "Mutual Connections",
+          "Last Contacted Date",
+          "Last Contacted Time",
+          "Last Contacted With",
+          "Last Contacted Location",
+          "Date Linked",
+          "Time Linked",
+          "Linked With",
+          "Linked Location",
+          "Instagram",
+          "TikTok",
+          "X",
+          "Twitter",
+          "YouTube",
+          "LinkedIn",
+          "Facebook",
+          "Threads",
+          "Pinterest",
+          "Website",
           "Organization/Affiliation",
           "Painpoint/Need",
           "Social Media Handles",
@@ -20728,6 +22526,8 @@
         const stats = x.stats && typeof x.stats === "object" ? x.stats : {};
         const slots = Array.isArray(x.slots) ? x.slots.map((s) => String(s || "").trim()).filter(Boolean) : [];
         const descriptions = x.descriptions && typeof x.descriptions === "object" ? x.descriptions : {};
+        const reminder = x.reminder && typeof x.reminder === "object" ? x.reminder : {};
+        const updateLogs = Array.isArray(x.updateLogs) ? x.updateLogs : [];
         return {
           stats: { ...stats },
           statOrder: Array.isArray(x.statOrder) ? x.statOrder.map((s) => String(s || "").trim()).filter(Boolean) : [],
@@ -20736,6 +22536,17 @@
           leads: normalizeList(x.leads),
           slots,
           descriptions: { ...descriptions },
+          reminder: {
+            amberDays: Number.isFinite(Number(reminder.amberDays)) ? Number(reminder.amberDays) : 21,
+            redDays: Number.isFinite(Number(reminder.redDays)) ? Number(reminder.redDays) : 30,
+          },
+          updateLogs: updateLogs.map((row) => ({
+            ts: String(row?.ts || "").trim(),
+            field: String(row?.field || "").trim(),
+            prev: String(row?.prev || "").trim(),
+            next: String(row?.next || "").trim(),
+            source: String(row?.source || "").trim(),
+          })),
         };
       }
 
@@ -20750,8 +22561,81 @@
           leads: normalizeList(extra?.leads),
           slots: Array.isArray(extra?.slots) ? extra.slots.map((s) => String(s || "").trim()).filter(Boolean) : [],
           descriptions: extra && extra.descriptions && typeof extra.descriptions === "object" ? extra.descriptions : {},
+          reminder: {
+            amberDays: Number.isFinite(Number(extra?.reminder?.amberDays)) ? Number(extra.reminder.amberDays) : 21,
+            redDays: Number.isFinite(Number(extra?.reminder?.redDays)) ? Number(extra.reminder.redDays) : 30,
+          },
+          updateLogs: Array.isArray(extra?.updateLogs) ? extra.updateLogs.map((row) => ({
+            ts: String(row?.ts || "").trim(),
+            field: String(row?.field || "").trim(),
+            prev: String(row?.prev || "").trim(),
+            next: String(row?.next || "").trim(),
+            source: String(row?.source || "").trim(),
+          })) : [],
         };
         saveHviProfileExtras();
+      }
+
+      function addHviUpdateLog(handle, field, prev, next, source = "") {
+        const key = String(handle || "").trim();
+        if (!key) return;
+        const prevVal = String(prev || "").trim();
+        const nextVal = String(next || "").trim();
+        if (prevVal === nextVal) return;
+        const extra = getHviExtra(key);
+        const logs = Array.isArray(extra.updateLogs) ? extra.updateLogs : [];
+        logs.push({
+          ts: new Date().toISOString(),
+          field: String(field || "").trim() || "Description",
+          prev: prevVal,
+          next: nextVal,
+          source: String(source || "").trim(),
+        });
+        extra.updateLogs = logs;
+        setHviExtra(key, extra);
+      }
+
+      function parseHviDateTime(dateStr, timeStr = "") {
+        const dateVal = String(dateStr || "").trim();
+        if (!dateVal) return null;
+        const timeVal = String(timeStr || "").trim() || "00:00";
+        const iso = `${dateVal}T${timeVal}`;
+        const parsed = new Date(iso);
+        if (Number.isNaN(parsed.getTime())) return null;
+        return parsed;
+      }
+
+      function formatHviDateLabel(dt) {
+        if (!dt || Number.isNaN(dt.getTime())) return "N/A";
+        const yyyy = dt.getFullYear();
+        const mm = String(dt.getMonth() + 1).padStart(2, "0");
+        const dd = String(dt.getDate()).padStart(2, "0");
+        const hh = String(dt.getHours()).padStart(2, "0");
+        const min = String(dt.getMinutes()).padStart(2, "0");
+        return `${yyyy}-${mm}-${dd} ${hh}:${min}`;
+      }
+
+      function computeHviReminderStatus(baseDate, config) {
+        if (!baseDate || Number.isNaN(baseDate.getTime())) {
+          return { status: "unknown", days: null };
+        }
+        const now = new Date();
+        const diffDays = Math.floor((now - baseDate) / 86400000);
+        const amberDays = Number.isFinite(Number(config?.amberDays)) ? Number(config.amberDays) : 21;
+        const redDays = Number.isFinite(Number(config?.redDays)) ? Number(config.redDays) : 30;
+        if (diffDays >= redDays) return { status: "red", days: diffDays };
+        if (diffDays >= amberDays) return { status: "amber", days: diffDays };
+        return { status: "green", days: diffDays };
+      }
+
+      function hviReminderStatusBadge(label, status, days) {
+        const dayText = Number.isFinite(Number(days)) ? `${days}d` : "N/A";
+        return `
+          <div class="hvi-reminder-badge ${status}">
+            <span>${escapeHtmlAttr(label)}</span>
+            <strong>${escapeHtmlAttr(dayText)}</strong>
+          </div>
+        `;
       }
 
       function setPrimaryHviPhoto(extra, photoValue) {
@@ -20810,7 +22694,68 @@
         openHviPopup(intelPopupHviHandle, hviPopupPage);
       }
 
-      function triggerHviPhotoPicker() {
+      
+      async function uploadHviPhotoQuick(handle) {
+        const targetHandle = String(handle || "").trim();
+        if (!targetHandle) return;
+        const launchHiddenInput = () => {
+          const picker = document.createElement("input");
+          picker.type = "file";
+          picker.accept = "image/*";
+          picker.style.position = "fixed";
+          picker.style.left = "-9999px";
+          picker.style.width = "1px";
+          picker.style.height = "1px";
+          picker.style.opacity = "0";
+          picker.setAttribute("aria-hidden", "true");
+          picker.onchange = async () => {
+            try {
+              const f = picker.files && picker.files[0];
+              if (!f) return;
+              await addHviPhotoForHandle(targetHandle, f);
+            } finally {
+              if (picker.parentNode) picker.parentNode.removeChild(picker);
+            }
+          };
+          document.body.appendChild(picker);
+          requestAnimationFrame(() => picker.click());
+        };
+
+        try {
+          if (window.showOpenFilePicker) {
+            window.showOpenFilePicker({
+              multiple: false,
+              types: [{ description: "Images", accept: { "image/*": [".png", ".jpg", ".jpeg", ".webp", ".gif"] } }],
+            }).then(async (handles) => {
+              const h = handles && handles[0];
+              if (!h) return;
+              const file = await h.getFile();
+              if (!file) return;
+              await addHviPhotoForHandle(targetHandle, file);
+            }).catch(() => {});
+            return;
+          }
+        } catch (_) {}
+
+        launchHiddenInput();
+      }
+
+      async function addHviPhotoForHandle(handle, file) {
+        const targetHandle = String(handle || "").trim();
+        if (!targetHandle || !file) return;
+        try {
+          const value = await readFileAsDataUrl(file);
+          const extra = getHviExtra(targetHandle);
+          setPrimaryHviPhoto(extra, value);
+          setHviExtra(targetHandle, extra);
+          renderHvi();
+          themedNotice("Photo saved.");
+        } catch (e) {
+          themedNotice("Photo upload failed.");
+        }
+      }
+
+function triggerHviPhotoPicker() {
         const targetHandle = String(intelPopupHviHandle || "").trim();
         if (!targetHandle) {
           themedNotice("Open an HVI profile first.");
@@ -20945,6 +22890,117 @@
         openHviPopup(intelPopupHviHandle, hviPopupPage);
       }
 
+      function setHviLastContactNow() {
+        const dateEl = document.getElementById("hvi-last-date");
+        const timeEl = document.getElementById("hvi-last-time");
+        const now = new Date();
+        const yyyy = now.getFullYear();
+        const mm = String(now.getMonth() + 1).padStart(2, "0");
+        const dd = String(now.getDate()).padStart(2, "0");
+        const hh = String(now.getHours()).padStart(2, "0");
+        const min = String(now.getMinutes()).padStart(2, "0");
+        if (dateEl) dateEl.value = `${yyyy}-${mm}-${dd}`;
+        if (timeEl) timeEl.value = `${hh}:${min}`;
+      }
+
+      async function saveHviProfileQuick() {
+        if (intelPopupType !== "hvi" || !intelPopupHviHandle) return;
+        const read = (id) => String(document.getElementById(id)?.value || "").trim();
+        const fields = {};
+        const setField = (key, value) => {
+          fields[key] = value ? value : "N/A";
+        };
+        const name = read("hvi-profile-name");
+        const age = read("hvi-profile-age");
+        const number = read("hvi-profile-number");
+        const email = read("hvi-profile-email");
+        const location = read("hvi-profile-location");
+        const mutual = read("hvi-profile-mutual");
+        const lead = read("hvi-profile-lead");
+        const profile = read("hvi-profile-profile");
+        const lastConversation = read("hvi-profile-last-convo");
+        const lastDate = read("hvi-last-date");
+        const lastTime = read("hvi-last-time");
+        const lastWith = read("hvi-last-with");
+        const lastLocation = read("hvi-last-location");
+        const linkedDate = read("hvi-linked-date");
+        const linkedTime = read("hvi-linked-time");
+        const linkedWith = read("hvi-linked-with");
+        const linkedLocation = read("hvi-linked-location");
+        const ig = read("hvi-profile-instagram");
+        const tt = read("hvi-profile-tiktok");
+        const x = read("hvi-profile-x");
+        const yt = read("hvi-profile-youtube");
+        const website = read("hvi-profile-website");
+        const linkedMissionPath = read("hvi-linked-mission");
+        const linkedMissionLabel = linkedMissionPath ? missionLabelFromPath(linkedMissionPath) : "";
+        setField("Name", name);
+        setField("Age", age);
+        setField("Number", number);
+        setField("Contact Number", number);
+        setField("Email Address", email);
+        setField("Location", location);
+        setField("Mutual Connections", mutual);
+        setField("Lead", lead);
+        setField("Profile", profile);
+        setField("Last Conversation", lastConversation);
+        setField("Last Contacted Date", lastDate);
+        setField("Last Contacted Time", lastTime);
+        setField("Last Contacted With", lastWith);
+        setField("Last Contacted Location", lastLocation);
+        setField("Date Linked", linkedDate);
+        setField("Time Linked", linkedTime);
+        setField("Linked With", linkedWith);
+        setField("Linked Location", linkedLocation);
+        setField("Instagram", ig);
+        setField("TikTok", tt);
+        setField("X", x);
+        setField("YouTube", yt);
+        setField("Website", website);
+        setField("Linked Mission", linkedMissionLabel);
+        fields["Linked Mission Path"] = linkedMissionPath || "";
+        fields["Updated At"] = new Date().toISOString();
+        const socialLinks = [];
+        const pushSocial = (raw, platform) => {
+          const val = String(raw || "").trim();
+          if (!val || val === "N/A") return;
+          if (/https?:\/\//i.test(val)) {
+            socialLinks.push(val);
+            return;
+          }
+          const handle = val.replace(/^@/, "");
+          if (!handle) return;
+          if (platform === "instagram") socialLinks.push(`https://www.instagram.com/${handle}/`);
+          if (platform === "tiktok") socialLinks.push(`https://www.tiktok.com/@${handle}`);
+          if (platform === "x") socialLinks.push(`https://x.com/${handle}`);
+          if (platform === "youtube") socialLinks.push(`https://www.youtube.com/@${handle}`);
+          if (platform === "website") socialLinks.push(val);
+        };
+        pushSocial(ig, "instagram");
+        pushSocial(tt, "tiktok");
+        pushSocial(x, "x");
+        pushSocial(yt, "youtube");
+        pushSocial(website, "website");
+        if (profile && profile !== "N/A") pushSocial(profile, "website");
+        if (socialLinks.length) fields["Social Media Handles"] = socialLinks.join(" | ");
+        try {
+          const res = await fetch("/api/hvi", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ handle: intelPopupHviHandle, fields }),
+          });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({ error: "Failed to update HVI profile." }));
+            throw new Error(err.error || "Failed to update HVI profile.");
+          }
+          await fetchData();
+          openHviPopup(intelPopupHviHandle, hviPopupPage);
+          themedNotice("HVI profile saved.");
+        } catch (e) {
+          themedNotice("Profile save failed: " + e.message);
+        }
+      }
+
       async function addHviEntryFromPopup() {
         if (intelPopupType !== "hvi" || !intelPopupHviHandle) return;
         const keyEl = document.getElementById("intel-hvi-key-simple");
@@ -20997,6 +23053,9 @@
               const err = await res.json().catch(() => ({ error: "Failed to update HVI field." }));
               throw new Error(err.error || "Failed to update HVI field.");
             }
+            if (k === "description") {
+              addHviUpdateLog(intelPopupHviHandle, "Description", "", value, "add-field");
+            }
             ensureHviStatTemplate(key);
             extra.stats[key] = value;
             if (!extra.statOrder.includes(key)) extra.statOrder.push(key);
@@ -21025,6 +23084,7 @@
         const nextDesc = await themedPrompt(`Edit ${k} description`, String(currentDesc || ""));
         if (nextDesc === null) return;
         const extra = getHviExtra(intelPopupHviHandle);
+        const shouldLogDesc = k.toLowerCase() === "description";
         extra.descriptions = extra.descriptions && typeof extra.descriptions === "object" ? extra.descriptions : {};
         extra.descriptions[k] = String(nextDesc || "").trim();
         try {
@@ -21047,6 +23107,9 @@
               throw new Error(err.error || "Failed to update HVI field.");
             }
             setHviExtra(intelPopupHviHandle, extra);
+            if (shouldLogDesc) {
+              addHviUpdateLog(intelPopupHviHandle, "Description", currentValue, nextValue, "bundle-edit");
+            }
           }
           await fetchData();
           openHviPopup(intelPopupHviHandle, hviPopupPage);
@@ -21062,6 +23125,7 @@
         const nextValue = await themedPrompt(`Edit ${k} value`, String(currentValue || ""));
         if (nextValue === null) return;
         const extra = getHviExtra(intelPopupHviHandle);
+        const shouldLogDesc = k.toLowerCase() === "description";
         try {
           if (isCustom) {
             extra.stats[k] = String(nextValue || "").trim() || "N/A";
@@ -21080,6 +23144,9 @@
             if (!res.ok) {
               const err = await res.json().catch(() => ({ error: "Failed to update HVI field." }));
               throw new Error(err.error || "Failed to update HVI field.");
+            }
+            if (shouldLogDesc) {
+              addHviUpdateLog(intelPopupHviHandle, "Description", currentValue, nextValue, "inline-edit");
             }
           }
           await fetchData();
@@ -21728,6 +23795,7 @@
         initSwissknifeSimpleCanvas();
         refreshAppBuildLabels();
         initSafeModeControls();
+        initSwissknifeLogControls();
         const missionOverlay = document.getElementById("mission-editor-overlay");
         if (missionOverlay) {
           missionOverlay.addEventListener("click", (e) => {
